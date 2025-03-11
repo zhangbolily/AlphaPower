@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from typing import Final, Dict
+
 BASE_URL = "https://api.worldquantbrain.com"
 
 ENDPOINT_AUTHENTICATION = "authentication"
@@ -7,14 +9,18 @@ ENDPOINT_AUTHENTICATION = "authentication"
 ENDPOINT_ALPHAS = "alphas"
 ENDPOINT_SELF_ALPHA_LIST = "users/self/alphas"
 
+
 def ENDPOINT_ALPHA_YEARLY_STATS(alpha_id):
     return f"alphas/{alpha_id}/recordsets/yearly-stats"
+
 
 def ENDPOINT_ALPHA_PNL(alpha_id):
     return f"alphas/{alpha_id}/recordsets/pnl"
 
+
 def ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id):
     return f"alphas/{alpha_id}/correlations/self"
+
 
 ENDPOINT_SIMULATION = "simulations"
 ENDPOINT_ACTIVITIES_SIMULATION = "users/self/activities/simulations"
@@ -31,19 +37,20 @@ class RateLimit:
         self.limit = limit
         self.remaining = remaining
         self.reset = reset
-    
+
     @classmethod
     def from_headers(cls, headers):
         limit = headers.get("RateLimit-Limit")
         remaining = headers.get("RateLimit-Remaining")
         reset = headers.get("RateLimit-Reset")
         return cls(limit, remaining, reset)
-    
+
     def __str__(self):
         return f"RateLimit(limit={self.limit}, remaining={self.remaining}, reset={self.reset})"
 
+
 # HTTP 错误代码映射关系
-HttpCodeMessage = {
+HttpCodeMessage: Final[Dict] = {
     100: "Continue",
     101: "Switching Protocols",
     102: "Processing",
@@ -105,5 +112,28 @@ HttpCodeMessage = {
     508: "Loop Detected",
     509: "Bandwidth Limit Exceeded",
     510: "Not Extended",
-    511: "Network Authentication Required"
+    511: "Network Authentication Required",
 }
+
+# 常见枚举值
+TOP3000: Final[str] = "TOP3000"
+TOP2000: Final[str] = "TOP2000"
+TOP1000: Final[str] = "TOP1000"
+TOP500: Final[str] = "TOP500"
+TOP200: Final[str] = "TOP200"
+
+UNIVERSE: Final[list] = [TOP3000, TOP2000, TOP1000, TOP500, TOP200]
+
+PYTHON: Final[str] = "PYTHON"
+EXPRESSION: Final[str] = "EXPRESSION"
+FASTEXPR: Final[str] = "FASTEXPR"
+
+ALPHAS_LANGUAGE: Final[list] = [PYTHON, EXPRESSION, FASTEXPR]
+
+NONE: Final[str] = "NONE"
+MARKET: Final[str] = "MARKET"
+INDUSTRY: Final[str] = "INDUSTRY"
+SUBINDUSTRY: Final[str] = "SUBINDUSTRY"
+SECTOR: Final[str] = "SECTOR"
+
+NEUTRALIZATION: Final[list] = [NONE, MARKET, INDUSTRY, SUBINDUSTRY, SECTOR]

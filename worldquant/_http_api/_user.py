@@ -1,4 +1,4 @@
-import worldquant._http_api._common as _common
+from . import _common
 import json
 import requests
 
