@@ -1,33 +1,53 @@
 import json
 import requests
-import worldquant._http_api._common as _common
+from ._common import *
 import pandas as pd
+from datetime import datetime as dt
 
 
 class SelfAlphaListQueryParams:
-    def __init__(self, hidden=None, limit=None, offset=None, order=None, status=None):
+    def __init__(
+        self,
+        hidden=None,
+        limit=None,
+        offset=None,
+        order=None,
+        status_eq=None,
+        status_ne=None,
+        date_created_gt=None,
+        date_created_lt=None,
+    ):
         self.hidden = hidden
         self.limit = limit
         self.offset = offset
         self.order = order
-        self.status = status
+        self.status_eq = status_eq
+        self.status_ne = status_ne
+        self.date_created_gt = date_created_gt
+        self.date_created_lt = date_created_lt
 
     def to_params(self):
         params = {}
         if self.hidden is not None:
-            params["hidden"] = self.hidden
+            params["hidden"] = "true" if self.hidden else "false"
         if self.limit is not None:
             params["limit"] = self.limit
         if self.offset is not None:
             params["offset"] = self.offset
         if self.order is not None:
             params["order"] = self.order
-        if self.status is not None:
-            params["status"] = self.status
+        if self.status_eq is not None:
+            params["status"] = self.status_eq
+        if self.status_ne is not None:
+            params["status//!"] = self.status_ne
+        if self.date_created_gt is not None:
+            params["dateCreated>"] = self.date_created_gt
+        if self.date_created_lt is not None:
+            params["dateCreated<"] = self.date_created_lt
         return params
 
 
-class AlphaResult_Settings:
+class Alpha_Settings:
     def __init__(
         self,
         instrumentType,
@@ -43,6 +63,7 @@ class AlphaResult_Settings:
         language,
         visualization,
         testPeriod=None,
+        maxTrade=None,
     ):
         self.instrumentType = instrumentType
         self.region = region
@@ -57,16 +78,17 @@ class AlphaResult_Settings:
         self.language = language
         self.visualization = visualization
         self.testPeriod = testPeriod
+        self.maxTrade = maxTrade
 
 
-class AlphaResult_Regular:
+class Alpha_Regular:
     def __init__(self, code, description, operatorCount):
         self.code = code
         self.description = description
         self.operatorCount = operatorCount
 
 
-class AlphaResult_IS_Check:
+class Alpha_Sample_Check:
     def __init__(
         self,
         name,
@@ -81,26 +103,30 @@ class AlphaResult_IS_Check:
         self.result = result
         self.limit = limit
         self.value = value
-        self.date = date
+        self.date = dt.fromisoformat(date) if date else None
         self.competitions = competitions
         self.message = message
 
 
-class AlphaResult_IS:
+class Alpha_Sample:
     def __init__(
         self,
-        pnl,
-        bookSize,
-        longCount,
-        shortCount,
-        turnover,
-        returns,
-        drawdown,
-        margin,
-        sharpe,
-        fitness,
-        startDate,
-        checks,
+        pnl=None,
+        bookSize=None,
+        longCount=None,
+        shortCount=None,
+        turnover=None,
+        returns=None,
+        drawdown=None,
+        margin=None,
+        sharpe=None,
+        fitness=None,
+        startDate=None,
+        checks=None,
+        selfCorrelation=None,
+        prodCorrelation=None,
+        osISSharpeRatio=None,
+        preCloseSharpeRatio=None,
     ):
         self.pnl = pnl
         self.bookSize = bookSize
@@ -112,11 +138,29 @@ class AlphaResult_IS:
         self.margin = margin
         self.sharpe = sharpe
         self.fitness = fitness
-        self.startDate = startDate
-        self.checks = [AlphaResult_IS_Check(**check) for check in checks]
+        self.startDate = dt.fromisoformat(startDate) if startDate else None
+        self.checks = (
+            [Alpha_Sample_Check(**check) for check in checks] if checks else None
+        )
+        self.selfCorrelation = selfCorrelation
+        self.prodCorrelation = prodCorrelation
+        self.osISSharpeRatio = osISSharpeRatio
+        self.preCloseSharpeRatio = preCloseSharpeRatio
 
 
-class AlphaResult:
+class Alpha_Classification:
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
+
+class Alpha_Competition:
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
+
+class Alpha:
     def __init__(
         self,
         id,
@@ -147,33 +191,45 @@ class AlphaResult:
         pyramids,
         team,
     ):
-        self.id = id
-        self.type = type
-        self.author = author
-        self.settings = AlphaResult_Settings(**settings)
-        self.regular = AlphaResult_Regular(**regular)
-        self.dateCreated = dateCreated
-        self.dateSubmitted = dateSubmitted
-        self.dateModified = dateModified
-        self.name = name
-        self.favorite = favorite
-        self.hidden = hidden
-        self.color = color
-        self.category = category
-        self.tags = tags
-        self.classifications = classifications
-        self.grade = grade
-        self.stage = stage
-        self.status = status
-        self.inSample = AlphaResult_IS(**inSample) if inSample else None
-        self.outSample = outSample  # TODO: 未定义，没有参考数据
-        self.train = train
-        self.test = test
-        self.prod = prod
-        self.competitions = competitions
-        self.themes = themes
-        self.pyramids = pyramids
-        self.team = team
+        try:
+            self.id = id
+            self.type = type
+            self.author = author
+            self.settings = Alpha_Settings(**settings)
+            self.regular = Alpha_Regular(**regular)
+            self.dateCreated = dt.fromisoformat(dateCreated) if dateCreated else None
+            self.dateSubmitted = (
+                dt.fromisoformat(dateSubmitted) if dateSubmitted else None
+            )
+            self.dateModified = dt.fromisoformat(dateModified) if dateModified else None
+            self.name = name
+            self.favorite = favorite
+            self.hidden = hidden
+            self.color = color
+            self.category = category
+            self.tags = tags
+            self.classifications = [
+                Alpha_Classification(**classification)
+                for classification in classifications
+            ]
+            self.grade = grade
+            self.stage = stage
+            self.status = status
+            self.inSample = Alpha_Sample(**inSample) if inSample else None
+            self.outSample = Alpha_Sample(**outSample) if outSample else None
+            self.train = Alpha_Sample(**train) if train else None
+            self.test = Alpha_Sample(**test) if test else None
+            self.prod = Alpha_Sample(**prod) if prod else None
+            self.competitions = (
+                [Alpha_Competition(**competition) for competition in competitions]
+                if competitions
+                else None
+            )
+            self.themes = themes
+            self.pyramids = pyramids
+            self.team = team
+        except Exception as e:
+            raise Exception(f"Error parsing alpha: {id} - {e}")
 
 
 class SelfAlphaList:
@@ -181,7 +237,7 @@ class SelfAlphaList:
         self.count = count
         self.next = next
         self.previous = previous
-        self.results = [AlphaResult(**result) for result in results]
+        self.results = [Alpha(**result) for result in results]
 
     @classmethod
     def from_json(cls, json_data):
@@ -259,7 +315,7 @@ class AlphaDetail_IS_Check:
         self.result = result
         self.limit = limit
         self.value = value
-        self.date = date
+        self.date = dt.fromisoformat(date) if date else None
         self.competitions = competitions
         self.message = message
 
@@ -392,9 +448,9 @@ class AlphaDetail:
         self.author = author
         self.settings = AlphaDetail_Settings(**settings)
         self.regular = AlphaDetail_Regular(**regular)
-        self.dateCreated = dateCreated
-        self.dateSubmitted = dateSubmitted
-        self.dateModified = dateModified
+        self.dateCreated = dt.fromisoformat(dateCreated) if dateCreated else None
+        self.dateSubmitted = dt.fromisoformat(dateSubmitted) if dateSubmitted else None
+        self.dateModified = dt.fromisoformat(dateModified) if dateModified else None
         self.name = name
         self.favorite = favorite
         self.hidden = hidden
@@ -503,7 +559,7 @@ class AlphaPnL_Schema:
 
 class AlphaPnL_Record:
     def __init__(self, date, pnl):
-        self.date = date
+        self.date = dt.fromisoformat(date) if date else None
         self.pnl = pnl
 
 
@@ -622,37 +678,37 @@ class AplhaCheckResult:
 
 
 def get_self_alphas(session: requests.Session, params=None):
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_SELF_ALPHA_LIST}"
+    url = f"{BASE_URL}/{ENDPOINT_SELF_ALPHA_LIST}"
     response = session.get(url, params=params)
     response.raise_for_status()
-    return SelfAlphaList.from_json(response.content), _common.RateLimit.from_headers(
+    return SelfAlphaList.from_json(response.content), RateLimit.from_headers(
         response.headers
     )
 
 
 def get_alpha_detail(session: requests.Session, alpha_id):
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_ALPHAS}/{alpha_id}"
+    url = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}"
     response = session.get(url)
     response.raise_for_status()
-    return AlphaDetail.from_json(response.content), _common.RateLimit.from_headers(
+    return AlphaDetail.from_json(response.content), RateLimit.from_headers(
         response.headers
     )
 
 
 def get_alpha_yearly_stats(session: requests.Session, alpha_id):
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_ALPHA_YEARLY_STATS(alpha_id)}"
+    url = f"{BASE_URL}/{ENDPOINT_ALPHA_YEARLY_STATS(alpha_id)}"
     response = session.get(url)
     response.raise_for_status()
-    return AlphaYearlyStats.from_json(response.content), _common.RateLimit.from_headers(
+    return AlphaYearlyStats.from_json(response.content), RateLimit.from_headers(
         response.headers
     )
 
 
 def get_alpha_pnl(session: requests.Session, alpha_id):
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_ALPHA_PNL(alpha_id)}"
+    url = f"{BASE_URL}/{ENDPOINT_ALPHA_PNL(alpha_id)}"
     response = session.get(url)
     response.raise_for_status()
-    return AlphaPnL.from_json(response.content), _common.RateLimit.from_headers(
+    return AlphaPnL.from_json(response.content), RateLimit.from_headers(
         response.headers
     )
 
@@ -672,7 +728,7 @@ def get_alpha_self_correlations(session: requests.Session, alpha_id):
         - AlphaSelfCorrelations 或 None: 如果请求成功，返回 AlphaSelfCorrelations 对象，否则为 None。
         - RateLimit: 包含速率限制信息的对象。
     """
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id)}"
+    url = f"{BASE_URL}/{ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id)}"
     response = session.get(url)
     response.raise_for_status()
     finished = False
@@ -683,7 +739,7 @@ def get_alpha_self_correlations(session: requests.Session, alpha_id):
             finished,
             retry_after,
             None,
-            _common.RateLimit.from_headers(response.headers),
+            RateLimit.from_headers(response.headers),
         )
     else:
         finished = True
@@ -691,21 +747,21 @@ def get_alpha_self_correlations(session: requests.Session, alpha_id):
             finished,
             None,
             AlphaSelfCorrelations.from_json(response.content),
-            _common.RateLimit.from_headers(response.headers),
+            RateLimit.from_headers(response.headers),
         )
 
 
 def set_alpha_properties(
     session: requests.Session, alpha_id, properties: AlphaPropertiesBody
 ):
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_ALPHAS}/{alpha_id}"
+    url = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}"
     response = session.patch(url, json=properties)
     response.raise_for_status()
-    return response.json(), _common.RateLimit.from_headers(response.headers)
+    return response.json(), RateLimit.from_headers(response.headers)
 
 
 def alpha_check_submission(session: requests.Session, alpha_id):
-    url = f"{_common.BASE_URL}/{_common.ENDPOINT_ALPHAS}/{alpha_id}/check"
+    url = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}/check"
     response = session.get(url)
     response.raise_for_status()
 
@@ -717,7 +773,7 @@ def alpha_check_submission(session: requests.Session, alpha_id):
             finished,
             retry_after,
             None,
-            _common.RateLimit.from_headers(response.headers),
+            RateLimit.from_headers(response.headers),
         )
     else:
         finished = True
@@ -725,5 +781,5 @@ def alpha_check_submission(session: requests.Session, alpha_id):
             finished,
             None,
             AplhaCheckResult.from_json(response.content),
-            _common.RateLimit.from_headers(response.headers),
+            RateLimit.from_headers(response.headers),
         )

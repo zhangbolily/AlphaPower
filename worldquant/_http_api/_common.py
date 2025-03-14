@@ -33,16 +33,16 @@ ENDPOINT_OPERATORS = "operators"
 
 
 class RateLimit:
-    def __init__(self, limit, remaining, reset):
+    def __init__(self, limit: int, remaining: int, reset: int):
         self.limit = limit
         self.remaining = remaining
         self.reset = reset
 
     @classmethod
     def from_headers(cls, headers):
-        limit = headers.get("RateLimit-Limit")
-        remaining = headers.get("RateLimit-Remaining")
-        reset = headers.get("RateLimit-Reset")
+        limit = int(headers.get("RateLimit-Limit", 0))
+        remaining = int(headers.get("RateLimit-Remaining", 0))
+        reset = int(headers.get("RateLimit-Reset", 0))
         return cls(limit, remaining, reset)
 
     def __str__(self):
