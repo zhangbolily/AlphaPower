@@ -677,8 +677,38 @@ class AplhaCheckResult:
         return cls(**mapped_data)
 
 
+def quote_alpha_list_query_params(params):
+    if not params:
+        return "", {}
+
+    quoted_params = ""
+    rem_params = {}
+
+    switch = {
+        "status!": "status!={}",
+        "dateCreated>": "dateCreated%3E={}",
+        "dateCreated<": "dateCreated%3C{}",
+    }
+
+    for key, value in params.items():
+        if key in switch:
+            quoted_params += switch[key].format(value) + "&"
+        else:
+            rem_params[key] = value
+
+    if quoted_params:
+        quoted_params = quoted_params[:-1]
+
+    return quoted_params, rem_params
+
+
 def get_self_alphas(session: requests.Session, params=None):
     url = f"{BASE_URL}/{ENDPOINT_SELF_ALPHA_LIST}"
+
+    # if params:
+    #     quoted_params, params = quote_alpha_list_query_params(params)
+    #     url += f"?{quoted_params}"
+
     response = session.get(url, params=params)
     response.raise_for_status()
     return SelfAlphaList.from_json(response.content), RateLimit.from_headers(

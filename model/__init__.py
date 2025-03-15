@@ -9,6 +9,12 @@ from .entity._alphas import (
     Alphas_Classification,
     Alphas_Competition,
 )
-
-# 创建所有表
-AlphasBase.metadata.create_all(bind=engine)
+from .entity._data import Base as DataBase
+from .entity._data import (
+    DataSet,
+    Data_Category,
+    Data_Subcategory,
+    StatsData,
+    ResearchPaper,
+    DataField,
+)

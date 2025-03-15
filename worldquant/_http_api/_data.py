@@ -50,12 +50,14 @@ class DataCategoriesParent:
         self.userCount = userCount
         self.valueScore = valueScore
         self.region = region
-        self.children = [DataCategoriesChild(**child) for child in children]
+        self.children = (
+            [DataCategoriesChild(**child) for child in children] if children else []
+        )
 
     @classmethod
     def from_json(cls, json_data):
         data = json.loads(json_data)
-        return [cls(**item) for item in data]
+        return [cls(**item) for item in data] if data else []
 
 
 class DataSetsQueryParams:
@@ -140,7 +142,9 @@ class DataSets_Item:
 class DataSets:
     def __init__(self, count, results):
         self.count = count
-        self.results = [DataSets_Item(**result) for result in results]
+        self.results = (
+            [DataSets_Item(**result) for result in results] if results else []
+        )
 
     @classmethod
     def from_json(cls, json_data):
@@ -184,14 +188,25 @@ class DatasetDetail_DataItem:
         self.themes = themes
 
 
+class DatasetDetail_ResearchPaper:
+    def __init__(self, type, title, url):
+        self.type = type
+        self.title = title
+        self.url = url
+
+
 class DatasetDetail:
     def __init__(self, name, description, category, subcategory, data, researchPapers):
         self.name = name
         self.description = description
         self.category = DatasetDetail_Category(**category)
         self.subcategory = DatasetDetail_Subcategory(**subcategory)
-        self.data = [DatasetDetail_DataItem(**item) for item in data]
-        self.researchPapers = researchPapers
+        self.data = [DatasetDetail_DataItem(**item) for item in data] if data else []
+        self.researchPapers = self.researchPapers = (
+            [DatasetDetail_ResearchPaper(**paper) for paper in researchPapers]
+            if researchPapers
+            else []
+        )
 
     @classmethod
     def from_json(cls, json_data):
@@ -237,7 +252,7 @@ class DataFieldDetail:
         self.subcategory = DataFieldDetail_Subcategory(**subcategory)
         self.description = description
         self.type = type
-        self.data = [DataFieldDetail_DataItem(**item) for item in data]
+        self.data = [DataFieldDetail_DataItem(**item) for item in data] if data else []
 
     @classmethod
     def from_json(cls, json_data):
@@ -298,7 +313,7 @@ class DataField:
 class DatasetDataFields:
     def __init__(self, count, results):
         self.count = count
-        self.results = [DataField(**result) for result in results]
+        self.results = [DataField(**result) for result in results] if results else []
 
     @classmethod
     def from_json(cls, json_data):

@@ -205,6 +205,10 @@ def fetch_and_store_alphas() -> None:
     start_time = datetime.fromisoformat("2025-02-21T00:00:00-05:00")
     end_time = datetime.fromisoformat("2025-03-14T00:00:00-05:00")
 
+    fetched_alphas = 0
+    inserted_alphas = 0
+    updated_alphas = 0
+
     try:
         cur_time: datetime = start_time
         for cur_time in [
@@ -212,7 +216,7 @@ def fetch_and_store_alphas() -> None:
             for i in range((end_time - start_time).days + 1)
         ]:
             page: int = 1
-            page_size: int = 500  # 每页获取的数量，可以根据需要调整
+            page_size: int = 100  # 每页获取的数量，可以根据需要调整
 
             while True:
                 query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
@@ -220,9 +224,6 @@ def fetch_and_store_alphas() -> None:
                     offset=(page - 1) * page_size,
                     date_created_gt=cur_time.isoformat(),
                     date_created_lt=(cur_time + timedelta(days=1)).isoformat(),
-                    status_eq="ACTIVE",
-                    order="-dateCreated",
-                    hidden=False,
                 )
 
                 alphas_data: tuple[SelfAlphaList, RateLimit] = client.get_self_alphas(
@@ -240,6 +241,10 @@ def fetch_and_store_alphas() -> None:
                     logger.info(f"No more alphas found for {cur_time}.")
                     break
 
+                fetched_alphas += len(alphas_data[0].results)
+                logger.info(
+                    f"Fetched {len(alphas_data[0].results)} alphas for {cur_time} from page {page}."
+                )
                 count = 0
                 for alpha_data in alphas_data[0].results:
                     alpha_id = alpha_data.id
@@ -252,8 +257,8 @@ def fetch_and_store_alphas() -> None:
                     classifications: list[Alphas_Competition] = (
                         create_alpha_classifications(db, alpha_data.classifications)
                     )
-                    competitions: list[Alphas_Competition] = (
-                        create_alpha_competitions(db, alpha_data.competitions)
+                    competitions: list[Alphas_Competition] = create_alpha_competitions(
+                        db, alpha_data.competitions
                     )
                     alpha: Alphas = create_alphas(
                         alpha_data,
@@ -267,19 +272,23 @@ def fetch_and_store_alphas() -> None:
                         alpha.id = existing_alpha.id
                         db.merge(alpha)
                         logger.info(f"Alpha {alpha_id} merged.")
+                        updated_alphas += 1
                     else:
                         db.add(alpha)
+                        inserted_alphas += 1
 
                     count += 1
 
                     if count % 100 == 0:
                         db.commit()
                         logger.info(f"Committed {count} alphas to the database.")
-
+                db.commit()
+                logger.info(f"Page {page} processed and committed.")
                 page += 1
 
-            db.commit()
-            logger.info(f"Page {page} processed and committed.")
+        logger.info(
+            f"Fetching and storing alphas completed. Fetched: {fetched_alphas}, Inserted: {inserted_alphas}, Updated: {updated_alphas}."
+        )
     except Exception as e:
         logger.error(f"Error: {e}")
         db.rollback()
@@ -296,6 +305,6 @@ def get_alphas_from_db(limit: int = 10, offset: int = 0) -> list[Alphas]:
 
 
 if __name__ == "__main__":
-    # fetch_and_store_alphas()
-    alphas = get_alphas_from_db()
-    print(alphas)
+    fetch_and_store_alphas()
+    # alphas = get_alphas_from_db()
+    # print(alphas)

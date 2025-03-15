@@ -2,7 +2,7 @@
 import requests
 
 from ._http_api import _user, _alphas, _simulations, _data, _other, _common
-from .__exception import exception_handler
+from .__func_utils import exception_handler
 
 
 class WorldQuantClient:
