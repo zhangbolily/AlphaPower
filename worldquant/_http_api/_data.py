@@ -63,6 +63,7 @@ class DataCategoriesParent:
 class DataSetsQueryParams:
     def __init__(
         self,
+        dataset_id=None,
         category=None,
         delay=None,
         instrumentType=None,
@@ -71,6 +72,7 @@ class DataSetsQueryParams:
         region=None,
         universe=None,
     ):
+        self.dataset_id = dataset_id
         self.category = category
         self.delay = delay
         self.instrumentType = instrumentType
@@ -81,6 +83,7 @@ class DataSetsQueryParams:
 
     def to_params(self):
         return {
+            "dataset.id": self.dataset_id,
             "category": self.category,
             "delay": self.delay,
             "instrumentType": self.instrumentType,

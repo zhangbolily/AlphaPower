@@ -26,6 +26,7 @@ class WorldQuantClient:
                 raise
         return resp
 
+    @exception_handler
     def create_single_simulation(
         self, simulation_data: _simulations.CreateSingleSimulationReq
     ) -> _alphas.Alpha:
@@ -43,6 +44,7 @@ class WorldQuantClient:
                 raise
         return success, progress_url, retry_after
 
+    @exception_handler
     def get_data_categories(self):
         try:
             resp = _data.get_data_categories(self.session)
@@ -54,6 +56,7 @@ class WorldQuantClient:
                 raise
         return resp
 
+    @exception_handler
     def get_datasets(self, query: _data.DataSetsQueryParams):
         try:
             resp = _data.get_datasets(self.session, query.to_params())
@@ -65,6 +68,7 @@ class WorldQuantClient:
                 raise
         return resp
 
+    @exception_handler
     def get_dataset_detail(self, dataset_id):
         try:
             resp = _data.get_dataset_detail(self.session, dataset_id)
@@ -76,6 +80,7 @@ class WorldQuantClient:
                 raise
         return resp
 
+    @exception_handler
     def get_data_field_detail(self, data_field_id):
         try:
             resp = _data.get_data_field_detail(self.session, data_field_id)
@@ -87,6 +92,7 @@ class WorldQuantClient:
                 raise
         return resp
 
+    @exception_handler
     def get_data_fields_in_dataset(self, query: _data.GetDataFieldsQueryParams):
         try:
             resp = _data.get_dataset_data_fields(self.session, query.to_params())
@@ -98,6 +104,7 @@ class WorldQuantClient:
                 raise
         return resp
 
+    @exception_handler
     def get_all_operators(self):
         try:
             resp = _other.get_all_operators(self.session)

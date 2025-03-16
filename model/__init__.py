@@ -18,3 +18,7 @@ from .entity._data import (
     ResearchPaper,
     DataField,
 )
+
+# 创建所有表
+AlphasBase.metadata.create_all(engine)
+DataBase.metadata.create_all(engine)

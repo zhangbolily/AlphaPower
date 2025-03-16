@@ -13,16 +13,16 @@ from model import (
 from worldquant import (
     WorldQuantClient,
     SelfAlphaListQueryParams,
-    SelfAlphaList,
     Alpha,
-    RateLimit,
 )
 from typing import Generator
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta, timezone
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -195,106 +195,126 @@ def create_alphas(
     )
 
 
-def fetch_and_store_alphas() -> None:
-    logger.info("Fetching and storing alphas started.")
+def validate_datetime_range(start_time: datetime, end_time: datetime) -> None:
+    if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
+        raise ValueError("start_time 和 end_time 必须是 datetime 类型。")
+    if start_time >= end_time:
+        raise ValueError("start_time 必须早于 end_time。")
+
+
+def process_alphas_page(db, alphas_results):
+    inserted_alphas = 0
+    updated_alphas = 0
+    count = 0
+
+    for alpha_data in alphas_results:
+        alpha_id = alpha_data.id
+        existing_alpha = db.query(Alphas).filter_by(alpha_id=alpha_id).first()
+
+        settings = create_alphas_settings(alpha_data)
+        regular = create_alphas_regular(alpha_data.regular)
+        classifications = create_alpha_classifications(db, alpha_data.classifications)
+        competitions = create_alpha_competitions(db, alpha_data.competitions)
+        alpha = create_alphas(
+            alpha_data, settings, regular, classifications, competitions
+        )
+
+        if existing_alpha:
+            alpha.id = existing_alpha.id
+            db.merge(alpha)
+            logger.info(f"Alpha {alpha_id} 已合并。")
+            updated_alphas += 1
+        else:
+            db.add(alpha)
+            inserted_alphas += 1
+
+        count += 1
+
+        if count % 100 == 0:
+            db.commit()
+            logger.info(f"已提交 {count} 个alphas到数据库。")
+
+    db.commit()
+    return inserted_alphas, updated_alphas
+
+
+def process_alphas_for_date(client: WorldQuantClient, db, cur_time: datetime):
+    fetched_alphas = 0
+    inserted_alphas = 0
+    updated_alphas = 0
+    page = 1
+    page_size = 100
+
+    while True:
+        query_params = SelfAlphaListQueryParams(
+            limit=page_size,
+            offset=(page - 1) * page_size,
+            date_created_gt=cur_time.astimezone(
+                tz=timezone(timedelta(hours=-5))
+            ).isoformat(),
+            date_created_lt=(cur_time + timedelta(days=1))
+            .astimezone(tz=timezone(timedelta(hours=-5)))
+            .isoformat(),
+            order="dateCreated",
+        )
+
+        alphas_data, rate_limit = client.get_self_alphas(query=query_params)
+
+        while rate_limit.remaining < 1:
+            logger.info(f"达到速率限制。等待重置 {rate_limit.reset}。")
+            time.sleep(rate_limit.reset)
+
+        if len(alphas_data.results) == 0:
+            logger.info(f"{cur_time} 没有找到更多的alphas。")
+            break
+
+        fetched_alphas += len(alphas_data.results)
+        logger.info(
+            f"为 {cur_time} 从第 {page} 页获取了 {len(alphas_data.results)} 个alphas。"
+        )
+
+        inserted, updated = process_alphas_page(db, alphas_data.results)
+        inserted_alphas += inserted
+        updated_alphas += updated
+
+        logger.info(f"第 {page} 页处理并提交完成。")
+        page += 1
+
+    return fetched_alphas, inserted_alphas, updated_alphas
+
+
+def sync_alphas(start_time: datetime, end_time: datetime) -> None:
+    validate_datetime_range(start_time, end_time)
+    logger.info("开始获取和存储alphas。")
     credential: dict = get_credentials(1)
     client: WorldQuantClient = create_client(credential)
 
-    db_generator: Generator = get_db()
+    db_generator = get_db("alphas")
     db = next(db_generator)
-    start_time = datetime.fromisoformat("2025-02-21T00:00:00-05:00")
-    end_time = datetime.fromisoformat("2025-03-14T00:00:00-05:00")
 
     fetched_alphas = 0
     inserted_alphas = 0
     updated_alphas = 0
 
     try:
-        cur_time: datetime = start_time
         for cur_time in [
             start_time + timedelta(days=i)
             for i in range((end_time - start_time).days + 1)
         ]:
-            page: int = 1
-            page_size: int = 100  # 每页获取的数量，可以根据需要调整
-
-            while True:
-                query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
-                    limit=page_size,
-                    offset=(page - 1) * page_size,
-                    date_created_gt=cur_time.isoformat(),
-                    date_created_lt=(cur_time + timedelta(days=1)).isoformat(),
-                )
-
-                alphas_data: tuple[SelfAlphaList, RateLimit] = client.get_self_alphas(
-                    query=query_params
-                )
-
-                rate_limit: RateLimit = alphas_data[1]
-                while rate_limit.remaining < 1:
-                    logger.info(
-                        f"Rate limit reached. Waiting for reset {rate_limit.reset}."
-                    )
-                    time.sleep(rate_limit.reset)
-
-                if len(alphas_data[0].results) == 0:
-                    logger.info(f"No more alphas found for {cur_time}.")
-                    break
-
-                fetched_alphas += len(alphas_data[0].results)
-                logger.info(
-                    f"Fetched {len(alphas_data[0].results)} alphas for {cur_time} from page {page}."
-                )
-                count = 0
-                for alpha_data in alphas_data[0].results:
-                    alpha_id = alpha_data.id
-                    existing_alpha = (
-                        db.query(Alphas).filter_by(alpha_id=alpha_id).first()
-                    )
-
-                    settings: Alphas_Settings = create_alphas_settings(alpha_data)
-                    regular: Alphas_Regular = create_alphas_regular(alpha_data.regular)
-                    classifications: list[Alphas_Competition] = (
-                        create_alpha_classifications(db, alpha_data.classifications)
-                    )
-                    competitions: list[Alphas_Competition] = create_alpha_competitions(
-                        db, alpha_data.competitions
-                    )
-                    alpha: Alphas = create_alphas(
-                        alpha_data,
-                        settings,
-                        regular,
-                        classifications,
-                        competitions,
-                    )
-
-                    if existing_alpha:
-                        alpha.id = existing_alpha.id
-                        db.merge(alpha)
-                        logger.info(f"Alpha {alpha_id} merged.")
-                        updated_alphas += 1
-                    else:
-                        db.add(alpha)
-                        inserted_alphas += 1
-
-                    count += 1
-
-                    if count % 100 == 0:
-                        db.commit()
-                        logger.info(f"Committed {count} alphas to the database.")
-                db.commit()
-                logger.info(f"Page {page} processed and committed.")
-                page += 1
+            fetched, inserted, updated = process_alphas_for_date(client, db, cur_time)
+            fetched_alphas += fetched
+            inserted_alphas += inserted
+            updated_alphas += updated
 
         logger.info(
-            f"Fetching and storing alphas completed. Fetched: {fetched_alphas}, Inserted: {inserted_alphas}, Updated: {updated_alphas}."
+            f"获取和存储alphas完成。获取: {fetched_alphas}, 插入: {inserted_alphas}, 更新: {updated_alphas}。"
         )
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"错误: {e}")
         db.rollback()
     finally:
         db.close()
-        logger.info("Database connection closed.")
+        logger.info("数据库连接已关闭。")
 
 
 def get_alphas_from_db(limit: int = 10, offset: int = 0) -> list[Alphas]:
@@ -305,6 +325,6 @@ def get_alphas_from_db(limit: int = 10, offset: int = 0) -> list[Alphas]:
 
 
 if __name__ == "__main__":
-    fetch_and_store_alphas()
+    sync_alphas()
     # alphas = get_alphas_from_db()
     # print(alphas)
