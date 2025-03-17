@@ -1,0 +1,82 @@
+@startuml SyncDatafields Sequence Diagram
+actor User
+
+User -> SyncDatafields: sync_datafields("EQUITY", max_workers=5)
+activate SyncDatafields
+
+SyncDatafields -> GetCredentials: get_credentials()
+activate GetCredentials
+GetCredentials --> SyncDatafields: credentials
+deactivate GetCredentials
+
+SyncDatafields -> CreateClient: create_client(credentials)
+activate CreateClient
+CreateClient --> SyncDatafields: client
+deactivate CreateClient
+
+SyncDatafields -> GetDB: get_db("datasets")
+activate GetDB
+GetDB --> SyncDatafields: db_generator
+deactivate GetDB
+SyncDatafields -> Session: next(db_generator)
+activate Session
+
+Session -> DSQuery: query(DataSet).all()
+activate DSQuery
+DSQuery --> Session: list of datasets
+deactivate DSQuery
+
+note over SyncDatafields, Session: 遍历所有数据集
+loop for each dataset in datasets
+    SyncDatafields -> Executor: submit(create_and_process_tasks(...))
+    activate Executor
+    Executor -> CreateAndProcessTasks: create_and_process_tasks(client, dataset, instrument_type, session, max_workers)
+    activate CreateAndProcessTasks
+
+    note over CreateAndProcessTasks: 内部循环，按 offset/limit<br/>提交 fetch_datafields 任务
+    loop while offset < dataset.field_count
+        CreateAndProcessTasks -> Executor: submit(fetch_datafields(...))
+        activate Executor
+        Executor -> FetchDatafields: fetch_datafields(client, dataset, instrument_type, offset, limit, task_id)
+        activate FetchDatafields
+        FetchDatafields -> Client: client.get_data_fields_in_dataset(query)
+        activate Client
+        Client --> FetchDatafields: datafields_response
+        deactivate Client
+        FetchDatafields --> Executor: return datafields_response
+        deactivate FetchDatafields
+        deactivate Executor
+    end
+
+    note over CreateAndProcessTasks: 处理每个 fetch_datafields 任务返回结果
+    loop for each datafield_data in datafields_response.results
+        CreateAndProcessTasks -> CreateDatafield: create_datafield(session, datafield_data, dataset.id, task_id)
+        activate CreateDatafield
+        CreateDatafield -> Session: query(DataField).filter_by(field_id=datafield_data.id)
+        activate Session
+        Session --> CreateDatafield: existing datafield or None
+        deactivate Session
+        CreateDatafield -> GetCategory: get_or_create_category(session, datafield_data.category)
+        activate GetCategory
+        GetCategory --> CreateDatafield: category
+        deactivate GetCategory
+        CreateDatafield -> GetSubcategory: get_or_create_subcategory(session, datafield_data.subcategory)
+        activate GetSubcategory
+        GetSubcategory --> CreateDatafield: subcategory
+        deactivate GetSubcategory
+        CreateDatafield -> Session: add() / merge(new_datafield)
+        activate Session
+        Session -> Session: commit() / rollback on error
+        deactivate Session
+        deactivate CreateDatafield
+    end
+    deactivate CreateAndProcessTasks
+end
+
+Executor -> SyncDatafields: All tasks completed
+SyncDatafields -> Session: close()
+deactivate Session
+
+SyncDatafields --> User: 数据字段同步成功
+deactivate SyncDatafields
+@enduml
