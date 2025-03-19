@@ -1,8 +1,9 @@
+import json
 import logging
 import time
 from functools import wraps
+
 import requests
-import json
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -33,18 +34,17 @@ def exception_handler(func):
         try:
             return func(*args, **kwargs)
         except requests.HTTPError as e:
+            if e.response.content:
+                logger.error(f"错误信息：{json.loads(e.response.content)}")
+
             if e.response.status_code == 400:
                 logger.error(f"请求错误，请检查请求参数：{e}")
-                logger.error(f"错误信息：{json.loads(e.response.content)}")
             elif e.response.status_code == 401:
                 logger.error(f"未登录：{e}")
-                logger.error(f"错误信息：{json.loads(e.response.content)}")
             elif e.response.status_code == 504:
-                logger.error(f"网关超时：{e}")
-                logger.error(f"错误信息：{json.loads(e.response.content)}")
+                logger.error(f"网关超时：{e} 尝试重试一次请求")
             else:
                 logger.error(f"HTTP错误：{e}")
-                logger.error(f"错误信息：{json.loads(e.response.content)}")
                 raise
 
     return wrapper

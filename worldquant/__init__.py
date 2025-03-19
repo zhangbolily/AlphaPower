@@ -4,9 +4,9 @@ __author__ = "contact@ballchang.com"
 __copyright__ = "Copyright 2025"
 
 from ._client import WorldQuantClient
-from ._http_api._alphas import *
-from ._http_api._common import *
-from ._http_api._data import *
-from ._http_api._other import *
-from ._http_api._simulations import *
-from ._http_api._user import *
+from worldquant.internal.http_api.alphas import *
+from worldquant.internal.http_api.common import *
+from worldquant.internal.http_api.data import *
+from worldquant.internal.http_api.other import *
+from worldquant.internal.http_api.simulations import *
+from worldquant.internal.http_api.user import *

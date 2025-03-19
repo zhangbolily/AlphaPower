@@ -1,44 +1,67 @@
 #!/usr/bin/env python
-import requests
+from typing import Optional
 
-from ._http_api import _user, _alphas, _simulations, _data, _other, _common
+import requests
+from requests import adapters
+
+from worldquant.internal.http_api import alphas, common, data, other, simulations, user
+from worldquant.internal.http_api.data import (
+    DatasetDataFields,
+    DatasetDetail,
+    DataSetsQueryParams,
+    GetDataFieldsQueryParams,
+)
 from .__func_utils import exception_handler
 
 
 class WorldQuantClient:
-    def __init__(self, username=None, password=None):
+    def __init__(self, username, password, pool_connections=10, pool_maxsize=10):
+        self.pool_connections = pool_connections
+        self.pool_maxsize = pool_maxsize
         self.session = requests.Session()
+        self.session.mount(
+            "https://",
+            adapters.HTTPAdapter(
+                pool_connections=self.pool_connections, pool_maxsize=self.pool_maxsize
+            ),
+        )
+        self.session.mount(
+            "http://",
+            adapters.HTTPAdapter(
+                pool_connections=self.pool_connections, pool_maxsize=self.pool_maxsize
+            ),
+        )
         self.username = username
         self.password = password
-        _user.authentication(self.session, username, password)
+        user.authentication(self.session, username, password)
 
     @exception_handler
     def get_self_alphas(
-        self, query: _alphas.SelfAlphaListQueryParams
-    ) -> tuple[_alphas.SelfAlphaList, _common.RateLimit]:
+        self, query: alphas.SelfAlphaListQueryParams
+    ) -> tuple[alphas.SelfAlphaList, common.RateLimit]:
         try:
-            resp = _alphas.get_self_alphas(self.session, query.to_params())
+            resp = alphas.get_self_alphas(self.session, query.to_params())
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _alphas.authentication(self.session, self.username, self.password)
-                resp = _alphas.get_self_alphas(self.session, query.to_params())
+                alphas.authentication(self.session, self.username, self.password)
+                resp = alphas.get_self_alphas(self.session, query.to_params())
             else:
                 raise
         return resp
 
     @exception_handler
     def create_single_simulation(
-        self, simulation_data: _simulations.CreateSingleSimulationReq
-    ) -> _alphas.Alpha:
+        self, simulation_data: simulations.CreateSingleSimulationReq
+    ) -> alphas.Alpha:
         try:
-            success, progress_url, retry_after = _simulations.create_single_simulation(
+            success, progress_url, retry_after = simulations.create_single_simulation(
                 self.session, simulation_data
             )
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
+                user.authentication(self.session, self.username, self.password)
                 success, progress_url, retry_after = (
-                    _simulations.create_single_simulation(self.session, simulation_data)
+                    simulations.create_single_simulation(self.session, simulation_data)
                 )
             else:
                 raise
@@ -47,35 +70,35 @@ class WorldQuantClient:
     @exception_handler
     def get_data_categories(self):
         try:
-            resp = _data.get_data_categories(self.session)
+            resp = data.get_data_categories(self.session)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
-                resp = _data.get_data_categories(self.session)
+                user.authentication(self.session, self.username, self.password)
+                resp = data.get_data_categories(self.session)
             else:
                 raise
         return resp
 
     @exception_handler
-    def get_datasets(self, query: _data.DataSetsQueryParams):
+    def get_datasets(self, query: DataSetsQueryParams) -> Optional[dict]:
         try:
-            resp = _data.get_datasets(self.session, query.to_params())
+            resp = data.get_datasets(self.session, query.to_params())
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
-                resp = _data.get_datasets(self.session, query.to_params())
+                user.authentication(self.session, self.username, self.password)
+                resp = data.get_datasets(self.session, query.to_params())
             else:
                 raise
         return resp
 
     @exception_handler
-    def get_dataset_detail(self, dataset_id):
+    def get_dataset_detail(self, dataset_id: int) -> Optional[DatasetDetail]:
         try:
-            resp = _data.get_dataset_detail(self.session, dataset_id)
+            resp = data.get_dataset_detail(self.session, dataset_id)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
-                resp = _data.get_dataset_detail(self.session, dataset_id)
+                user.authentication(self.session, self.username, self.password)
+                resp = data.get_dataset_detail(self.session, dataset_id)
             else:
                 raise
         return resp
@@ -83,23 +106,25 @@ class WorldQuantClient:
     @exception_handler
     def get_data_field_detail(self, data_field_id):
         try:
-            resp = _data.get_data_field_detail(self.session, data_field_id)
+            resp = data.get_data_field_detail(self.session, data_field_id)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
-                resp = _data.get_data_field_detail(self.session, data_field_id)
+                user.authentication(self.session, self.username, self.password)
+                resp = data.get_data_field_detail(self.session, data_field_id)
             else:
                 raise
         return resp
 
     @exception_handler
-    def get_data_fields_in_dataset(self, query: _data.GetDataFieldsQueryParams):
+    def get_data_fields_in_dataset(
+        self, query: GetDataFieldsQueryParams
+    ) -> Optional[DatasetDataFields]:
         try:
-            resp = _data.get_dataset_data_fields(self.session, query.to_params())
+            resp = data.get_dataset_data_fields(self.session, query.to_params())
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
-                resp = _data.get_dataset_data_fields(self.session, query.to_params())
+                user.authentication(self.session, self.username, self.password)
+                resp = data.get_dataset_data_fields(self.session, query.to_params())
             else:
                 raise
         return resp
@@ -107,11 +132,11 @@ class WorldQuantClient:
     @exception_handler
     def get_all_operators(self):
         try:
-            resp = _other.get_all_operators(self.session)
+            resp = other.get_all_operators(self.session)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                _user.authentication(self.session, self.username, self.password)
-                resp = _other.get_all_operators(self.session)
+                user.authentication(self.session, self.username, self.password)
+                resp = other.get_all_operators(self.session)
             else:
                 raise
         return resp

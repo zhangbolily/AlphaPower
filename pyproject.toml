@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "worldquant"
+version = "0.1.0"
+description = "A tool for managing WorldQuant Brain Alpha Advisor data and operations."
+authors = ["contact@ballchang.com"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+argcomplete = "2.1.2"
+certifi = "2025.1.31"
+charset-normalizer = "3.4.1"
+click = "8.1.8"
+colorama = "0.4.6"
+commonmark = "0.9.1"
+dotenv = "0.9.9"
+greenlet = "3.1.1"
+idna = "3.10"
+iniconfig = "2.0.0"
+numpy = "2.2.3"
+packaging = "24.2"
+pandas = "2.2.3"
+pluggy = "1.5.0"
+Pygments = "2.19.1"
+pytest = "8.3.5"
+python-dateutil = "2.9.0.post0"
+python-dotenv = "1.0.1"
+pytz = "2025.1"
+requests = "2.32.3"
+rich = "11.2.0"
+six = "1.17.0"
+SQLAlchemy = "2.0.38"
+typing-extensions = "4.12.2"
+tzdata = "2025.1"
+urllib3 = "2.3.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

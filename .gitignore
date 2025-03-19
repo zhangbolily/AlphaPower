@@ -1,5 +1,7 @@
-*.code-workspace
+logs
+db
 *.db
-.conda
+*.code-workspace
 .vscode
+.conda
 __pycache__
