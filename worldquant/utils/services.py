@@ -1,4 +1,5 @@
 from sqlalchemy.exc import IntegrityError
+from worldquant.entity import Data_Category as Category, Data_Subcategory as Subcategory
 
 
 def get_or_create_entity(session, model, unique_field, data):
@@ -24,6 +25,24 @@ def get_or_create_entity(session, model, unique_field, data):
             session.rollback()
             entity = session.query(model).filter_by(**{unique_field: data.id}).first()
     return entity
+
+
+def get_or_create_category(session, category_name):
+    category = session.query(Category).filter_by(name=category_name).first()
+    if category is None:
+        category = Category(name=category_name)
+        session.add(category)
+        session.commit()
+    return category
+
+
+def get_or_create_subcategory(session, subcategory_name):
+    subcategory = session.query(Subcategory).filter_by(name=subcategory_name).first()
+    if subcategory is None:
+        subcategory = Subcategory(name=subcategory_name)
+        session.add(subcategory)
+        session.commit()
+    return subcategory
 
 
 def create_sample(sample_data, sample_model):

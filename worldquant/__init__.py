@@ -3,7 +3,7 @@
 __author__ = "contact@ballchang.com"
 __copyright__ = "Copyright 2025"
 
-from ._client import WorldQuantClient
+from .client._client import WorldQuantClient
 from worldquant.internal.http_api.alphas import *
 from worldquant.internal.http_api.common import *
 from worldquant.internal.http_api.data import *

@@ -34,8 +34,11 @@ def exception_handler(func):
         try:
             return func(*args, **kwargs)
         except requests.HTTPError as e:
-            if e.response.content:
-                logger.error(f"错误信息：{json.loads(e.response.content)}")
+            try:
+                error_info = json.loads(e.response.content)
+                logger.error(f"错误信息：{error_info}")
+            except json.JSONDecodeError:
+                logger.error(f"错误信息：{e.response.content}")
 
             if e.response.status_code == 400:
                 logger.error(f"请求错误，请检查请求参数：{e}")

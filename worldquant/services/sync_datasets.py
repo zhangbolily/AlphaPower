@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from tqdm import tqdm  # 引入进度条库
 
 from worldquant import DataSetsQueryParams
-from worldquant._client import WorldQuantClient
+from worldquant.client._client import WorldQuantClient
 from worldquant.config.settings import get_credentials
 from worldquant.entity.data import (
     Data_Category,
@@ -18,9 +18,9 @@ from worldquant.entity.data import (
     StatsData,
 )
 from worldquant.utils.credentials import create_client
-from worldquant.utils.db_utils import with_session
+from worldquant.utils.db import with_session
 from worldquant.utils.logging import setup_logging
-from worldquant.utils.services_utils import get_or_create_entity  # 引入公共方法
+from worldquant.utils.services import get_or_create_entity  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
 logger = setup_logging(f"{__name__}_file", enable_console=False)
@@ -40,7 +40,9 @@ async def fetch_dataset_detail(client: WorldQuantClient, dataset_id: str):
         client.get_dataset_detail, dataset_id
     )  # 异步调用获取数据集详情
     elapsed_time = time.time() - start_time  # 计算耗时
-    logger.info(f"获取数据集详情耗时: {elapsed_time:.2f} 秒 | 数据集 ID: {dataset_id} | 数据集名称: {detail.name}")
+    logger.info(
+        f"获取数据集详情耗时: {elapsed_time:.2f} 秒 | 数据集 ID: {dataset_id} | 数据集名称: {detail.name}"
+    )
     return detail
 
 
@@ -167,10 +169,14 @@ def process_dataset(session: Session, dataset: DataSetEntity, detail):
     if existing_dataset:
         new_dataset.id = existing_dataset.id
         session.merge(new_dataset)  # 合并更新
-        logger.info(f"更新现有数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}")
+        logger.info(
+            f"更新现有数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}"
+        )
     else:
         session.add(new_dataset)  # 添加新数据集
-        logger.info(f"添加新数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}")
+        logger.info(
+            f"添加新数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}"
+        )
 
 
 async def fetch_datasets(client: WorldQuantClient, query_params: DataSetsQueryParams):
@@ -313,10 +319,10 @@ async def sync_datasets(
         )
         session.commit()  # 提交数据库事务
         sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
-        console_logger.info(f"同步任务总耗时: {sync_elapsed_time:.2f} 秒")  # 记录总耗时
-
         progress_bar.close()  # 关闭进度条
+
         console_logger.info("=== 数据集同步任务完成 ===")
+        console_logger.info(f"同步任务总耗时: {sync_elapsed_time:.2f} 秒")  # 记录总耗时
         console_logger.info(f"成功同步 {total_count} 个数据集。")
         logger.info("数据集同步成功。")
     except Exception as e:

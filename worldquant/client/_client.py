@@ -11,7 +11,7 @@ from worldquant.internal.http_api.data import (
     DataSetsQueryParams,
     GetDataFieldsQueryParams,
 )
-from .__func_utils import exception_handler
+from worldquant.utils.client import exception_handler
 
 
 class WorldQuantClient:

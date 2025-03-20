@@ -1,21 +1,22 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from worldquant import GetDataFieldsQueryParams
-from worldquant.entity import DataSet, DataField
-from sqlalchemy.exc import IntegrityError
-from worldquant.utils.logging import setup_logging
-from worldquant.utils.db_utils import with_session  # 修复导入
-from worldquant.utils.credentials import create_client
-from worldquant.utils.category_utils import (
-    get_or_create_category,
-    get_or_create_subcategory,
-)
-from worldquant.config.settings import get_credentials
-from sqlalchemy.orm import Session
-from worldquant._client import WorldQuantClient
-from worldquant.entity.data import DataSet as DataSetEntity
-from worldquant.entity.data import DataField as DataFieldEntity
-from worldquant.internal.http_api.data import GetDataFieldsQueryParams
+from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import Optional
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from worldquant.client import WorldQuantClient
+from worldquant.config.settings import get_credentials
+from worldquant.entity import DataField, DataSet
+from worldquant.entity.data import (
+    DataField as DataFieldEntity,
+    DataSet as DataSetEntity,
+)
+
+from worldquant.internal.http_api.data import GetDataFieldsQueryParams
+from worldquant.utils.credentials import create_client
+from worldquant.utils.db import with_session  # 修复导入
+from worldquant.utils.logging import setup_logging
+from worldquant.utils.services import get_or_create_category, get_or_create_subcategory
 
 # 配置日志
 logger = setup_logging(__name__)
