@@ -70,11 +70,11 @@ class WorldQuantClient:
     @exception_handler
     def get_data_categories(self):
         try:
-            resp = data.get_data_categories(self.session)
+            resp = data.fetch_data_categories(self.session)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 user.authentication(self.session, self.username, self.password)
-                resp = data.get_data_categories(self.session)
+                resp = data.fetch_data_categories(self.session)
             else:
                 raise
         return resp
@@ -82,11 +82,11 @@ class WorldQuantClient:
     @exception_handler
     def get_datasets(self, query: DataSetsQueryParams) -> Optional[dict]:
         try:
-            resp = data.get_datasets(self.session, query.to_params())
+            resp = data.fetch_datasets(self.session, query.to_params())
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 user.authentication(self.session, self.username, self.password)
-                resp = data.get_datasets(self.session, query.to_params())
+                resp = data.fetch_datasets(self.session, query.to_params())
             else:
                 raise
         return resp
@@ -94,11 +94,11 @@ class WorldQuantClient:
     @exception_handler
     def get_dataset_detail(self, dataset_id: int) -> Optional[DatasetDetail]:
         try:
-            resp = data.get_dataset_detail(self.session, dataset_id)
+            resp = data.fetch_dataset_detail(self.session, dataset_id)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 user.authentication(self.session, self.username, self.password)
-                resp = data.get_dataset_detail(self.session, dataset_id)
+                resp = data.fetch_dataset_detail(self.session, dataset_id)
             else:
                 raise
         return resp
@@ -106,11 +106,11 @@ class WorldQuantClient:
     @exception_handler
     def get_data_field_detail(self, data_field_id):
         try:
-            resp = data.get_data_field_detail(self.session, data_field_id)
+            resp = data.fetch_data_field_detail(self.session, data_field_id)
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 user.authentication(self.session, self.username, self.password)
-                resp = data.get_data_field_detail(self.session, data_field_id)
+                resp = data.fetch_data_field_detail(self.session, data_field_id)
             else:
                 raise
         return resp
@@ -120,11 +120,11 @@ class WorldQuantClient:
         self, query: GetDataFieldsQueryParams
     ) -> Optional[DatasetDataFields]:
         try:
-            resp = data.get_dataset_data_fields(self.session, query.to_params())
+            resp = data.fetch_dataset_data_fields(self.session, query.to_params())
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 user.authentication(self.session, self.username, self.password)
-                resp = data.get_dataset_data_fields(self.session, query.to_params())
+                resp = data.fetch_dataset_data_fields(self.session, query.to_params())
             else:
                 raise
         return resp
