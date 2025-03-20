@@ -73,10 +73,15 @@ def alphas(start_time, end_time):
 
 @sync.command()
 @click.option("--instrument_type", default="EQUITY", help="工具类型")
+@click.option("--dataset_id", default=None, help="数据集ID")
 @click.option("--parallel", default=5, help="并行数 默认为5")
-def datafields(instrument_type, parallel):
+def datafields(instrument_type, dataset_id, parallel):
     """同步数据字段"""
-    sync_datafields(instrument_type, parallel)
+    asyncio.run(
+        sync_datafields(
+            instrument_type=instrument_type, dataset_id=dataset_id, parallel=parallel
+        )
+    )
 
 
 if __name__ == "__main__":

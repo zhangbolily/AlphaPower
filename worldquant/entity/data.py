@@ -47,7 +47,7 @@ class DataSet(Base):
     __tablename__ = "data_sets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dataset_id = Column(String, unique=False)
+    dataset_id = Column(String)
     name = Column(String)
     description = Column(String)
     region = Column(String)
@@ -87,7 +87,7 @@ class DataField(Base):
     __tablename__ = "data_fields"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    field_id = Column(String, unique=True)
+    field_id = Column(String)
     description = Column(String)
     dataset_id = Column(Integer, ForeignKey("data_sets.id"))
     dataset = relationship("DataSet", back_populates="data_fields")
@@ -104,6 +104,7 @@ class DataField(Base):
     alpha_count = Column(Integer)
     themes = Column(JSON)
     stats_data = relationship("StatsData", back_populates="data_field")
+    pyramid_multiplier = Column(Float, nullable=True)
 
 
 class StatsData(Base):

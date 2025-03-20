@@ -299,6 +299,7 @@ class DataField:
         userCount,
         alphaCount,
         themes,
+        pyramidMultiplier=None,
     ):
         self.id = id
         self.description = description
@@ -313,6 +314,7 @@ class DataField:
         self.userCount = userCount
         self.alphaCount = alphaCount
         self.themes = themes
+        self.pyramidMultiplier = pyramidMultiplier
 
 
 class DatasetDataFields:
