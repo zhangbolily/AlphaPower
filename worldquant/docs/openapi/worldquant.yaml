@@ -1,0 +1,395 @@
+openapi: 3.0.0
+info:
+  title: WorldQuant BRAIN API
+  version: "1.0.0"
+  description: >
+    本文档描述了 WorldQuant BRAIN API 的 HTTP 接口定义，
+    包括认证、模拟、数据检索等主要操作。所有请求均基于统一的基础 URL，
+    默认使用 https://api.worldquantbrain.com。
+
+servers:
+  - url: https://api.worldquantbrain.com
+
+paths:
+  /authentication:
+    post:
+      summary: 启动会话 / 用户认证
+      description: >
+        启动一个新的会话并进行用户认证。如果认证失败（例如返回 401），可能需要进行生物识别验证。
+      responses:
+        "200":
+          description: 成功认证，返回用户及 token 信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationResponse"
+        "201":
+          description: 会话创建成功
+        "401":
+          description: 认证失败，返回错误详情
+    get:
+      summary: 检查会话状态
+      description: >
+        获取当前会话的认证信息，包括 token 的有效期（expiry）。
+      responses:
+        "200":
+          description: 返回认证状态和 token 信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationResponse"
+    delete:
+      summary: 注销会话
+      description: >
+        删除当前会话，失效 token。
+      responses:
+        "204":
+          description: 会话注销成功，无返回内容
+
+  /simulations:
+    post:
+      summary: 启动模拟
+      description: >
+        提交一个 alpha 模拟请求。请求体为 JSON 格式的 simulation data，
+        成功时响应头中包含 Location，用于后续轮询模拟进度。
+      responses:
+        "2XX":
+          description: 模拟请求成功
+    options:
+      summary: 获取模拟设置选项
+      description: >
+        通过 HTTP OPTIONS 方法获取模拟接口的配置信息，包括各设置项的 label 及可选项。
+      responses:
+        "200":
+          description: 返回模拟设置选项信息
+
+  /alphas/{alpha_id}:
+    get:
+      summary: 获取模拟结果详情
+      description: >
+        获取指定 alpha 的详细模拟结果信息，包括设置、训练数据及测试结果。
+      parameters:
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回 alpha 模拟结果详情
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      summary: 修改 Alpha 属性
+      description: >
+        更新指定 alpha 的属性，如名称、颜色、标签和描述信息等。
+      parameters:
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        description: 更新属性的 JSON 数据
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                category:
+                  type: string
+                regular:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+                combo:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+                selection:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+      responses:
+        "200":
+          description: 返回更新后的 alpha 信息
+
+  /alphas/{alpha_id}/recordsets/{record_set_name}:
+    get:
+      summary: 获取指定 Record Set 数据
+      description: >
+        获取给定 alpha 的某个 record set 数据（如 pnl、daily-pnl、yearly-stats 等）。
+      parameters:
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_set_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回 record set 数据，包括 schema 与 records
+
+  /alphas/{alpha_id}/check:
+    get:
+      summary: 检查提交状态
+      description: >
+        检查指定 alpha 的提交状态或核查信息。
+      parameters:
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回提交状态信息
+
+  /alphas/{alpha_id}/correlations/prod:
+    get:
+      summary: 获取生产相关性数据
+      description: >
+        获取指定 alpha 的生产相关性数据。
+      parameters:
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回生产相关性数据，包括 schema 与统计信息
+
+  /alphas/{alpha_id}/correlations/self:
+    get:
+      summary: 获取自相关数据
+      description: >
+        获取指定 alpha 的自相关数据。
+      parameters:
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回自相关数据和相关统计信息
+
+  /{part_url}/alphas/{alpha_id}/before-and-after-performance:
+    get:
+      summary: 获取前后对比性能数据
+      description: >
+        根据传入的 part_url（例如 competitions/{competition}、teams/{team_id} 或 users/self），获取指定 alpha 的前后性能对比数据。
+      parameters:
+        - name: part_url
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: alpha_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回性能对比数据
+
+  /data-sets:
+    get:
+      summary: 获取数据集列表
+      description: >
+        根据查询参数返回数据集列表。支持 instrumentType、region、delay、universe、theme 等过滤条件。
+      parameters:
+        - name: instrumentType
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: delay
+          in: query
+          schema:
+            type: integer
+        - name: universe
+          in: query
+          schema:
+            type: string
+        - name: theme
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: 返回数据集列表及总数
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /data-fields:
+    get:
+      summary: 获取数据字段列表
+      description: >
+        根据查询参数返回数据字段列表。支持分页查询（limit 和 offset）及其他过滤条件（如 type、dataset.id）。
+      parameters:
+        - name: instrumentType
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: delay
+          in: query
+          schema:
+            type: integer
+        - name: universe
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: dataset.id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 返回数据字段列表及总数
+
+  /operators:
+    get:
+      summary: 获取运算符列表
+      description: >
+        返回 API 提供的运算符列表。
+      responses:
+        "200":
+          description: 返回运算符列表
+
+  /users/{userid}/activities/diversity:
+    get:
+      summary: 获取用户活动多样性数据
+      description: >
+        返回指定用户的 alpha 活动多样性数据，可按 region、delay、dataCategory 等进行分组。
+      parameters:
+        - name: userid
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: grouping
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 返回用户活动多样性数据
+
+components:
+  schemas:
+    AuthenticationResponse:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+        token:
+          type: object
+          properties:
+            expiry:
+              type: integer
+        permissions:
+          type: array
+          items:
+            type: string
+    SimulationSettings:
+      type: object
+      properties:
+        instrumentType:
+          type: string
+        region:
+          type: string
+        universe:
+          type: string
+        delay:
+          type: integer
+        decay:
+          type: integer
+        neutralization:
+          type: string
+        truncation:
+          type: number
+        pasteurization:
+          type: string
+        testPeriod:
+          type: string
+        unitHandling:
+          type: string
+        nanHandling:
+          type: string
+        language:
+          type: string
+        visualization:
+          type: boolean
+    RecordSet:
+      type: object
+      properties:
+        count:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+    DataSet:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    DataField:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+    Operator:
+      type: object
+      properties:
+        name:
+          type: string
