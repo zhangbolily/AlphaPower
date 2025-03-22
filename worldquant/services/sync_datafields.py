@@ -16,7 +16,7 @@ from worldquant.entity import (
     DataSet as DataSetEntity,
 )
 
-from worldquant.internal.http_api.data import DataField, GetDataFieldsQueryParams
+from worldquant.internal.http_api.model import DataField, GetDataFieldsQueryParams
 from worldquant.utils.credentials import create_client
 from worldquant.utils.db import with_session  # 修复导入
 from worldquant.utils.logging import setup_logging
@@ -27,9 +27,12 @@ file_logger = setup_logging(f"{__name__}_file", enable_console=False)  # 文件�
 console_logger = setup_logging(f"{__name__}_console", enable_console=True)  # 控制台日志
 
 
-def create_datafield(
+async def create_datafield(
     session: Session, datafield_data: DataField, dataset_id: int, task_id: int
-) -> DataFieldEntity:
+) -> None:
+    """
+    异步创建或更新数据字段。
+    """
     datafield = (
         session.query(DataFieldEntity)
         .filter_by(
@@ -41,11 +44,19 @@ def create_datafield(
         .first()
     )
 
-    category = get_or_create_entity(
-        session, Data_CategoryEntity, "name", datafield_data.category
+    category = await asyncio.to_thread(
+        get_or_create_entity,
+        session,
+        Data_CategoryEntity,
+        "name",
+        datafield_data.category,
     )
-    subcategory = get_or_create_entity(
-        session, Data_SubcategoryEntity, "name", datafield_data.subcategory
+    subcategory = await asyncio.to_thread(
+        get_or_create_entity,
+        session,
+        Data_SubcategoryEntity,
+        "name",
+        datafield_data.subcategory,
     )
     new_datafield = DataFieldEntity(
         dataset_id=dataset_id,
@@ -87,15 +98,11 @@ async def fetch_datafields(
     """
     file_logger.debug(f"[任务 {task_id}] 开始获取数据字段，参数: {query_params}")
     try:
-        return await asyncio.to_thread(
-            client.get_data_fields_in_dataset, query=query_params
-        )
+        return await client.get_data_fields_in_dataset(query=query_params)
     except Exception as e:
         file_logger.warning(f"[任务 {task_id}] 获取数据字段时出错: {e}，正在重试...")
         try:
-            return await asyncio.to_thread(
-                client.get_data_fields_in_dataset, query=query_params
-            )
+            return await client.get_data_fields_in_dataset(query=query_params)
         except Exception as retry_e:
             file_logger.error(f"[任务 {task_id}] 重试获取数据字段时再次出错: {retry_e}")
             return None
@@ -141,7 +148,7 @@ async def process_datafields_concurrently(
             datafields_response = await fetch_datafields(client, query_params, task_id)
             if datafields_response and datafields_response.results:
                 for datafield in datafields_response.results:  # DataField 类型
-                    create_datafield(session, datafield, dataset.id, task_id)
+                    await create_datafield(session, datafield, dataset.id, task_id)
                 async with lock:
                     progress_bar.update(len(datafields_response.results))
                 return len(datafields_response.results)
@@ -178,51 +185,55 @@ async def sync_datafields(
     parallel: 并行度，控制同时运行的任务数量。
     """
     credentials = get_credentials(1)
-    client = create_client(credentials)
+    client = create_client(credentials)  # 修改为协程调用
 
-    try:
-        if dataset_id:
-            # 根据 dataset_id 查询特定数据集
-            datasets = (
-                session.query(DataSetEntity).filter_by(dataset_id=dataset_id).all()
-            )
-            if not datasets:
-                console_logger.error(f"未找到指定的数据集: {dataset_id}")
-                return
-            console_logger.info(f"找到指定数据集 {dataset_id}，开始同步数据字段。")
-        else:
-            # 查询所有数据集
-            datasets = session.query(DataSetEntity).all()
-            console_logger.info(f"找到 {len(datasets)} 个数据集。")
+    async with client:
+        try:
+            if dataset_id:
+                # 根据 dataset_id 查询特定数据集
+                datasets = (
+                    session.query(DataSetEntity).filter_by(dataset_id=dataset_id).all()
+                )
+                if not datasets:
+                    console_logger.error(f"未找到指定的数据集: {dataset_id}")
+                    return
+                console_logger.info(f"找到指定数据集 {dataset_id}，开始同步数据字段。")
+            else:
+                # 查询所有数据集
+                datasets = session.query(DataSetEntity).all()
+                console_logger.info(f"找到 {len(datasets)} 个数据集。")
 
-        # 初始化进度条
-        total_fields = sum(dataset.field_count for dataset in datasets)
-        progress_bar = tqdm(
-            total=total_fields, desc="同步数据字段", unit="个", dynamic_ncols=True
-        )
-
-        lock = Lock()  # 创建异步互斥锁
-        sync_start_time = time.time()  # 开始计时
-
-        for dataset in datasets:
-            file_logger.info(
-                f"正在处理数据集 {dataset.dataset_id} {dataset.universe} {dataset.region} {dataset.delay}..."
-            )
-            file_logger.info(
-                f"正在处理数据集 {dataset.dataset_id} {dataset.universe} {dataset.region} {dataset.delay}..."
-            )
-            await process_datafields_concurrently(
-                session, client, dataset, instrument_type, parallel, progress_bar, lock
+            # 初始化进度条
+            total_fields = sum(dataset.field_count for dataset in datasets)
+            progress_bar = tqdm(
+                total=total_fields, desc="同步数据字段", unit="个", dynamic_ncols=True
             )
 
-        session.commit()  # 提交数据库事务
-        sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
-        progress_bar.close()  # 关闭进度条
+            lock = Lock()  # 创建异步互斥锁
+            sync_start_time = time.time()  # 开始计时
 
-        console_logger.info("数据字段同步成功。")
-        console_logger.info(f"同步任务总耗时: {sync_elapsed_time:.2f} 秒")
-    except Exception as e:
-        console_logger.error(f"同步数据字段时出错: {e}")
-        session.rollback()  # 回滚事务
-        if progress_bar:
-            progress_bar.close()  # 确保异常时关闭进度条
+            for dataset in datasets:
+                file_logger.info(
+                    f"正在处理数据集 {dataset.dataset_id} {dataset.universe} {dataset.region} {dataset.delay}..."
+                )
+                await process_datafields_concurrently(
+                    session,
+                    client,
+                    dataset,
+                    instrument_type,
+                    parallel,
+                    progress_bar,
+                    lock,
+                )
+
+            session.commit()  # 提交数据库事务
+            sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
+            progress_bar.close()  # 关闭进度条
+
+            console_logger.info("数据字段同步成功。")
+            console_logger.info(f"同步任务总耗时: {sync_elapsed_time:.2f} 秒")
+        except Exception as e:
+            console_logger.error(f"同步数据字段时出错: {e}")
+            session.rollback()  # 回滚事务
+            if progress_bar:
+                progress_bar.close()  # 确保异常时关闭进度条

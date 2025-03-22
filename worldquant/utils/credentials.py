@@ -11,9 +11,10 @@ def create_client(credentials, pool_connections=10, pool_maxsize=10):
     返回:
     WorldQuantClient: 客户端实例。
     """
-    return WorldQuantClient(
+    client = WorldQuantClient(
         username=credentials["username"],
         password=credentials["password"],
         pool_connections=pool_connections,
         pool_maxsize=pool_maxsize,
     )
+    return client
