@@ -1,51 +1,50 @@
-from sqlalchemy.exc import IntegrityError
-from worldquant.entity import Data_Category as Category, Data_Subcategory as Subcategory
+from typing import Optional, Type
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from worldquant.entity import (
+    Alphas_Sample as AlphasSampleEntity,
+    Data_Category as Category,
+    Data_Subcategory as Subcategory,
+)
+from worldquant.internal.http_api import Alpha_Sample as AlphaSampleModel
 
 
-def get_or_create_entity(session, model, unique_field, data):
+async def get_or_create_entity(
+    session: AsyncSession, model: Type, unique_field: str, data: object
+) -> object:
     """
     通用方法，用于获取或创建数据库实体。
-
-    参数:
-    session: 数据库会话。
-    model: 数据库模型类。
-    unique_field: 唯一字段名称。
-    data: 实体数据。
-
-    返回:
-    实体对象。
     """
-    entity = session.query(model).filter_by(**{unique_field: data.id}).first()
+    result = await session.execute(select(model).filter_by(**{unique_field: data.id}))
+    entity: Optional[object] = result.scalars().first()
     if entity is None:
         entity = model(**{unique_field: data.id, "name": data.name})
-        try:
-            session.add(entity)
-            session.commit()
-        except IntegrityError:
-            session.rollback()
-            entity = session.query(model).filter_by(**{unique_field: data.id}).first()
+        await session.add(entity)
     return entity
 
 
-def get_or_create_category(session, category_name):
-    category = session.query(Category).filter_by(name=category_name).first()
+async def get_or_create_category(session: AsyncSession, category_name: str) -> Category:
+    result = await session.execute(select(Category).filter_by(name=category_name))
+    category: Optional[Category] = result.scalars().first()
     if category is None:
         category = Category(name=category_name)
-        session.add(category)
-        session.commit()
+        await session.add(category)
     return category
 
 
-def get_or_create_subcategory(session, subcategory_name):
-    subcategory = session.query(Subcategory).filter_by(name=subcategory_name).first()
+async def get_or_create_subcategory(
+    session: AsyncSession, subcategory_name: str
+) -> Subcategory:
+    result = await session.execute(select(Subcategory).filter_by(name=subcategory_name))
+    subcategory: Optional[Subcategory] = result.scalars().first()
     if subcategory is None:
         subcategory = Subcategory(name=subcategory_name)
-        session.add(subcategory)
-        session.commit()
+        await session.add(subcategory)
     return subcategory
 
 
-def create_sample(sample_data, sample_model):
+def create_sample(sample_data: AlphaSampleModel) -> Optional[AlphasSampleEntity]:
     """
     通用方法，用于创建样本数据。
 
@@ -59,7 +58,7 @@ def create_sample(sample_data, sample_model):
     if sample_data is None:
         return None
 
-    return sample_model(
+    return AlphasSampleEntity(
         pnl=sample_data.pnl,
         book_size=sample_data.bookSize,
         long_count=sample_data.longCount,

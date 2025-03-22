@@ -1,6 +1,9 @@
 import asyncio
 from datetime import datetime, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select  # 添加导入
+
 from worldquant.client import create_client, WorldQuantClient  # 引入客户端
 
 from worldquant.config.settings import get_credentials
@@ -9,7 +12,6 @@ from worldquant.entity import (
     Alphas_Classification,
     Alphas_Competition,
     Alphas_Regular,
-    Alphas_Sample,
     Alphas_Settings,
 )
 
@@ -18,12 +20,15 @@ from worldquant.internal.utils import (
     create_sample,
     get_or_create_entity,
     setup_logging,
-    with_session,
 )  # 引入公共方法
+from worldquant.internal.wraps import with_session
 
 # 配置日志
 console_logger = setup_logging(__name__, enable_console=True)
 file_logger = setup_logging(__name__, enable_console=False)
+
+# 定义全局锁
+alpha_lock = asyncio.Lock()
 
 
 def create_alphas_settings(alpha_data: Alpha) -> Alphas_Settings:
@@ -52,20 +57,22 @@ def create_alphas_regular(regular) -> Alphas_Regular:
     )
 
 
-def create_alpha_classifications(session, classifications_data):
+async def create_alpha_classifications(session: AsyncSession, classifications_data):
     if classifications_data is None:
         return []
     return [
-        get_or_create_entity(session, Alphas_Classification, "classification_id", data)
+        await get_or_create_entity(
+            session, Alphas_Classification, "classification_id", data
+        )
         for data in classifications_data
     ]
 
 
-def create_alpha_competitions(session, competitions_data):
+async def create_alpha_competitions(session: AsyncSession, competitions_data):
     if competitions_data is None:
         return []
     return [
-        get_or_create_entity(session, Alphas_Competition, "competition_id", data)
+        await get_or_create_entity(session, Alphas_Competition, "competition_id", data)
         for data in competitions_data
     ]
 
@@ -96,11 +103,11 @@ def create_alphas(
         grade=alpha_data.grade,
         stage=alpha_data.stage,
         status=alpha_data.status,
-        in_sample=create_sample(alpha_data.inSample, Alphas_Sample),
-        out_sample=create_sample(alpha_data.outSample, Alphas_Sample),
-        train=create_sample(alpha_data.train, Alphas_Sample),
-        test=create_sample(alpha_data.test, Alphas_Sample),
-        prod=create_sample(alpha_data.prod, Alphas_Sample),
+        in_sample=create_sample(alpha_data.inSample),
+        out_sample=create_sample(alpha_data.outSample),
+        train=create_sample(alpha_data.train),
+        test=create_sample(alpha_data.test),
+        prod=create_sample(alpha_data.prod),
         competitions=competitions,
         themes=",".join(alpha_data.themes) if alpha_data.themes else None,
         pyramids=",".join(alpha_data.pyramids) if alpha_data.pyramids else None,
@@ -108,7 +115,7 @@ def create_alphas(
     )
 
 
-async def process_alphas_page(session, alphas_results):
+async def process_alphas_page(session: AsyncSession, alphas_results):
     """
     异步处理单页 alphas 数据。
     """
@@ -117,31 +124,34 @@ async def process_alphas_page(session, alphas_results):
 
     for alpha_data in alphas_results:
         alpha_id = alpha_data.id
-        existing_alpha = await asyncio.to_thread(
-            session.query(Alphas).filter_by(alpha_id=alpha_id).first
-        )
+
+        result = await session.execute(select(Alphas).filter_by(alpha_id=alpha_id))
+        existing_alpha = result.scalar_one_or_none()
 
         settings = create_alphas_settings(alpha_data)
         regular = create_alphas_regular(alpha_data.regular)
-        classifications = create_alpha_classifications(
+        classifications = await create_alpha_classifications(
             session, alpha_data.classifications
         )
-        competitions = create_alpha_competitions(session, alpha_data.competitions)
+        competitions = await create_alpha_competitions(session, alpha_data.competitions)
         alpha = create_alphas(
             alpha_data, settings, regular, classifications, competitions
         )
 
-        if existing_alpha:
-            alpha.id = existing_alpha.id
-            session.merge(alpha)
-            file_logger.info(f"Alpha {alpha_id} 已更新。")
-            updated_alphas += 1
-        else:
-            session.add(alpha)
-            file_logger.info(f"Alpha {alpha_id} 已插入。")
-            inserted_alphas += 1
+        # 使用锁保护数据库写操作
+        async with alpha_lock:
+            if existing_alpha:
+                alpha.id = existing_alpha.id
+                await session.merge(alpha)
+                updated_alphas += 1
+            else:
+                await session.add(alpha)
+                inserted_alphas += 1
 
-    session.commit()
+    # 提交事务
+    async with alpha_lock:
+        await session.commit()
+
     return inserted_alphas, updated_alphas
 
 

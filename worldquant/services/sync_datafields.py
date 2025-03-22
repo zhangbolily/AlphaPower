@@ -17,11 +17,9 @@ from worldquant.entity import (
 )
 
 from worldquant.internal.http_api import DataField, GetDataFieldsQueryParams
-from worldquant.internal.utils import (  # 修复导入
-    get_or_create_entity,
-    setup_logging,
-    with_session,
-)
+from worldquant.internal.utils import get_or_create_entity, setup_logging  # 修复导入
+from worldquant.internal.wraps import with_session
+
 
 # 配置日志
 file_logger = setup_logging(f"{__name__}_file", enable_console=False)  # 文件日志

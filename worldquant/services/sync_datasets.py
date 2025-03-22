@@ -18,12 +18,12 @@ from worldquant.entity import (
 )
 
 from worldquant.internal.http_api import DataSetsQueryParams
-from worldquant.internal.utils import (  # 引入公共方法
+from worldquant.internal.utils import (
     get_or_create_entity,
     setup_logging,
-    with_session,
-)
-from worldquant.internal.wraps import log_time_elapsed  # 引入公共方法
+)  # 引入公共方法
+
+from worldquant.internal.wraps import log_time_elapsed, with_session  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
 logger = setup_logging(f"{__name__}_file", enable_console=False)

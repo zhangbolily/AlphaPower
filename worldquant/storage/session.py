@@ -1,38 +1,41 @@
 import importlib
 import logging
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from worldquant.config.settings import DATABASES
+from worldquant.internal.utils import setup_logging
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
-# 创建数据库引擎
+# 创建异步数据库引擎
 engines = {
-    db_name: create_engine(config["url"], echo=False)
-    for db_name, config in DATABASES.items()
+    db_name: create_async_engine(
+        db_config["url"],
+        echo=False,
+    )
+    for db_name, db_config in DATABASES.items()
 }
-
-# 创建线程安全的会话工厂
+# 创建异步会话工厂
 SessionFactories = {
-    db_name: scoped_session(
-        sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db_name: sessionmaker(
+        bind=engine, class_=AsyncSession, autocommit=False, autoflush=False
     )
     for db_name, engine in engines.items()
 }
 
 
-def get_db(db_name):
+async def get_db(db_name):
     """
-    获取指定数据库的会话。
+    获取指定数据库的异步会话。
 
     参数:
     db_name (str): 数据库名称
 
     返回:
-    sqlalchemy.orm.Session: 数据库会话。
+    sqlalchemy.ext.asyncio.AsyncSession: 异步数据库会话。
     """
     if db_name not in SessionFactories:
         raise ValueError(f"未知的数据库名称: {db_name}")
@@ -44,24 +47,21 @@ def get_db(db_name):
             raise ValueError(f"模块 {module_name} 中未定义 Base")
 
         engine = engines[db_name]
-        # 创建所有表
-        module.Base.metadata.create_all(bind=engine)
-        session = SessionFactories[db_name]()
-        yield session
+        # 异步创建所有表
+        async with engine.begin() as conn:
+            await conn.run_sync(module.Base.metadata.create_all)
+
+        async with SessionFactories[db_name]() as session:
+            yield session
     except Exception as e:
         logger.error(f"获取数据库会话时出错: {e}")
         raise
-    finally:
-        session.close()
 
 
-def close_resources():
+async def close_resources():
     """
-    关闭所有数据库连接和释放资源。
+    异步关闭所有数据库连接和释放资源。
     """
-    for db_name, session_factory in SessionFactories.items():
-        session_factory.remove()  # 移除线程本地的会话
-        logger.info(f"数据库会话工厂 '{db_name}' 已关闭。")
     for db_name, engine in engines.items():
-        engine.dispose()  # 释放数据库引擎资源
+        await engine.dispose()  # 异步释放数据库引擎资源
         logger.info(f"数据库引擎 '{db_name}' 已释放。")
