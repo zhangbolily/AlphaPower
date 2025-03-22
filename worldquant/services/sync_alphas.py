@@ -11,10 +11,10 @@ from worldquant.entity import (
     Alphas_Sample,
     Alphas_Settings,
 )
-from worldquant.utils.credentials import create_client
-from worldquant.utils.db import with_session
-from worldquant.utils.logging import setup_logging
-from worldquant.utils.services import (
+from worldquant.internal.utils.credentials import create_client
+from worldquant.internal.utils.db import with_session
+from worldquant.internal.utils.logging import setup_logging
+from worldquant.internal.utils.services import (
     create_sample,
     get_or_create_entity,
 )  # 引入公共方法

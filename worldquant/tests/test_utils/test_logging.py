@@ -1,6 +1,6 @@
 import unittest
 import os
-from worldquant.utils.logging import setup_logging
+from worldquant.internal.utils.logging import setup_logging
 
 
 class TestLogging(unittest.TestCase):

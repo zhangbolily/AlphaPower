@@ -17,10 +17,10 @@ from worldquant.entity import (
 )
 
 from worldquant.internal.http_api.model import DataField, GetDataFieldsQueryParams
-from worldquant.utils.credentials import create_client
-from worldquant.utils.db import with_session  # 修复导入
-from worldquant.utils.logging import setup_logging
-from worldquant.utils.services import get_or_create_entity
+from worldquant.internal.utils.credentials import create_client
+from worldquant.internal.utils.db import with_session  # 修复导入
+from worldquant.internal.utils.logging import setup_logging
+from worldquant.internal.utils.services import get_or_create_entity
 
 # 配置日志
 file_logger = setup_logging(f"{__name__}_file", enable_console=False)  # 文件日志

@@ -8,9 +8,9 @@ from services.sync_alphas import sync_alphas
 from services.sync_datafields import sync_datafields
 from services.sync_datasets import sync_datasets
 
-from worldquant.storage.session import close_resources
+from worldquant.internal.utils.logging import setup_logging
 
-from worldquant.utils.logging import setup_logging
+from worldquant.storage.session import close_resources
 
 logger = setup_logging(__name__)
 

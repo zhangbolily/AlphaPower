@@ -26,20 +26,15 @@ class Authentication:
         return cls(**data)
 
 
-async def authentication(session: ClientSession):
+async def authentication(session: ClientSession) -> Authentication:
     """
     进行用户认证。
 
     参数:
     session (ClientSession): 用于发送HTTP请求的会话对象。
-    username (str): 用户名。
-    password (str): 密码。
 
     返回:
     Authentication: 认证响应对象。
-
-    异常:
-    aiohttp.ClientResponseError: 如果HTTP请求返回错误状态码。
     """
     url = f"{BASE_URL}/{ENDPOINT_AUTHENTICATION}"
     response = await session.post(url)

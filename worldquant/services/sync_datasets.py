@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from tqdm import tqdm  # 引入进度条库
 
 from worldquant import DataSetsQueryParams
-from worldquant.client._client import WorldQuantClient
+from worldquant.client import WorldQuantClient
 from worldquant.config.settings import get_credentials
 from worldquant.entity.data import (
     Data_Category,
@@ -17,10 +17,10 @@ from worldquant.entity.data import (
     ResearchPaper,
     StatsData,
 )
-from worldquant.utils.credentials import create_client
-from worldquant.utils.db import with_session
-from worldquant.utils.logging import setup_logging
-from worldquant.utils.services import get_or_create_entity  # 引入公共方法
+from worldquant.internal.utils.credentials import create_client
+from worldquant.internal.utils.db import with_session
+from worldquant.internal.utils.logging import setup_logging
+from worldquant.internal.utils.services import get_or_create_entity  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
 logger = setup_logging(f"{__name__}_file", enable_console=False)
