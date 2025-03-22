@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from tqdm import tqdm  # 引入进度条库
 
-from worldquant.client import WorldQuantClient
+from worldquant.client import create_client, WorldQuantClient
 from worldquant.config.settings import get_credentials
 from worldquant.entity import (
     Data_Category as Data_CategoryEntity,
@@ -16,11 +16,12 @@ from worldquant.entity import (
     DataSet as DataSetEntity,
 )
 
-from worldquant.internal.http_api.model import DataField, GetDataFieldsQueryParams
-from worldquant.internal.utils.credentials import create_client
-from worldquant.internal.utils.db import with_session  # 修复导入
-from worldquant.internal.utils.logging import setup_logging
-from worldquant.internal.utils.services import get_or_create_entity
+from worldquant.internal.http_api import DataField, GetDataFieldsQueryParams
+from worldquant.internal.utils import (  # 修复导入
+    get_or_create_entity,
+    setup_logging,
+    with_session,
+)
 
 # 配置日志
 file_logger = setup_logging(f"{__name__}_file", enable_console=False)  # 文件日志

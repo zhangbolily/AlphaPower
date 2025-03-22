@@ -10,6 +10,7 @@ __all__ = [
     "Data_Category",
     "Data_Subcategory",
     "StatsData",
+    "ResearchPaper",
 ]
 
 from .alphas import (
@@ -20,4 +21,11 @@ from .alphas import (
     Alphas_Sample,
     Alphas_Settings,
 )
-from .data import Data_Category, Data_Subcategory, DataField, DataSet, StatsData
+from .data import (
+    Data_Category,
+    Data_Subcategory,
+    DataField,
+    DataSet,
+    ResearchPaper,
+    StatsData,
+)

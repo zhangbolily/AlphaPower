@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from tqdm import tqdm  # 引入进度条库
 
-from worldquant import DataSetsQueryParams
-from worldquant.client import WorldQuantClient
+from worldquant.client import create_client, WorldQuantClient
 from worldquant.config.settings import get_credentials
 from worldquant.entity import (
     Data_Category,
@@ -17,10 +16,13 @@ from worldquant.entity import (
     ResearchPaper,
     StatsData,
 )
-from worldquant.internal.utils.credentials import create_client
-from worldquant.internal.utils.db import with_session
-from worldquant.internal.utils.logging import setup_logging
-from worldquant.internal.utils.services import get_or_create_entity  # 引入公共方法
+
+from worldquant.internal.http_api import DataSetsQueryParams
+from worldquant.internal.utils import (  # 引入公共方法
+    get_or_create_entity,
+    setup_logging,
+    with_session,
+)
 from worldquant.internal.wraps import log_time_elapsed  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出

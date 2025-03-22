@@ -1,7 +1,11 @@
-import time
+import asyncio
+from asyncio import Lock
 from datetime import datetime, timedelta
+from types import CoroutineType
+from typing import Any
 
-from worldquant import Alpha, SelfAlphaListQueryParams, WorldQuantClient
+from worldquant.client import create_client, WorldQuantClient  # 引入客户端
+
 from worldquant.config.settings import get_credentials
 from worldquant.entity import (
     Alphas,
@@ -11,12 +15,18 @@ from worldquant.entity import (
     Alphas_Sample,
     Alphas_Settings,
 )
-from worldquant.internal.utils.credentials import create_client
-from worldquant.internal.utils.db import with_session
-from worldquant.internal.utils.logging import setup_logging
-from worldquant.internal.utils.services import (
+
+from worldquant.internal.http_api import (
+    Alpha,
+    RateLimit,
+    SelfAlphaList,
+    SelfAlphaListQueryParams,
+)
+from worldquant.internal.utils import (
     create_sample,
     get_or_create_entity,
+    setup_logging,
+    with_session,
 )  # 引入公共方法
 
 # 配置日志
@@ -105,13 +115,18 @@ def create_alphas(
     )
 
 
-def process_alphas_page(session, alphas_results):
+async def process_alphas_page(session, alphas_results):
+    """
+    异步处理单页 alphas 数据。
+    """
     inserted_alphas = 0
     updated_alphas = 0
 
     for alpha_data in alphas_results:
         alpha_id = alpha_data.id
-        existing_alpha = session.query(Alphas).filter_by(alpha_id=alpha_id).first()
+        existing_alpha = await asyncio.to_thread(
+            session.query(Alphas).filter_by(alpha_id=alpha_id).first
+        )
 
         settings = create_alphas_settings(alpha_data)
         regular = create_alphas_regular(alpha_data.regular)
@@ -137,7 +152,12 @@ def process_alphas_page(session, alphas_results):
     return inserted_alphas, updated_alphas
 
 
-def process_alphas_for_date(client: WorldQuantClient, session, cur_time: datetime):
+async def process_alphas_for_date(
+    client: WorldQuantClient, session, cur_time: datetime
+):
+    """
+    异步处理指定日期的 alphas 数据。
+    """
     fetched_alphas = 0
     inserted_alphas = 0
     updated_alphas = 0
@@ -153,20 +173,28 @@ def process_alphas_for_date(client: WorldQuantClient, session, cur_time: datetim
             order="dateCreated",
         )
 
-        alphas_data, rate_limit = client.get_self_alphas(query=query_params)
+        # 修复这里的调用，直接 await 获取结果
+        alphas_data_result, rate_limit = await client.get_self_alphas(
+            query=query_params
+        )
 
+        # 检查速率限制
         while rate_limit.remaining < 1:
             logger.info(f"达到速率限制，等待 {rate_limit.reset} 秒...")
-            time.sleep(rate_limit.reset)
+            await asyncio.sleep(rate_limit.reset)
 
-        if not alphas_data.results:
+        if not alphas_data_result.results:
             logger.info(f"{cur_time} 没有更多的 alphas。")
             break
 
-        fetched_alphas += len(alphas_data.results)
-        logger.info(f"为 {cur_time} 获取了 {len(alphas_data.results)} 个 alphas。")
+        fetched_alphas += len(alphas_data_result.results)
+        logger.info(
+            f"为 {cur_time} 获取了 {len(alphas_data_result.results)} 个 alphas。"
+        )
 
-        inserted, updated = process_alphas_page(session, alphas_data.results)
+        inserted, updated = await process_alphas_page(
+            session, alphas_data_result.results
+        )
         inserted_alphas += inserted
         updated_alphas += updated
 
@@ -177,9 +205,9 @@ def process_alphas_for_date(client: WorldQuantClient, session, cur_time: datetim
 
 
 @with_session("alphas")
-def sync_alphas(session, start_time: datetime, end_time: datetime):
+async def sync_alphas(session, start_time: datetime, end_time: datetime):
     """
-    同步因子。
+    异步同步因子。
 
     参数:
     session: 数据库会话。
@@ -197,21 +225,25 @@ def sync_alphas(session, start_time: datetime, end_time: datetime):
     inserted_alphas = 0
     updated_alphas = 0
 
-    try:
-        for cur_time in (
-            start_time + timedelta(days=i)
-            for i in range((end_time - start_time).days + 1)
-        ):
-            fetched, inserted, updated = process_alphas_for_date(
-                client, session, cur_time
-            )
-            fetched_alphas += fetched
-            inserted_alphas += inserted
-            updated_alphas += updated
+    async with client:
+        try:
+            lock = Lock()
+            tasks = []
+            for cur_time in (
+                start_time + timedelta(days=i)
+                for i in range((end_time - start_time).days + 1)
+            ):
+                tasks.append(process_alphas_for_date(client, session, cur_time))
 
-        logger.info(
-            f"因子同步完成。获取: {fetched_alphas}, 插入: {inserted_alphas}, 更新: {updated_alphas}。"
-        )
-    except Exception as e:
-        logger.error(f"同步因子时出错: {e}")
-        session.rollback()
+            results = await asyncio.gather(*tasks)
+            for fetched, inserted, updated in results:
+                fetched_alphas += fetched
+                inserted_alphas += inserted
+                updated_alphas += updated
+
+            logger.info(
+                f"因子同步完成。获取: {fetched_alphas}, 插入: {inserted_alphas}, 更新: {updated_alphas}。"
+            )
+        except Exception as e:
+            logger.error(f"同步因子时出错: {e}")
+            await session.rollback()

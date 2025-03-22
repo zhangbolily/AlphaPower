@@ -1,3 +1,3 @@
-__all__ = ["WorldQuantClient"]
+__all__ = ["WorldQuantClient", "create_client"]
 
-from ._client import WorldQuantClient
+from ._client import create_client, WorldQuantClient

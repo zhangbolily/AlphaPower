@@ -1,6 +1,5 @@
 __all__ = [
     "setup_logging",
-    "create_client",
     "get_db_session",
     "with_session",
     "create_sample",
@@ -9,7 +8,6 @@ __all__ = [
     "get_or_create_subcategory",
 ]
 
-from .credentials import create_client
 from .db import get_db_session, with_session
 from .logging import setup_logging
 from .services import (

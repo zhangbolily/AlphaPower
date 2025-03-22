@@ -1,7 +1,7 @@
 import asyncio
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import click
 from services.sync_alphas import sync_alphas
@@ -56,9 +56,10 @@ def alphas(start_time, end_time):
     """同步因子"""
 
     def parse_date(date_str):
+        est = timezone(timedelta(hours=-5))  # 定义 EST 时区
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
             try:
-                return datetime.strptime(date_str, fmt)
+                return datetime.strptime(date_str, fmt).replace(tzinfo=est)
             except ValueError:
                 continue
         raise ValueError(f"日期格式不支持: {date_str}")
@@ -68,7 +69,7 @@ def alphas(start_time, end_time):
     if end_time:
         end_time = parse_date(end_time)
 
-    sync_alphas(start_time=start_time, end_time=end_time)
+    asyncio.run(sync_alphas(start_time=start_time, end_time=end_time))
 
 
 @sync.command()
