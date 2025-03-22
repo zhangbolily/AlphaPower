@@ -18,8 +18,6 @@ from worldquant.entity import (
 
 from worldquant.internal.http_api import (
     Alpha,
-    RateLimit,
-    SelfAlphaList,
     SelfAlphaListQueryParams,
 )
 from worldquant.internal.utils import (
