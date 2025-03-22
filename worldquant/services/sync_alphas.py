@@ -1,8 +1,5 @@
 import asyncio
-from asyncio import Lock
 from datetime import datetime, timedelta
-from types import CoroutineType
-from typing import Any
 
 from worldquant.client import create_client, WorldQuantClient  # 引入客户端
 
@@ -16,10 +13,7 @@ from worldquant.entity import (
     Alphas_Settings,
 )
 
-from worldquant.internal.http_api import (
-    Alpha,
-    SelfAlphaListQueryParams,
-)
+from worldquant.internal.http_api import Alpha, SelfAlphaListQueryParams
 from worldquant.internal.utils import (
     create_sample,
     get_or_create_entity,
@@ -28,7 +22,8 @@ from worldquant.internal.utils import (
 )  # 引入公共方法
 
 # 配置日志
-logger = setup_logging(__name__)
+console_logger = setup_logging(__name__, enable_console=True)
+file_logger = setup_logging(__name__, enable_console=False)
 
 
 def create_alphas_settings(alpha_data: Alpha) -> Alphas_Settings:
@@ -139,11 +134,11 @@ async def process_alphas_page(session, alphas_results):
         if existing_alpha:
             alpha.id = existing_alpha.id
             session.merge(alpha)
-            logger.info(f"Alpha {alpha_id} 已更新。")
+            file_logger.info(f"Alpha {alpha_id} 已更新。")
             updated_alphas += 1
         else:
             session.add(alpha)
-            logger.info(f"Alpha {alpha_id} 已插入。")
+            file_logger.info(f"Alpha {alpha_id} 已插入。")
             inserted_alphas += 1
 
     session.commit()
@@ -151,43 +146,109 @@ async def process_alphas_page(session, alphas_results):
 
 
 async def process_alphas_for_date(
-    client: WorldQuantClient, session, cur_time: datetime
+    client: WorldQuantClient, session, cur_time: datetime, parallel: int
 ):
     """
-    异步处理指定日期的 alphas 数据。
+    同步处理指定日期的 alphas 数据，支持分片并行处理。
     """
     fetched_alphas = 0
     inserted_alphas = 0
     updated_alphas = 0
-    page = 1
-    page_size = 100
 
-    while True:
+    # 初始化时间范围
+    start_time = cur_time
+    end_time = cur_time + timedelta(days=1)
+
+    while start_time < cur_time + timedelta(days=1):
+        query_params = SelfAlphaListQueryParams(
+            limit=1,
+            date_created_gt=start_time.isoformat(),
+            date_created_lt=end_time.isoformat(),
+        )
+        alphas_data_result, _ = await client.get_self_alphas(query=query_params)
+
+        if alphas_data_result.count < 10000:
+            file_logger.info(
+                f"{start_time} 至 {end_time} 总计 {alphas_data_result.count} 条 alphas 数据。"
+            )
+
+            # 分片处理
+            tasks = []
+            page_size = 100
+            total_pages = (alphas_data_result.count + page_size - 1) // page_size
+            pages_per_task = (total_pages + parallel - 1) // parallel
+
+            for i in range(parallel):
+                start_page = i * pages_per_task + 1
+                end_page = min((i + 1) * pages_per_task, total_pages)
+                if start_page > end_page:
+                    break
+
+                tasks.append(
+                    process_alphas_pages(
+                        client,
+                        session,
+                        start_time,
+                        end_time,
+                        start_page,
+                        end_page,
+                        page_size,
+                    )
+                )
+
+            results = await asyncio.gather(*tasks)
+            for fetched, inserted, updated in results:
+                fetched_alphas += fetched
+                inserted_alphas += inserted
+                updated_alphas += updated
+
+            # 更新时间范围，继续处理后续时间段
+            start_time = end_time
+            end_time = cur_time + timedelta(days=1)
+        else:
+            # 缩小时间范围
+            mid_time = start_time + (end_time - start_time) / 2
+            end_time = mid_time
+            file_logger.info(
+                f"数据量超过限制，缩小日期范围为 {start_time} 至 {end_time}。"
+            )
+
+    return fetched_alphas, inserted_alphas, updated_alphas
+
+
+async def process_alphas_pages(
+    client: WorldQuantClient,
+    session,
+    start_time: datetime,
+    end_time: datetime,
+    start_page: int,
+    end_page: int,
+    page_size: int,
+):
+    """
+    处理指定页范围内的 alphas 数据。
+    """
+    fetched_alphas = 0
+    inserted_alphas = 0
+    updated_alphas = 0
+
+    for page in range(start_page, end_page + 1):
         query_params = SelfAlphaListQueryParams(
             limit=page_size,
             offset=(page - 1) * page_size,
-            date_created_gt=cur_time.isoformat(),
-            date_created_lt=(cur_time + timedelta(days=1)).isoformat(),
+            date_created_gt=start_time.isoformat(),
+            date_created_lt=end_time.isoformat(),
             order="dateCreated",
         )
 
-        # 修复这里的调用，直接 await 获取结果
-        alphas_data_result, rate_limit = await client.get_self_alphas(
-            query=query_params
-        )
-
-        # 检查速率限制
-        while rate_limit.remaining < 1:
-            logger.info(f"达到速率限制，等待 {rate_limit.reset} 秒...")
-            await asyncio.sleep(rate_limit.reset)
+        alphas_data_result, _ = await client.get_self_alphas(query=query_params)
 
         if not alphas_data_result.results:
-            logger.info(f"{cur_time} 没有更多的 alphas。")
             break
 
         fetched_alphas += len(alphas_data_result.results)
-        logger.info(
-            f"为 {cur_time} 获取了 {len(alphas_data_result.results)} 个 alphas。"
+        file_logger.info(
+            f"为 {start_time} 至 {end_time} 第 {page} 页获取了 {len(alphas_data_result.results)} 个 alphas。"
         )
 
         inserted, updated = await process_alphas_page(
@@ -196,14 +257,11 @@ async def process_alphas_for_date(
         inserted_alphas += inserted
         updated_alphas += updated
 
-        logger.info(f"第 {page} 页处理完成。")
-        page += 1
-
     return fetched_alphas, inserted_alphas, updated_alphas
 
 
 @with_session("alphas")
-async def sync_alphas(session, start_time: datetime, end_time: datetime):
+async def sync_alphas(session, start_time: datetime, end_time: datetime, parallel: int):
     """
     异步同步因子。
 
@@ -211,11 +269,12 @@ async def sync_alphas(session, start_time: datetime, end_time: datetime):
     session: 数据库会话。
     start_time: 开始时间。
     end_time: 结束时间。
+    parallel: 并行任务数。
     """
     if start_time >= end_time:
         raise ValueError("start_time 必须早于 end_time。")
 
-    logger.info("开始同步因子...")
+    file_logger.info("开始同步因子...")
     credentials = get_credentials(1)
     client = create_client(credentials)
 
@@ -225,23 +284,20 @@ async def sync_alphas(session, start_time: datetime, end_time: datetime):
 
     async with client:
         try:
-            lock = Lock()
-            tasks = []
             for cur_time in (
                 start_time + timedelta(days=i)
                 for i in range((end_time - start_time).days + 1)
             ):
-                tasks.append(process_alphas_for_date(client, session, cur_time))
-
-            results = await asyncio.gather(*tasks)
-            for fetched, inserted, updated in results:
+                fetched, inserted, updated = await process_alphas_for_date(
+                    client, session, cur_time, parallel
+                )
                 fetched_alphas += fetched
                 inserted_alphas += inserted
                 updated_alphas += updated
 
-            logger.info(
+            file_logger.info(
                 f"因子同步完成。获取: {fetched_alphas}, 插入: {inserted_alphas}, 更新: {updated_alphas}。"
             )
         except Exception as e:
-            logger.error(f"同步因子时出错: {e}")
+            file_logger.error(f"同步因子时出错: {e}")
             await session.rollback()

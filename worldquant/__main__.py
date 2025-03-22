@@ -52,7 +52,8 @@ def datasets(region, universe, delay, parallel):
 @sync.command()
 @click.option("--start_time", default=None, help="开始时间")
 @click.option("--end_time", default=None, help="结束时间")
-def alphas(start_time, end_time):
+@click.option("--parallel", default=5, help="并行数 默认为5")
+def alphas(start_time, end_time, parallel):
     """同步因子"""
 
     def parse_date(date_str):
@@ -69,7 +70,9 @@ def alphas(start_time, end_time):
     if end_time:
         end_time = parse_date(end_time)
 
-    asyncio.run(sync_alphas(start_time=start_time, end_time=end_time))
+    asyncio.run(
+        sync_alphas(start_time=start_time, end_time=end_time, parallel=parallel)
+    )
 
 
 @sync.command()
