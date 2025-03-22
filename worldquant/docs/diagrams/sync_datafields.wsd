@@ -1,3 +1,43 @@
 @startuml SyncDatafields Sequence Diagram
-' ...existing diagram...
+
+actor User
+participant "sync_datafields" as SyncDatafields
+participant "process_datafields_concurrently" as ProcessConcurrently
+participant "fetch_datafields" as FetchDatafields
+participant "create_datafield" as CreateDatafield
+participant "Database" as DB
+participant "WorldQuantClient" as Client
+
+User -> SyncDatafields: 调用 sync_datafields()
+SyncDatafields -> DB: 查询数据集 (dataset_id 或所有数据集)
+alt 指定 dataset_id
+    SyncDatafields -> User: 输出未找到数据集的错误 (if not found)
+end
+SyncDatafields -> User: 初始化进度条
+SyncDatafields -> ProcessConcurrently: 并发处理数据字段
+
+loop 每个数据集
+    ProcessConcurrently -> FetchDatafields: 获取数据字段 (分页)
+    FetchDatafields -> Client: 调用 get_data_fields_in_dataset()
+    alt 成功获取数据字段
+        FetchDatafields -> ProcessConcurrently: 返回数据字段列表
+        loop 每个数据字段
+            ProcessConcurrently -> CreateDatafield: 创建或更新数据字段
+            CreateDatafield -> DB: 插入或更新数据字段
+            alt 插入/更新成功
+                CreateDatafield -> ProcessConcurrently: 返回成功
+            else 插入/更新失败
+                CreateDatafield -> DB: 回滚事务
+                CreateDatafield -> ProcessConcurrently: 返回失败
+            end
+        end
+        ProcessConcurrently -> SyncDatafields: 更新进度条
+    else 获取失败
+        FetchDatafields -> SyncDatafields: 输出错误日志
+    end
+end
+
+SyncDatafields -> DB: 提交事务
+SyncDatafields -> User: 输出同步完成日志和耗时
+
 @enduml

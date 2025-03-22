@@ -1,0 +1,17 @@
+@startuml Alpha Lifecycle
+skinparam direction left to right
+
+[*] --> 开始 : 表达式编写完成
+开始 --> 模拟回测中 : 提交回测
+模拟回测中 --> 模拟成功 : 回测成功
+模拟回测中 --> 模拟失败 : 回测失败
+模拟成功 --> [*] : 获得 alpha id\n记录模拟历史
+模拟失败 --> [*] : 返回错误信息\n生命周期结束
+
+state 开始
+state 模拟回测中 {
+    note right: 可轮询进度
+}
+state 模拟成功
+state 模拟失败
+@enduml
