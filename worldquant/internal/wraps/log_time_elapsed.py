@@ -12,7 +12,7 @@ def log_time_elapsed(func):
     async def wrapper(*args, **kwargs):
         task_id = id(asyncio.current_task())
         logger.info(
-            f"[Task {task_id}] 函数 {func.__name__} 的入参: args={args}, kwargs={kwargs}"
+            f"[Task {task_id}] 函数 {func.__name__} 的入参: args={list(map(str, args))}, kwargs={kwargs}"
         )
         start_time = time.time()
         await func(*args, **kwargs)

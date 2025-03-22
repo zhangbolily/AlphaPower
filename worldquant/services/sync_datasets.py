@@ -9,7 +9,7 @@ from tqdm import tqdm  # 引入进度条库
 from worldquant import DataSetsQueryParams
 from worldquant.client import WorldQuantClient
 from worldquant.config.settings import get_credentials
-from worldquant.entity.data import (
+from worldquant.entity import (
     Data_Category,
     Data_Subcategory,
     DataSet,
@@ -28,6 +28,7 @@ logger = setup_logging(f"{__name__}_file", enable_console=False)
 console_logger = setup_logging(f"{__name__}_console", enable_console=True)
 
 
+@log_time_elapsed
 async def fetch_dataset_detail(client: WorldQuantClient, dataset_id: str, task_id: int):
     """
     异步获取单个数据集的详细信息，增加异常处理和重试逻辑。
