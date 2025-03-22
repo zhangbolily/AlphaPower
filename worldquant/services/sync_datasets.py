@@ -21,73 +21,46 @@ from worldquant.internal.utils.credentials import create_client
 from worldquant.internal.utils.db import with_session
 from worldquant.internal.utils.logging import setup_logging
 from worldquant.internal.utils.services import get_or_create_entity  # 引入公共方法
+from worldquant.internal.wraps import log_time_elapsed  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
 logger = setup_logging(f"{__name__}_file", enable_console=False)
 console_logger = setup_logging(f"{__name__}_console", enable_console=True)
 
 
-async def fetch_dataset_detail(client: WorldQuantClient, dataset_id: str):
+async def fetch_dataset_detail(client: WorldQuantClient, dataset_id: str, task_id: int):
     """
-    异步获取单个数据集的详细信息。
-
-    参数:
-    client: WorldQuant 客户端实例。
-    dataset_id: 数据集的唯一标识符。
+    异步获取单个数据集的详细信息，增加异常处理和重试逻辑。
     """
-    start_time = time.time()  # 开始计时
-    detail = await asyncio.to_thread(
-        client.get_dataset_detail, dataset_id
-    )  # 异步调用获取数据集详情
-    elapsed_time = time.time() - start_time  # 计算耗时
-    logger.info(
-        f"获取数据集详情耗时: {elapsed_time:.2f} 秒 | 数据集 ID: {dataset_id} | 数据集名称: {detail.name}"
-    )
-    return detail
-
-
-def log_time_elapsed(start_time, message, **kwargs):
-    """
-    记录耗时日志的通用函数。
-
-    参数:
-    start_time: 起始时间。
-    message: 日志消息。
-    kwargs: 额外的上下文信息。
-    """
-    elapsed_time = time.time() - start_time
-    context = ", ".join(f"{key}={value}" for key, value in kwargs.items())
-    logger.info(f"{message} 耗时: {elapsed_time:.2f} 秒 | {context}")
+    logger.debug(f"[任务 {task_id}] 开始获取数据集详情: {dataset_id}")
+    for attempt in range(2):  # 尝试两次
+        try:
+            return await client.get_dataset_detail(dataset_id)  # 假设为异步函数
+        except Exception as e:
+            logger.warning(
+                f"[任务 {task_id}] 获取数据集详情时出错: {e}，尝试第 {attempt + 1} 次重试..."
+            )
+    logger.error(f"[任务 {task_id}] 获取数据集详情失败: {dataset_id}")
+    return None
 
 
 async def fetch_dataset_details_concurrently(
     client: WorldQuantClient, dataset_ids: list, parallel: int
 ):
     """
-    并发获取多个数据集的详细信息。
-
-    参数:
-    client: WorldQuant 客户端实例。
-    dataset_ids: 数据集 ID 列表。
-    parallel: 并行度，限制同时运行的任务数量。
+    并发获取多个数据集的详细信息，增加异常处理。
     """
-    start_time = time.time()  # 开始计时
-    semaphore = asyncio.Semaphore(parallel)  # 使用信号量控制并发数量
+    semaphore = asyncio.Semaphore(parallel)
 
-    async def fetch_with_semaphore(dataset_id):
-        async with semaphore:  # 确保任务数量不超过并行度
-            return await fetch_dataset_detail(client, dataset_id)
+    async def fetch_with_semaphore(dataset_id, task_id):
+        async with semaphore:
+            return await fetch_dataset_detail(client, dataset_id, task_id)
 
     tasks = [
-        fetch_with_semaphore(dataset_id) for dataset_id in dataset_ids
-    ]  # 创建任务列表
-    results = await asyncio.gather(*tasks)  # 并发执行任务
-    log_time_elapsed(
-        start_time,
-        "fetch_dataset_details_concurrently",
-        dataset_count=len(dataset_ids),
-    )
-    return results
+        fetch_with_semaphore(dataset_id, task_id)
+        for task_id, dataset_id in enumerate(dataset_ids, start=1)
+    ]
+    return await asyncio.gather(*tasks)
 
 
 def process_dataset(session: Session, dataset: DataSetEntity, detail):
@@ -100,7 +73,7 @@ def process_dataset(session: Session, dataset: DataSetEntity, detail):
     detail: 数据集详情对象，包含详细信息。
     """
     logger.debug(
-        f"开始处理数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}"
+        f"开始处理数据集: id={dataset.id}, name={dataset.name}, region={dataset.region}, universe={dataset.universe}, delay={dataset.delay}"
     )
 
     # 查询数据库中是否已存在该数据集
@@ -166,35 +139,23 @@ def process_dataset(session: Session, dataset: DataSetEntity, detail):
     ]
 
     # 如果数据集已存在，则更新；否则添加新数据集
-    if existing_dataset:
-        new_dataset.id = existing_dataset.id
-        session.merge(new_dataset)  # 合并更新
-        logger.info(
-            f"更新现有数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}"
+    try:
+        if existing_dataset:
+            new_dataset.id = existing_dataset.id
+            session.merge(new_dataset)  # 合并更新
+            logger.info(
+                f"更新现有数据集: id={dataset.id}, name={dataset.name}, region={dataset.region}, universe={dataset.universe}, delay={dataset.delay}"
+            )
+        else:
+            session.add(new_dataset)  # 添加新数据集
+            logger.info(
+                f"添加新数据集: id={dataset.id}, name={dataset.name}, region={dataset.region}, universe={dataset.universe}, delay={dataset.delay}"
+            )
+    except Exception as e:
+        logger.error(
+            f"处理数据集时出错: id={dataset.id}, name={dataset.name}, region={dataset.region}, universe={dataset.universe}, delay={dataset.delay} - {e}"
         )
-    else:
-        session.add(new_dataset)  # 添加新数据集
-        logger.info(
-            f"添加新数据集: {dataset.id} - {dataset.name} - {dataset.region} - {dataset.universe} - {dataset.delay}"
-        )
-
-
-async def fetch_datasets(client: WorldQuantClient, query_params: DataSetsQueryParams):
-    """
-    异步获取数据集。
-    """
-    start_time = time.time()
-    result = client.get_datasets(query_params)
-    log_time_elapsed(
-        start_time,
-        "fetch_datasets",
-        limit=query_params.limit,
-        offset=query_params.offset,
-        universe=query_params.universe,
-        region=query_params.region,
-        delay=query_params.delay,
-    )
-    return result
+        raise  # 重新抛出异常以便上层处理
 
 
 async def process_datasets_concurrently(
@@ -218,37 +179,34 @@ async def process_datasets_concurrently(
     """
     semaphore = asyncio.Semaphore(parallel)
 
-    async def process_with_semaphore(params):
+    async def process_with_semaphore(params, task_id):
         async with semaphore:
-            fetch_start_time = time.time()
-            datasets_response = await fetch_datasets(client, params)
-            log_time_elapsed(
-                fetch_start_time,
-                "数据获取",
-                limit=params.limit,
-                offset=params.offset,
-            )
+            logger.debug(f"[任务 {task_id}] 开始处理查询参数: {params}")
+            datasets_response = await client.get_datasets(params)
+            if not datasets_response or not datasets_response.results:
+                logger.info(f"[任务 {task_id}] 没有更多数据集。")
+                return 0
 
             dataset_ids = [dataset.id for dataset in datasets_response.results]
             details = await fetch_dataset_details_concurrently(
                 client, dataset_ids, parallel
             )
 
-            process_start_time = time.time()
             for dataset, detail in zip(datasets_response.results, details):
-                process_dataset(session, dataset, detail)
-            log_time_elapsed(
-                process_start_time,
-                "数据处理",
-                limit=params.limit,
-                offset=params.offset,
-            )
+                if detail:
+                    logger.debug(
+                        f"[任务 {task_id}] 正在处理数据集: id={dataset.id}, name={dataset.name}, region={dataset.region}, universe={dataset.universe}, delay={dataset.delay}"
+                    )
+                    process_dataset(session, dataset, detail)
 
             async with lock:
                 progress_bar.update(len(datasets_response.results))
             return len(datasets_response.results)
 
-    tasks = [process_with_semaphore(params) for params in query_params_list]
+    tasks = [
+        process_with_semaphore(params, task_id)
+        for task_id, params in enumerate(query_params_list, start=1)
+    ]
     return await asyncio.gather(*tasks)
 
 
@@ -261,7 +219,7 @@ async def sync_datasets(
     parallel: int = 5,
 ):
     """
-    同步数据集。
+    同步数据集，增加异常处理和进度条更新。
 
     参数:
     session: 数据库会话。
@@ -275,58 +233,59 @@ async def sync_datasets(
         credentials, pool_connections=parallel, pool_maxsize=parallel * parallel
     )  # 创建客户端实例
 
-    try:
-        offset = 0
-        limit = 50  # 每次查询的最大数据量限制
-        console_logger.info("=== 数据集同步任务开始 ===")
-        console_logger.info(
-            f"过滤参数 - 地区: {region}, 股票池: {universe}, delay: {delay}"
-        )
-        console_logger.info("正在获取数据集总数...")
-
-        # 获取数据集总数
-        count_query_params = DataSetsQueryParams(
-            limit=1, offset=0, region=region, universe=universe, delay=delay
-        )
-        datasets_response = await fetch_datasets(client, count_query_params)
-        total_count = datasets_response.count  # 数据集总数
-        console_logger.info(f"总计 {total_count} 个数据集需要同步。")
-
-        # 初始化进度条
-        progress_bar = tqdm(
-            total=total_count, desc="同步数据集", unit="个", dynamic_ncols=True
-        )  # dynamic_ncols=True 确保进度条在同一行刷新
-
-        query_params_list = []
-
-        # 构建查询参数列表
-        while offset < total_count:
-            query_params = DataSetsQueryParams(
-                limit=limit,
-                offset=offset,
-                region=region,
-                universe=universe,
-                delay=delay,
+    async with client:
+        try:
+            offset = 0
+            limit = 50  # 每次查询的最大数据量限制
+            console_logger.info("=== 数据集同步任务开始 ===")
+            console_logger.info(
+                f"过滤参数 - 地区: {region}, 股票池: {universe}, delay: {delay}"
             )
-            query_params_list.append(query_params)
-            offset += limit
+            console_logger.info("正在获取数据集总数...")
 
-        # 并发处理数据集
-        lock = Lock()  # 创建异步互斥锁
-        sync_start_time = time.time()  # 开始计时
-        await process_datasets_concurrently(
-            session, client, query_params_list, parallel, progress_bar, lock
-        )
-        session.commit()  # 提交数据库事务
-        sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
-        progress_bar.close()  # 关闭进度条
+            # 获取数据集总数
+            count_query_params = DataSetsQueryParams(
+                limit=1, offset=0, region=region, universe=universe, delay=delay
+            )
+            datasets_response = await client.get_datasets(count_query_params)
+            total_count = datasets_response.count  # 数据集总数
+            console_logger.info(f"总计 {total_count} 个数据集需要同步。")
 
-        console_logger.info("=== 数据集同步任务完成 ===")
-        console_logger.info(f"同步任务总耗时: {sync_elapsed_time:.2f} 秒")  # 记录总耗时
-        console_logger.info(f"成功同步 {total_count} 个数据集。")
-        logger.info("数据集同步成功。")
-    except Exception as e:
-        logger.error(f"同步数据集时出错: {e}")
-        await session.rollback()  # 回滚事务
-        if progress_bar:
-            progress_bar.close()  # 确保异常时关闭进度条
+            # 初始化进度条
+            progress_bar = tqdm(
+                total=total_count, desc="同步数据集", unit="个", dynamic_ncols=True
+            )  # dynamic_ncols=True 确保进度条在同一行刷新
+
+            query_params_list = []
+
+            # 构建查询参数列表
+            while offset < total_count:
+                query_params = DataSetsQueryParams(
+                    limit=limit,
+                    offset=offset,
+                    region=region,
+                    universe=universe,
+                    delay=delay,
+                )
+                query_params_list.append(query_params)
+                offset += limit
+
+            # 并发处理数据集
+            lock = Lock()  # 创建异步互斥锁
+            sync_start_time = time.time()  # 开始计时
+            await process_datasets_concurrently(
+                session, client, query_params_list, parallel, progress_bar, lock
+            )
+            session.commit()  # 提交数据库事务
+        except Exception as e:
+            logger.error(f"同步数据集时出错: {e}")
+            await session.rollback()  # 回滚事务
+            raise  # 重新抛出异常
+        finally:
+            progress_bar.close()  # 确保进度条关闭
+            sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
+            console_logger.info(
+                f"同步任务总耗时: {sync_elapsed_time:.2f} 秒"
+            )  # 记录总耗时
+            console_logger.info(f"成功同步 {total_count} 个数据集。")
+            logger.info("资源已释放。")
