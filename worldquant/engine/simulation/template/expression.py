@@ -1,7 +1,7 @@
 from itertools import product
 from typing import Iterable, List, Set, Union
 
-from .ops import Value, ValueType
+from .base import Value, ValueType
 
 
 class Expression:
@@ -23,17 +23,35 @@ class Expression:
 class ExpressionNode:
     def __init__(
         self,
-        operator: Union[str, Set[str]],
+        operator: Union[str, Set[str], List[str]],
         operands: List[Iterable[Union[Value, "ExpressionNode"]]],
         return_type: ValueType,
     ):
-        self.operator: Union[str, Set[str]] = operator
+        # 提前检查 operator 的合法性
+        if isinstance(operator, list):
+            for op in operator:
+                if op.count("{}") != len(operands):
+                    raise ValueError(
+                        f"Operator '{op}' has mismatched placeholders for operands."
+                    )
+        elif not isinstance(operator, (str, set)):
+            raise TypeError("Operator must be a string, set, or list.")
+
+        self.operator: Union[str, Set[str], List[str]] = operator
         self.operands: List[Iterable[Union[Value, "ExpressionNode"]]] = operands
         self.return_type: ValueType = return_type
 
     def _generate_combinations(self):
         """Generate all combinations of operators and operands."""
-        operators = self.operator if isinstance(self.operator, set) else {self.operator}
+        if isinstance(self.operator, set):
+            operators = self.operator
+        elif isinstance(self.operator, str):
+            operators = {self.operator}
+        elif isinstance(self.operator, list):
+            operators = set(self.operator)
+        else:
+            raise TypeError("Operator must be a string, set, or list.")
+
         operand_combinations = product(*self.operands)
         return product(operators, operand_combinations)
 
@@ -42,52 +60,90 @@ class ExpressionNode:
         node: Union[Value, "ExpressionNode"],
         used_fields: Set[str],
         used_operators: Set[str],
-    ) -> str:
+    ) -> List[Expression]:
         """Depth-first search to generate expression content."""
-        expr: str = ""
+        exprs: List[Expression] = []
+
         if isinstance(node, ExpressionNode):
-            if not isinstance(node.operator, str):
-                raise ValueError("Operator must be a string in Expression Generation.")
+            if isinstance(node.operator, set) or isinstance(node.operator, list):
+                operators = node.operator
+                for operator in operators:
+                    exprs += ExpressionNode(
+                        operator, node.operands, node.return_type
+                    ).end()
+                return exprs
+            elif not isinstance(node.operator, str):
+                raise TypeError("Operator must be a string, set, or list.")
 
-            used_operators.add(node.operator)
+            _operands = []
             for operand in node.operands:
-                expr = f"{expr}{self._dfs(operand, used_fields, used_operators)},"
+                if isinstance(operand, Value):
+                    used_fields.add(operand.val)
+                    _operands.append([operand])  # 保留 Value 类型
+                elif isinstance(operand, ExpressionNode):
+                    sub_exprs = self._dfs(operand, set(), set())  # 递归调用，独立路径
+                    _operands.append(sub_exprs)
+                else:
+                    raise TypeError("Operand must be a Value or ExpressionNode.")
 
-            if len(expr) > 1:
-                return f"{node.operator}({expr[:-1]})"
-            else:
-                raise ValueError("Invalid expression generation.")
+            _operands_combinations = product(*_operands)
+            for operands_combination in _operands_combinations:
+                str_operands = []
+                local_used_fields = used_fields.copy()  # 当前路径的字段集合
+                local_used_operators = used_operators.copy()  # 当前路径的运算符集合
+
+                for operand in operands_combination:
+                    if isinstance(operand, Expression):
+                        local_used_fields.update(operand.used_fields)
+                        local_used_operators.update(operand.used_operators)
+                        str_operands.append(operand.content)
+                    elif isinstance(operand, Value):
+                        local_used_fields.add(operand.val)
+                        str_operands.append(operand.val)
+
+                # 检查占位符数量是否匹配
+                if node.operator.count("{}") != len(str_operands):
+                    raise ValueError(
+                        f"Operator '{node.operator}' has mismatched placeholders for operands."
+                    )
+
+                content = node.operator.format(*str_operands)
+                local_used_operators.add(node.operator)  # 当前路径记录运算符
+                exprs.append(
+                    Expression(
+                        alias="",
+                        content=content,
+                        used_fields=local_used_fields,
+                        used_operators=local_used_operators,
+                        return_type=node.return_type,
+                    )
+                )
         elif isinstance(node, Value):
-            if node.type in {
-                ValueType.GROUP,
-                ValueType.UNIVERSE,
-                ValueType.MATRIX,
-                ValueType.VECTOR,
-            }:
-                used_fields.add(node.val)
-            return node.val
+            used_fields.add(node.val)
+            exprs.append(
+                Expression(
+                    alias="",
+                    content=node.val,
+                    used_fields=used_fields.copy(),
+                    used_operators=used_operators.copy(),
+                    return_type=node.type,
+                )
+            )
+        else:
+            raise TypeError("Node must be a Value or ExpressionNode.")
+
+        return exprs
 
     def end(self) -> List[Expression]:
         """Generate all possible expressions based on combinations."""
-        expressions = []
+        exprs = []
 
         for operator, operand_combination in self._generate_combinations():
-            used_fields = set()
-            used_operators = set()
-            content = self._dfs(
-                # TODO: return type 由 operator 决定
+            _dfs_exprs = self._dfs(
                 ExpressionNode(operator, list(operand_combination), self.return_type),
-                used_fields,
-                used_operators,
+                set(),  # 初始化路径上的 used_fields
+                set(),  # 初始化路径上的 used_operators
             )
-            expressions.append(
-                Expression(
-                    alias="",
-                    content=content,
-                    used_fields=used_fields,
-                    used_operators=used_operators,
-                    return_type=self.return_type,
-                )
-            )
+            exprs.extend(_dfs_exprs)  # 展平结果
 
-        return expressions
+        return exprs
