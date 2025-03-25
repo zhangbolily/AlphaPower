@@ -1,225 +1,210 @@
-from typing import Union
+from typing import Any, Dict, Union
 
-from .base import Value
-from .expression import ExpressionNode
+from .core import DataField, Expression
 
 
-def abs(a: Union[Value, ExpressionNode]) -> ExpressionNode:
+def abs(a: Union[DataField, Expression, Any]) -> Expression:
     """
-    Absolute value of x
+    Computes the absolute value of the input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The value for which to compute the absolute value.
+    a: The value for which to compute the absolute value.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the absolute value of the input.
+    None
     """
-    operator: str = "abs({})"
-    return ExpressionNode(operator=operator, operands=[a], return_type=a.type)
+    operator = "abs"
+    return Expression(operator, [a])
 
 
 def add(
-    a: Union[Value, ExpressionNode],
-    b: Union[Value, ExpressionNode],
-    filter: Value = Value(val="False"),
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any],
+    b: Union[DataField, Expression, Any],
+    filter: bool,
+) -> Expression:
     """
-    Add all inputs (at least 2 inputs required). If filter = true, filter all input NaN to 0 before adding.
+    Adds two inputs. If filter is true, NaN values are treated as 0 before addition.
     Parameters:
-    a (Union[Value, ExpressionNode]): The first value to add.
-    b (Union[Value, ExpressionNode]): The second value to add.
-    filter (bool): If true, filter all input NaN to 0 before adding.
+    a: The first value to add.
+    b: The second value to add.
+    filter: If true, NaN values are treated as 0 before addition.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the sum of the input values.
+    None
     """
-    if a.type != b.type:
-        raise TypeError(f"Cannot add {a.type} with {b.type}")
-
-    operator: str = "add({}, {}, filter={})"
-    return ExpressionNode(
-        operator=operator, operands=[a, b, filter], return_type=a.type
+    operator = "add"
+    return Expression(
+        operator, [a, b], parameters={"filter": "true" if filter else "false"}
     )
 
 
-def densify(a: Union[Value, ExpressionNode]) -> ExpressionNode:
+def densify(a: Union[DataField, Expression, Any]) -> Expression:
     """
-    Converts a grouping field of many buckets into lesser number of only available buckets so as to make working with grouping fields computationally efficient.
+    Reduces the number of buckets in a grouping field to only those that are available.
     Parameters:
-    a (Union[Value, ExpressionNode]): The value to densify.
+    a: The value to densify.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the densified input.
+    Expression
     """
-    val: str = f"densify({a})"
-    return ExpressionNode(val, type=a.type)
+    operator = "densify"
+    return Expression(operator, [a])
 
 
 def divide(
-    a: Union[Value, ExpressionNode], b: Union[Value, ExpressionNode]
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any], b: Union[DataField, Expression, Any]
+) -> Expression:
     """
-    x / y.
+    Divides the first input by the second input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The numerator value.
-    b (Union[Value, ExpressionNode]): The denominator value.
+    a: The numerator.
+    b: The denominator.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the division of the input values.
+    Expression
     """
-    if a.type != b.type:
-        raise TypeError(f"Cannot divide {a.type} with {b.type}")
-
-    val: str = f"divide({a}, {b})"
-    return ExpressionNode(val, type=a.type)
+    operator = "divide"
+    return Expression(operator, [a, b])
 
 
-def inverse(a: Union[Value, ExpressionNode]) -> ExpressionNode:
+def inverse(a: Union[DataField, Expression, Any]) -> Expression:
     """
-    1 / x.
+    Computes the inverse (1/x) of the input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The value to invert.
+    a: The value to invert.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the inverse of the input.
+    Expression
     """
-    val: str = f"inverse({a})"
-    return ExpressionNode(val, type=a.type)
+    operator = "inverse"
+    return Expression(operator, [a])
 
 
-def log(a: Union[Value, ExpressionNode]) -> ExpressionNode:
+def log(a: Union[DataField, Expression, Any]) -> Expression:
     """
-    Natural logarithm.
+    Computes the natural logarithm of the input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The value for which to compute the natural logarithm.
+    a: The value for which to compute the natural logarithm.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the natural logarithm of the input.
+    Expression
     """
-    val: str = f"log({a})"
-    return ExpressionNode(val, type=a.type)
+    operator = "log"
+    return Expression(operator, [a])
 
 
 def max(
-    a: Union[Value, ExpressionNode], b: Union[Value, ExpressionNode]
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any], b: Union[DataField, Expression, Any]
+) -> Expression:
     """
-    Maximum value of all inputs. At least 2 inputs are required.
+    Computes the maximum of two inputs.
     Parameters:
-    a (Union[Value, ExpressionNode]): The first value.
-    b (Union[Value, ExpressionNode]): The second value.
+    a: The first value.
+    b: The second value.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the maximum of the input values.
+    Expression
     """
-    if a.type != b.type:
-        raise TypeError(f"Cannot find max of {a.type} with {b.type}")
-
-    val: str = f"max({a}, {b})"
-    return ExpressionNode(val, type=a.type)
+    operator = "max"
+    return Expression(operator, [a, b])
 
 
 def min(
-    a: Union[Value, ExpressionNode], b: Union[Value, ExpressionNode]
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any], b: Union[DataField, Expression, Any]
+) -> Expression:
     """
-    Minimum value of all inputs. At least 2 inputs are required.
+    Computes the minimum of two inputs.
     Parameters:
-    a (Union[Value, ExpressionNode]): The first value.
-    b (Union[Value, ExpressionNode]): The second value.
+    a: The first value.
+    b: The second value.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the minimum of the input values.
+    Expression
     """
-    if a.type != b.type:
-        raise TypeError(f"Cannot find min of {a.type} with {b.type}")
-
-    val: str = f"min({a}, {b})"
-    return ExpressionNode(val, type=a.type)
+    operator = "min"
+    return Expression(operator, [a, b])
 
 
 def multiply(
-    a: Union[Value, ExpressionNode],
-    b: Union[Value, ExpressionNode],
-    filter: bool = False,
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any],
+    b: Union[DataField, Expression, Any],
+    filter: bool,
+) -> Expression:
     """
-    Multiply all inputs. At least 2 inputs are required. Filter sets the NaN values to 1.
+    Multiplies two inputs. If filter is true, NaN values are treated as 1 before multiplication.
     Parameters:
-    a (Union[Value, ExpressionNode]): The first value to multiply.
-    b (Union[Value, ExpressionNode]): The second value to multiply.
-    filter (bool): If true, filter all input NaN to 1 before multiplying.
+    a: The first value to multiply.
+    b: The second value to multiply.
+    filter: If true, NaN values are treated as 1 before multiplication.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the product of the input values.
+    Expression
     """
-    if a.type != b.type:
-        raise TypeError(f"Cannot multiply {a.type} with {b.type}")
-
-    val: str = f"multiply({a}, {b}, filter={filter})"
-    return ExpressionNode(val, type=a.type)
+    operator = "multiply"
+    return Expression(
+        operator, [a, b], parameters={"filter": "true" if filter else "false"}
+    )
 
 
 def power(
-    a: Union[Value, ExpressionNode], b: Union[Value, ExpressionNode]
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any], b: Union[DataField, Expression, Any]
+) -> Expression:
     """
-    x ^ y.
+    Raises the first input to the power of the second input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The base value.
-    b (Union[Value, ExpressionNode]): The exponent value.
+    a: The base value.
+    b: The exponent value.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the power of the input values.
+    Expression
     """
-    val: str = f"power({a}, {b})"
-    return ExpressionNode(val, type=a.type)
+    operator = "power"
+    return Expression(operator, [a, b])
 
 
-def reverse(a: Union[Value, ExpressionNode]) -> ExpressionNode:
+def reverse(a: Union[DataField, Expression, Any]) -> Expression:
     """
-    - x.
+    Negates the input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The value to reverse.
+    a: The value to negate.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the reversed input.
+    Expression
     """
-    val: str = f"reverse({a})"
-    return ExpressionNode(val, type=a.type)
+    operator = "reverse"
+    return Expression(operator, [a])
 
 
-def sign(a: Union[Value, ExpressionNode]) -> ExpressionNode:
+def sign(a: Union[DataField, Expression, Any]) -> Expression:
     """
-    if input = NaN; return NaN.
+    Computes the sign of the input. If the input is NaN, returns NaN.
     Parameters:
-    a (Union[Value, ExpressionNode]): The value for which to compute the sign.
+    a: The value for which to compute the sign.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the sign of the input.
+    Expression
     """
-    val: str = f"sign({a})"
-    return ExpressionNode(val, type=a.type)
+    operator = "sign"
+    return Expression(operator, [a])
 
 
 def signed_power(
-    a: Union[Value, ExpressionNode], b: Union[Value, ExpressionNode]
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any], b: Union[DataField, Expression, Any]
+) -> Expression:
     """
-    x raised to the power of y such that final result preserves sign of x.
+    Raises the first input to the power of the second input, preserving the sign of the first input.
     Parameters:
-    a (Union[Value, ExpressionNode]): The base value.
-    b (Union[Value, ExpressionNode]): The exponent value.
+    a: The base value.
+    b: The exponent value.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the signed power of the input values.
+    Expression
     """
-    val: str = f"signed_power({a}, {b})"
-    return ExpressionNode(val, type=a.type)
+    operator = "signed_power"
+    return Expression(operator, [a, b])
 
 
 def subtract(
-    a: Union[Value, ExpressionNode],
-    b: Union[Value, ExpressionNode],
-    filter: bool = False,
-) -> ExpressionNode:
+    a: Union[DataField, Expression, Any],
+    b: Union[DataField, Expression, Any],
+    filter: bool,
+) -> Expression:
     """
-    x - y. If filter = true, filter all input NaN to 0 before subtracting.
+    Subtracts the second input from the first input. If filter is true, NaN values are treated as 0 before subtraction.
     Parameters:
-    a (Union[Value, ExpressionNode]): The first value.
-    b (Union[Value, ExpressionNode]): The second value.
-    filter (bool): If true, filter all input NaN to 0 before subtracting.
+    a: The first value.
+    b: The second value.
+    filter: If true, NaN values are treated as 0 before subtraction.
     Returns:
-    ExpressionNode: A new ExpressionNode instance representing the difference of the input values.
+    Expression
     """
-    if a.type != b.type:
-        raise TypeError(f"Cannot subtract {a.type} with {b.type}")
-
-    val: str = f"subtract({a}, {b}, filter={filter})"
-    return ExpressionNode(val, type=a.type)
+    operator = "subtract"
+    return Expression(
+        operator, [a, b], parameters={"filter": "true" if filter else "false"}
+    )

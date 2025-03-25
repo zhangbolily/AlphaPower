@@ -1,3 +1,38 @@
-__all__ = ["BatchGenerator", "DataField", "Expression"]
+__all__ = [
+    "DataField",
+    "Expression",
+    "DataFieldSet",
+    "DataFieldType",
+    "abs",
+    "add",
+    "densify",
+    "divide",
+    "inverse",
+    "log",
+    "max",
+    "min",
+    "multiply",
+    "power",
+    "reverse",
+    "sign",
+    "signed_power",
+    "subtract",
+]
 
-from .core import BatchGenerator, DataField, Expression
+from .core import DataField, DataFieldSet, DataFieldType, Expression
+from .ops import (
+    abs,
+    add,
+    densify,
+    divide,
+    inverse,
+    log,
+    max,
+    min,
+    multiply,
+    power,
+    reverse,
+    sign,
+    signed_power,
+    subtract,
+)
