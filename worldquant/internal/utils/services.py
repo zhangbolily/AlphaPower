@@ -7,7 +7,7 @@ from worldquant.entity import (
     Data_Category as Category,
     Data_Subcategory as Subcategory,
 )
-from worldquant.internal.http_api import Alpha_Sample as AlphaSampleModel
+from worldquant.internal.http_api import AlphaSample as AlphaSampleModel
 
 
 async def get_or_create_entity(

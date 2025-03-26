@@ -7,12 +7,32 @@ from typing import List, Optional, Union
 import pandas as pd
 
 from .base import BaseModel, map_fields
+from .sumulation import SimulationSettings
 
 
 @dataclass
 class Pyramid:
     name: str
     multiplier: float
+
+
+@dataclass
+class Classification:
+    id: str
+    name: str
+
+
+@dataclass
+class Competition:
+    id: str
+    name: str
+
+
+@dataclass
+class Regular:
+    code: str
+    description: str
+    operatorCount: int
 
 
 @dataclass
@@ -48,51 +68,7 @@ class SelfAlphaListQueryParams:
 
 
 @dataclass
-class Alpha_Settings:
-    instrumentType: str
-    region: str
-    universe: str
-    delay: int
-    decay: float
-    neutralization: str
-    truncation: float
-    pasteurization: bool
-    unitHandling: str
-    nanHandling: str
-    language: str
-    visualization: str
-    testPeriod: Optional[str] = None
-    maxTrade: Optional[int] = None
-
-
-@dataclass
-class Alpha_Regular:
-    code: str
-    description: str
-    operatorCount: int
-
-
-@dataclass
-class Alpha_Sample_Check(BaseModel):
-    name: str
-    result: str
-    limit: Optional[float] = None
-    value: Optional[float] = None
-    date: Optional[datetime] = None
-    competitions: Optional[List[str]] = None
-    message: Optional[str] = None
-    year: Optional[int] = None
-    pyramids: Optional[List[Pyramid]] = field(default_factory=list)
-    startDate: Optional[str] = None
-    endDate: Optional[str] = None
-    multiplier: Optional[float] = None
-
-    def __post_init__(self):
-        self._convert_fields({"date": datetime})
-
-
-@dataclass
-class Alpha_Sample(BaseModel):
+class AlphaSample(BaseModel):
     pnl: Optional[float] = None
     bookSize: Optional[float] = None
     longCount: Optional[int] = None
@@ -104,26 +80,32 @@ class Alpha_Sample(BaseModel):
     sharpe: Optional[float] = None
     fitness: Optional[float] = None
     startDate: Optional[datetime] = None
-    checks: Optional[List[Alpha_Sample_Check]] = field(default_factory=list)
+    checks: Optional[List["AlphaSample.Check"]] = field(default_factory=list)
     selfCorrelation: Optional[float] = None
     prodCorrelation: Optional[float] = None
     osISSharpeRatio: Optional[float] = None
     preCloseSharpeRatio: Optional[float] = None
 
+    @dataclass
+    class Check(BaseModel):
+        name: str
+        result: str
+        limit: Optional[float] = None
+        value: Optional[float] = None
+        date: Optional[datetime] = None
+        competitions: Optional[List[str]] = None
+        message: Optional[str] = None
+        year: Optional[int] = None
+        pyramids: Optional[List[Pyramid]] = field(default_factory=list)
+        startDate: Optional[str] = None
+        endDate: Optional[str] = None
+        multiplier: Optional[float] = None
+
+        def __post_init__(self):
+            self._convert_fields({"date": datetime})
+
     def __post_init__(self):
         self._convert_fields({"startDate": datetime})
-
-
-@dataclass
-class Alpha_Classification:
-    id: int
-    name: str
-
-
-@dataclass
-class Alpha_Competition:
-    id: int
-    name: str
 
 
 @dataclass
@@ -131,8 +113,8 @@ class Alpha(BaseModel):
     id: str
     type: str
     author: str
-    settings: Union[Alpha_Settings, dict]
-    regular: Union[Alpha_Regular, dict]
+    settings: Union[SimulationSettings, dict]
+    regular: Union[Regular, dict]
     dateCreated: Optional[datetime] = None
     dateSubmitted: Optional[datetime] = None
     dateModified: Optional[datetime] = None
@@ -142,20 +124,18 @@ class Alpha(BaseModel):
     color: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = field(default_factory=list)
-    classifications: Optional[List[Union[Alpha_Classification, dict]]] = field(
+    classifications: Optional[List[Union[Classification, dict]]] = field(
         default_factory=list
     )
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
-    inSample: Optional[Union[Alpha_Sample, dict]] = None
-    outSample: Optional[Union[Alpha_Sample, dict]] = None
-    train: Optional[Union[Alpha_Sample, dict]] = None
-    test: Optional[Union[Alpha_Sample, dict]] = None
-    prod: Optional[Union[Alpha_Sample, dict]] = None
-    competitions: Optional[List[Union[Alpha_Competition, dict]]] = field(
-        default_factory=list
-    )
+    inSample: Optional[Union[AlphaSample, dict]] = None
+    outSample: Optional[Union[AlphaSample, dict]] = None
+    train: Optional[Union[AlphaSample, dict]] = None
+    test: Optional[Union[AlphaSample, dict]] = None
+    prod: Optional[Union[AlphaSample, dict]] = None
+    competitions: Optional[List[Union[Competition, dict]]] = field(default_factory=list)
     themes: Optional[List[str]] = field(default_factory=list)
     pyramids: Optional[List[Union[Pyramid, dict]]] = field(default_factory=list)
     team: Optional[str] = None
@@ -163,15 +143,15 @@ class Alpha(BaseModel):
     def __post_init__(self):
         self._convert_fields(
             {
-                "settings": Alpha_Settings,
-                "regular": Alpha_Regular,
-                "classifications": Alpha_Classification,
-                "inSample": Alpha_Sample,
-                "outSample": Alpha_Sample,
-                "train": Alpha_Sample,
-                "test": Alpha_Sample,
-                "prod": Alpha_Sample,
-                "competitions": Alpha_Competition,
+                "settings": SimulationSettings,
+                "regular": Regular,
+                "classifications": Classification,
+                "inSample": AlphaSample,
+                "outSample": AlphaSample,
+                "train": AlphaSample,
+                "test": AlphaSample,
+                "prod": AlphaSample,
+                "competitions": Competition,
                 "pyramids": Pyramid,
                 "dateCreated": datetime,
                 "dateSubmitted": datetime,
@@ -196,111 +176,12 @@ class SelfAlphaList:
 
 
 @dataclass
-class AlphaDetail_Settings:
-    instrumentType: str
-    region: str
-    universe: str
-    delay: int
-    decay: float
-    neutralization: str
-    truncation: float
-    pasteurization: bool
-    unitHandling: str
-    nanHandling: str
-    language: str
-    visualization: str
-    testPeriod: str
-
-
-@dataclass
-class AlphaDetail_Regular:
-    code: str
-    description: str
-    operatorCount: int
-
-
-@dataclass
-class AlphaDetail_IS_Check(BaseModel):
-    name: str
-    result: str
-    limit: Optional[float] = None
-    value: Optional[float] = None
-    date: Optional[datetime] = None
-    competitions: Optional[List[str]] = None
-    message: Optional[str] = None
-
-    def __post_init__(self):
-        self._convert_fields({"date": datetime})
-
-
-@dataclass
-class AlphaDetail_IS(BaseModel):
-    pnl: float
-    bookSize: float
-    longCount: int
-    shortCount: int
-    turnover: float
-    returns: float
-    drawdown: float
-    margin: float
-    sharpe: float
-    fitness: float
-    startDate: datetime
-    checks: List[AlphaDetail_IS_Check]
-
-    def __post_init__(self):
-        self._convert_fields({"startDate": datetime})
-
-
-@dataclass
-class AlphaDetail_Train(BaseModel):
-    pnl: float
-    bookSize: float
-    longCount: int
-    shortCount: int
-    turnover: float
-    returns: float
-    drawdown: float
-    margin: float
-    fitness: float
-    sharpe: float
-    startDate: str
-
-    def __post_init__(self):
-        self._convert_fields({"startDate": datetime})
-
-
-@dataclass
-class AlphaDetail_Test(BaseModel):
-    pnl: float
-    bookSize: float
-    longCount: int
-    shortCount: int
-    turnover: float
-    returns: float
-    drawdown: float
-    margin: float
-    fitness: float
-    sharpe: float
-    startDate: str
-
-    def __post_init__(self):
-        self._convert_fields({"startDate": datetime})
-
-
-@dataclass
-class AlphaDetail_Classification:
-    id: int
-    name: str
-
-
-@dataclass
 class AlphaDetail(BaseModel):
     id: str
     type: str
     author: str
-    settings: Union[AlphaDetail_Settings, dict]
-    regular: Union[AlphaDetail_Regular, dict]
+    settings: Union[SimulationSettings, dict]
+    regular: Union[Regular, dict]
     dateCreated: Optional[datetime] = None
     dateSubmitted: Optional[datetime] = None
     dateModified: Optional[datetime] = None
@@ -310,35 +191,51 @@ class AlphaDetail(BaseModel):
     color: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = field(default_factory=list)
-    classifications: Optional[List[Union[AlphaDetail_Classification, dict]]] = field(
+    classifications: Optional[List[Union[Classification, dict]]] = field(
         default_factory=list
     )
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
-    inSample: Optional[Union[AlphaDetail_IS, dict]] = None
-    outSample: Optional[dict] = None
-    train: Optional[Union[AlphaDetail_Train, dict]] = None
-    test: Optional[Union[AlphaDetail_Test, dict]] = None
-    prod: Optional[dict] = None
-    competitions: Optional[List[dict]] = field(default_factory=list)
+    inSample: Optional[Union["AlphaDetail.Sample", dict]] = None
+    outSample: Optional[Union["AlphaDetail.Sample", dict]] = None
+    train: Optional[Union["AlphaDetail.Sample", dict]] = None
+    test: Optional[Union["AlphaDetail.Sample", dict]] = None
+    prod: Optional[Union["AlphaDetail.Sample", dict]] = None
+    competitions: Optional[List[Competition]] = field(default_factory=list)
     themes: Optional[List[str]] = field(default_factory=list)
     pyramids: Optional[List[Union[Pyramid, dict]]] = field(default_factory=list)
     team: Optional[str] = None
 
+    @dataclass
+    class Sample(AlphaSample):
+        investabilityConstrained: Optional[AlphaSample] = None
+        riskNeutralized: Optional[AlphaSample] = None
+
+        def __post_init__(self):
+            super().__post_init__()
+
+            self._convert_fields(
+                {
+                    "investabilityConstrained": AlphaSample,
+                    "riskNeutralized": AlphaSample,
+                }
+            )
+
     def __post_init__(self):
         self._convert_fields(
             {
-                "settings": AlphaDetail_Settings,
-                "regular": AlphaDetail_Regular,
-                "classifications": AlphaDetail_Classification,
-                "inSample": AlphaDetail_IS,
-                "train": AlphaDetail_Train,
-                "test": AlphaDetail_Test,
-                "pyramids": Pyramid,
+                "classifications": Classification,
                 "dateCreated": datetime,
-                "dateSubmitted": datetime,
                 "dateModified": datetime,
+                "dateSubmitted": datetime,
+                "inSample": AlphaDetail.Sample,
+                "outSample": AlphaDetail.Sample,
+                "pyramids": Pyramid,
+                "regular": Regular,
+                "settings": SimulationSettings,
+                "test": AlphaDetail.Sample,
+                "train": AlphaDetail.Sample,
             }
         )
 

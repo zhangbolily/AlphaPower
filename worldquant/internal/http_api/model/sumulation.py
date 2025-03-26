@@ -5,27 +5,28 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class SimulationSettings:
-    nanHandling: str
-    instrumentType: str
-    delay: int
-    universe: str
-    truncation: str
-    unitHandling: str
-    testPeriod: str
-    pasteurization: str
-    region: str
-    language: str
-    decay: str
-    neutralization: str
-    visualization: str
+    nanHandling: Optional[str] = None
+    instrumentType: Optional[str] = None
+    delay: Optional[int] = None
+    universe: Optional[str] = None
+    truncation: Optional[float] = None
+    unitHandling: Optional[str] = None
+    testPeriod: Optional[str] = None
+    pasteurization: Optional[str] = None
+    region: Optional[str] = None
+    language: Optional[str] = None
+    decay: Optional[int] = None
+    neutralization: Optional[str] = None
+    visualization: Optional[bool] = None
+    maxTrade: Optional[str] = None  # 无权限字段，默认值为 None
 
 
 @dataclass
-class SingleSimulationProgress:
+class SimulationProgress:
     progress: float
 
     @classmethod
-    def from_json(cls, json_data: str) -> "SingleSimulationProgress":
+    def from_json(cls, json_data: str) -> "SimulationProgress":
         try:
             data = json.loads(json_data)
             return cls(**data)
@@ -41,15 +42,16 @@ class SingleSimulationResult:
     message: Optional[str] = None
     location: Optional["SingleSimulationResult.ErrorLocation"] = None
     settings: Optional[SimulationSettings] = None
-    regular: Optional[Dict[str, Any]] = None
-    alpha: Optional[Dict[str, Any]] = None
+    regular: Optional[str] = None
+    alpha: Optional[str] = None
+    parent: Optional[str] = None
 
     @dataclass
     class ErrorLocation:
-        line: int
-        start: int
-        end: int
-        property: str
+        line: Optional[int]
+        start: Optional[int]
+        end: Optional[int]
+        property: Optional[str]
 
     @classmethod
     def from_json(cls, json_data: str) -> "SingleSimulationResult":
@@ -67,18 +69,55 @@ class SingleSimulationResult:
 
 
 @dataclass
-class CreateSingleSimulationReq:
+class MultiSimulationResult:
+    children: List[str]
+    status: str
+    type: str
+    settings: SimulationSettings
+
+    @classmethod
+    def from_json(cls, json_data: str) -> "MultiSimulationResult":
+        try:
+            data = json.loads(json_data)
+            data["settings"] = SimulationSettings(**data["settings"])
+            return cls(**data)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise ValueError(f"Invalid JSON data: {e}")
+
+
+@dataclass
+class SingleSimulationRequest:
     type: str
     settings: SimulationSettings
     regular: Dict[str, Any]
 
     @classmethod
-    def from_json(cls, json_data: str) -> "CreateSingleSimulationReq":
+    def from_json(cls, json_data: str) -> "SingleSimulationRequest":
         try:
             data = json.loads(json_data)
             if "settings" in data and data["settings"] is not None:
                 data["settings"] = SimulationSettings(**data["settings"])
             return cls(**data)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise ValueError(f"Invalid JSON data: {e}")
+
+    def to_params(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "settings": self.settings.__dict__,
+            "regular": self.regular,
+        }
+
+
+class MultiSimulationRequest(List[SingleSimulationRequest]):
+    def to_params(self) -> List[Any]:
+        return [s.to_params() for s in self]
+
+    @classmethod
+    def from_json(cls, json_data: str) -> "MultiSimulationRequest":
+        try:
+            data = json.loads(json_data)
+            return cls(SingleSimulationRequest(**d) for d in data)
         except (json.JSONDecodeError, TypeError) as e:
             raise ValueError(f"Invalid JSON data: {e}")
 
