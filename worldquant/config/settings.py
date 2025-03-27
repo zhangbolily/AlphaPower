@@ -15,6 +15,10 @@ DATABASES = {
         "url": os.getenv("DATABASE_DATASETS_URL", "sqlite:///db/data.db"),
         "description": "数据集和数据字段的信息",
     },
+    "simulation": {
+        "url": os.getenv("DATABASE_SIMULATION_URL", "sqlite:///db/simulation.db"),
+        "description": "用户回测任务的信息",
+    },
 }
 
 # 日志配置

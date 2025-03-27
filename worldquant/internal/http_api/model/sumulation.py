@@ -89,7 +89,7 @@ class MultiSimulationResult:
 class SingleSimulationRequest:
     type: str
     settings: SimulationSettings
-    regular: Dict[str, Any]
+    regular: str
 
     @classmethod
     def from_json(cls, json_data: str) -> "SingleSimulationRequest":

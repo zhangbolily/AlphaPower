@@ -10,7 +10,7 @@ from services.sync_datasets import sync_datasets
 
 from worldquant.internal.utils.logging import setup_logging
 
-from worldquant.storage.session import close_resources
+from worldquant.internal.storage.session import close_resources
 
 logger = setup_logging(__name__)
 

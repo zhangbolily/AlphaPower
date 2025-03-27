@@ -11,6 +11,9 @@ __all__ = [
     "Data_Subcategory",
     "StatsData",
     "ResearchPaper",
+    "SimulationTask",
+    "SimulationTaskStatus",
+    "SimulationTaskType",
 ]
 
 from .alphas import (
@@ -29,3 +32,5 @@ from .data import (
     ResearchPaper,
     StatsData,
 )
+
+from .simulation import SimulationTask, SimulationTaskStatus, SimulationTaskType

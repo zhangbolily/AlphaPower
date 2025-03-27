@@ -1,0 +1,66 @@
+@startuml SimulationTaskStateMachine
+title 模拟任务状态机
+
+state 调度器 <<fork>>
+
+[*] --> 已创建 : 创建任务\nCREATED
+note on link
+    数据结构:
+    id: 主键
+    type: 任务类型
+    settings: 配置
+    status: 状态
+    priority: 优先级
+    created_at: 创建时间
+    scheduled_at: 调度时间
+end note
+
+已创建 : 等待调度
+
+state 调度器 {
+    state 调度入口 <<expansionInput>>
+    state 调度 <<expansionOutput>>
+    state 未调度 <<outputPin>>
+    state scheduler <<choice>>
+    调度入口 --> scheduler
+    scheduler --> 未调度
+    scheduler --> 调度
+}
+
+已创建 --> 调度入口
+调度 --> 执行节点
+
+
+state 执行器 {
+    state 执行节点 <<expansionInput>>
+    state 执行结束 <<expansionOutput>>
+
+    执行节点 --> 已调度 : 调度任务\nSCHEDULED
+    已调度 -right-> 运行中 : 启动任务\nRUNNING
+    运行中 --> 已完成 : 任务成功\nCOMPLETE
+    运行中 --> 已失败 : 任务失败\nFAILED
+    已完成 --> 执行结束
+    已完成: 生成 Alpha 数据，分析因子信号
+    已失败 --> 执行结束
+    已失败: 收集错误信息，分析原因
+}
+
+
+state 任务评估器 {
+    state 评估入口 <<inputPin>>
+    state 评估出口 <<inputPin>>
+    state 反馈信息 <<outputPin>>
+
+    未调度 --> 评估入口
+    评估入口 --> 更新任务
+    反馈信息 --> 更新任务
+    更新任务 --> 评估出口
+    评估出口 --> 已创建 : 更新任务\nUPDATED
+    更新任务: 更新优先级
+    更新任务: 删除任务
+}
+
+执行结束 --> [*]
+执行结束 --> 反馈信息 : 反馈任务结果
+
+@enduml
