@@ -40,6 +40,12 @@ async def create_multi_simulation(
         return (False, "", 0)
 
 
+async def delete_simulation(session: aiohttp.ClientSession, progress_id: str):
+    url = f"{BASE_URL}/{ENDPOINT_SIMULATION}/{progress_id}"
+    async with session.delete(url) as response:
+        response.raise_for_status()
+
+
 async def get_simulation_progress(
     session: aiohttp.ClientSession, progress_id: str, is_multi: bool
 ) -> tuple[

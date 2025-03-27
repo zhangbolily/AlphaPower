@@ -15,7 +15,7 @@ from alphapower.internal.http_api import (
     DataSetsQueryParams,
     GetDataFieldsQueryParams,
     other,
-    simulations,
+    simulation,
     user,
 )
 from alphapower.internal.wraps import exception_handler, rate_limit_handler
@@ -88,59 +88,73 @@ class WorldQuantClient:
     # -------------------------------
     @exception_handler
     async def create_single_simulation(
-        self, simulation_data: simulations.SingleSimulationRequest
-    ) -> tuple[bool, str, int]:
-        success, progress_id, retry_after = await simulations.create_single_simulation(
+        self, simulation_data: simulation.SingleSimulationRequest
+    ) -> tuple[bool, str, float]:
+        success, progress_id, retry_after = await simulation.create_single_simulation(
             self.session, simulation_data.to_params()
         )
         return success, progress_id, retry_after
 
     @exception_handler
     async def create_multi_simulation(
-        self, simulation_data: simulations.MultiSimulationRequest
-    ) -> tuple[bool, str, int]:
-        success, progress_id, retry_after = await simulations.create_multi_simulation(
+        self, simulation_data: simulation.MultiSimulationRequest
+    ) -> tuple[bool, str, float]:
+        success, progress_id, retry_after = await simulation.create_multi_simulation(
             self.session, simulation_data.to_params()
         )
         return success, progress_id, retry_after
 
     @exception_handler
+    async def delete_simulation(self, progress_id: str) -> bool:
+        success = await simulation.delete_simulation(self.session, progress_id)
+        return success
+
+    @exception_handler
     async def get_single_simulation_progress(self, progress_id: str) -> tuple[
         bool,
-        Union[simulations.SingleSimulationResult, simulations.SimulationProgress],
-        int,
+        Union[simulation.SingleSimulationResult, simulation.SimulationProgress],
+        float,
     ]:
         finished, progress_or_result, retry_after = (
-            await simulations.get_simulation_progress(
+            await simulation.get_simulation_progress(
                 self.session, progress_id, is_multi=False
             )
         )
+        if not isinstance(
+            progress_or_result,
+            (simulation.SingleSimulationResult, simulation.SimulationProgress),
+        ):
+            raise ValueError("模拟结果尚未准备好，或者进度 ID 无效")
         return finished, progress_or_result, retry_after
 
     @exception_handler
     async def get_multi_simulation_progress(self, progress_id: str) -> tuple[
         bool,
-        Union[simulations.MultiSimulationResult, simulations.SimulationProgress],
-        int,
+        Union[simulation.MultiSimulationResult, simulation.SimulationProgress],
+        float,
     ]:
         finished, progress_or_result, retry_after = (
-            await simulations.get_simulation_progress(
+            await simulation.get_simulation_progress(
                 self.session, progress_id, is_multi=True
             )
         )
+        if not isinstance(
+            progress_or_result,
+            (simulation.MultiSimulationResult, simulation.SimulationProgress),
+        ):
+            raise ValueError("模拟结果尚未准备好，或者进度 ID 无效")
         return finished, progress_or_result, retry_after
 
     @exception_handler
     async def get_multi_simulation_result(self, child_progress_id: str) -> tuple[
         bool,
-        simulations.SingleSimulationResult,
-        int,
+        simulation.SingleSimulationResult,
     ]:
-        finished, progress_or_result, retry_after = (
-            await simulations.get_simulation_progress(
-                self.session, child_progress_id, is_multi=False
-            )
+        finished, progress_or_result, _ = await simulation.get_simulation_progress(
+            self.session, child_progress_id, is_multi=False
         )
+        if not isinstance(progress_or_result, simulation.SingleSimulationResult):
+            raise ValueError("模拟结果尚未准备好，或者进度 ID 无效")
         return finished, progress_or_result
 
     # -------------------------------
@@ -170,7 +184,7 @@ class WorldQuantClient:
 
     @exception_handler
     @rate_limit_handler
-    async def get_dataset_detail(self, dataset_id: int) -> Optional[DatasetDetail]:
+    async def get_dataset_detail(self, dataset_id: str) -> Optional[DatasetDetail]:
         resp = await data.fetch_dataset_detail(self.session, dataset_id)
         return resp
 

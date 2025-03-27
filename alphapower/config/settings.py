@@ -8,16 +8,42 @@ load_dotenv()
 # 数据库配置
 DATABASES = {
     "alphas": {
-        "url": os.getenv("DATABASE_ALPHAS_URL", "sqlite:///db/alphas.db"),
+        "url": os.getenv("DATABASE_ALPHAS_URL", "sqlite+aiosqlite:///db/alphas.db"),
         "description": "用户回测因子的信息",
+        "base_class": "AlphasBase",
     },
     "data": {
-        "url": os.getenv("DATABASE_DATASETS_URL", "sqlite:///db/data.db"),
+        "url": os.getenv("DATABASE_DATASETS_URL", "sqlite+aiosqlite:///db/data.db"),
         "description": "数据集和数据字段的信息",
+        "base_class": "DataBase",
     },
     "simulation": {
-        "url": os.getenv("DATABASE_SIMULATION_URL", "sqlite:///db/simulation.db"),
+        "url": os.getenv(
+            "DATABASE_SIMULATION_URL", "sqlite+aiosqlite:///db/simulation.db"
+        ),
         "description": "用户回测任务的信息",
+        "base_class": "SimulationBase",
+    },
+    "alphas_test": {
+        "url": os.getenv(
+            "DATABASE_ALPHAS_TEST_URL", "sqlite+aiosqlite:///db/alphas_test.db"
+        ),
+        "description": "用户回测因子的信息",
+        "base_class": "AlphasBase",
+    },
+    "data_test": {
+        "url": os.getenv(
+            "DATABASE_DATASETS_TEST_URL", "sqlite+aiosqlite:///db/data_test.db"
+        ),
+        "description": "数据集和数据字段的信息",
+        "base_class": "DataBase",
+    },
+    "simulation_test": {
+        "url": os.getenv(
+            "DATABASE_SIMULATION_TEST_URL", "sqlite+aiosqlite:///db/simulation_test.db"
+        ),
+        "description": "用户回测任务的信息",
+        "base_class": "SimulationBase",
     },
 }
 

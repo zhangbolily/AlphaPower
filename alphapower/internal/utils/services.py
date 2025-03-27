@@ -1,13 +1,14 @@
 from typing import Optional, Type
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from alphapower.entity import (
+from alphapower.internal.entity import (
     Alphas_Sample as AlphasSampleEntity,
     Data_Category as Category,
     Data_Subcategory as Subcategory,
 )
 from alphapower.internal.http_api import AlphaSample as AlphaSampleModel
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 
 async def get_or_create_entity(

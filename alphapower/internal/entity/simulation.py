@@ -1,7 +1,13 @@
 import enum
+from datetime import datetime
+from typing import Dict, Optional
 
-from sqlalchemy import Column, DateTime, Enum, Integer, JSON, String
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import DateTime, Enum, func, Integer, JSON, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 class SimulationTaskStatus(enum.Enum):
@@ -17,7 +23,7 @@ class SimulationTaskType(enum.Enum):
     REGULAR = "REGULAR"
 
 
-class SimulationTask(DeclarativeBase):
+class SimulationTask(Base):
     """
     SimulationTask 表示用于管理模拟任务的数据库实体。
 
@@ -67,23 +73,31 @@ class SimulationTask(DeclarativeBase):
 
     __tablename__ = "simulation_task"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    type: Column[str] = Column(Enum(SimulationTaskType), nullable=False)
-    settings = Column(JSON, nullable=False)
-    settings_group_key = Column(String, nullable=False, index=True)
-    regular = Column(String, nullable=False)
-    parent_progress_id = Column(String, nullable=True)
-    child_progress_id = Column(String, nullable=True)
-    status: Column[str] = Column(Enum(SimulationTaskStatus), nullable=False)
-    alpha_id = Column(String, nullable=True)
-    priority = Column(Integer, nullable=False, default=0)
-    result = Column(JSON, nullable=True)
-    signature = Column(String, nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    scheduled_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)
-    description = Column(String, nullable=True)
-    tags = Column(String, nullable=True)
-    dependencies = Column(JSON, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[SimulationTaskType] = mapped_column(
+        Enum(SimulationTaskType), nullable=False
+    )
+    settings: Mapped[Dict] = mapped_column(JSON, nullable=False)
+    settings_group_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    regular: Mapped[str] = mapped_column(String, nullable=False)
+    parent_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    child_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    status: Mapped[SimulationTaskStatus] = mapped_column(
+        Enum(SimulationTaskStatus), nullable=False
+    )
+    alpha_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
+    signature: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, insert_default=func.now()
+    )
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, onupdate=func.now(), insert_default=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    tags: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    dependencies: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

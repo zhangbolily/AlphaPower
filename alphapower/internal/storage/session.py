@@ -1,14 +1,16 @@
 import importlib
-import logging
-
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from contextlib import asynccontextmanager
+from functools import lru_cache
+from typing import AsyncGenerator
 
 from alphapower.config.settings import DATABASES
+from alphapower.internal.entity import AlphasBase, DataBase, SimulationBase
 from alphapower.internal.utils import setup_logging
 
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_async_engine
+
 # 配置日志
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 # 创建异步数据库引擎
 engines = {
@@ -18,16 +20,76 @@ engines = {
     )
     for db_name, db_config in DATABASES.items()
 }
-# 创建异步会话工厂
-SessionFactories = {
-    db_name: sessionmaker(
-        bind=engine, class_=AsyncSession, autocommit=False, autoflush=False
+
+all_entity_bases = (AlphasBase, DataBase, SimulationBase)
+
+
+SessionFactories: dict[str, async_sessionmaker] = {
+    db_name: async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        autoflush=False,
+        autocommit=False,
     )
     for db_name, engine in engines.items()
 }
 
 
-async def get_db(db_name):
+@lru_cache
+def load_module(db_name: str):
+    """
+    动态加载模块并返回模块对象。
+
+    参数:
+    db_name (str): 数据库名称
+
+    返回:
+    module: 动态加载的模块对象
+
+    异常:
+    ValueError: 如果模块未定义 Base 或加载失败。
+    """
+    module_name = f"alphapower.internal.entity.{db_name}"
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as e:
+        raise ValueError(f"无法加载模块 {module_name}: {e}") from e
+
+    if not hasattr(module, "Base"):
+        raise ValueError(f"模块 {module_name} 中未定义 Base")
+
+    return module
+
+
+async def create_tables_if_needed(db_name: str) -> None:
+    """
+    创建数据库表，仅在首次访问时执行。
+
+    参数:
+    db_name (str): 数据库名称
+    """
+    db_config = DATABASES[db_name]
+    base_class_name = db_config.get("base_class")
+    if not base_class_name:
+        raise ValueError(f"数据库配置 '{db_name}' 中未定义 base_class")
+
+    # 动态获取 base_class
+    base_class = globals().get(base_class_name)
+    if not base_class:
+        raise ValueError(f"无法解析 base_class '{base_class_name}'，请确保其已正确导入")
+    elif base_class not in all_entity_bases:
+        raise ValueError(
+            f"base_class '{base_class_name}' 必须继承自 {all_entity_bases}"
+        )
+
+    engine = engines[db_name]
+    async with engine.begin() as conn:
+        await conn.run_sync(base_class.metadata.create_all)
+    logger.info(f"数据库 '{db_name}' 的表已初始化。")
+
+
+@asynccontextmanager
+async def get_db(db_name: str) -> AsyncGenerator[AsyncSession, None]:
     """
     获取指定数据库的异步会话。
 
@@ -35,30 +97,23 @@ async def get_db(db_name):
     db_name (str): 数据库名称
 
     返回:
-    sqlalchemy.ext.asyncio.AsyncSession: 异步数据库会话。
+    AsyncGenerator[AsyncSession, None]: 异步数据库会话生成器。
     """
     if db_name not in SessionFactories:
         raise ValueError(f"未知的数据库名称: {db_name}")
     try:
-        # 动态加载对应库的 Base
-        module_name = f"worldquant.entity.{db_name}"
-        module = importlib.import_module(module_name)
-        if not hasattr(module, "Base"):
-            raise ValueError(f"模块 {module_name} 中未定义 Base")
-
-        engine = engines[db_name]
-        # 异步创建所有表
-        async with engine.begin() as conn:
-            await conn.run_sync(module.Base.metadata.create_all)
-
-        async with SessionFactories[db_name]() as session:
+        await create_tables_if_needed(db_name)
+        session: AsyncSession = SessionFactories[db_name]()  # 显式声明 session 类型
+        try:
             yield session
+        finally:
+            await session.close()
     except Exception as e:
-        logger.error(f"获取数据库会话时出错: {e}")
+        logger.exception(f"获取数据库会话时出错: {e}")
         raise
 
 
-async def close_resources():
+async def close_resources() -> None:
     """
     异步关闭所有数据库连接和释放资源。
     """

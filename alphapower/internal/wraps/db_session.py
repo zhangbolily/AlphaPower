@@ -1,27 +1,8 @@
-from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from alphapower.internal.storage import get_db
 
-
-@asynccontextmanager
-async def get_db_session(db_name: str) -> AsyncGenerator[AsyncSession, None]:
-    """
-    异步上下文管理器，用于获取数据库会话。
-
-    参数:
-    db_name (str): 数据库名称。
-
-    返回:
-    sqlalchemy.ext.asyncio.AsyncSession: 异步数据库会话。
-    """
-    db_generator: AsyncGenerator[AsyncSession, None] = get_db(db_name)
-    session: AsyncSession = await anext(db_generator)
-    try:
-        yield session
-    finally:
-        await session.close()
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def with_session(
@@ -39,7 +20,7 @@ def with_session(
 
     def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            async with get_db_session(db_name) as session:
+            async with get_db(db_name) as session:
                 return await func(session, *args, **kwargs)
 
         return wrapper
@@ -65,13 +46,13 @@ def transactional(
             session: AsyncSession = args[0]
 
             if session.in_transaction() and not nested_transaction:
-                return await func(session, *args, **kwargs)
+                return await func(*args, **kwargs)
             elif session.in_transaction() and nested_transaction:
                 async with session.begin_nested():
-                    return await func(session, *args, **kwargs)
+                    return await func(*args, **kwargs)
             else:
                 async with session.begin():
-                    return await func(session, *args, **kwargs)
+                    return await func(*args, **kwargs)
 
         return wrapper
 
