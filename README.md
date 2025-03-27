@@ -1,11 +1,11 @@
-# 🌟 WorldQuant Brain Alpha Advisor
+# 🌟 Alpha Power
 
 ![Python Version](https://img.shields.io/badge/python-%3E%3D3.9-blue)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-90%25-yellowgreen)
 
 ## 📚 目录
-- [🌟 WorldQuant Brain Alpha Advisor](#-worldquant-brain-alpha-advisor)
+- [🌟 Alpha Power](#-alpha-power)
   - [📚 目录](#-目录)
   - [📖 项目简介](#-项目简介)
   - [✨ 功能特性](#-功能特性)
@@ -24,7 +24,7 @@
 
 ## 📖 项目简介
 
-WorldQuant Brain Alpha Advisor 是一个用于管理 WorldQuant Brain 数据和操作的工具。它支持以下功能：
+Alpha Power 是一个用于管理 WorldQuant Brain 数据和操作的工具。它支持以下功能：
 - 同步数据集
 - 同步数据字段
 - 同步因子
@@ -57,7 +57,7 @@ WorldQuant Brain Alpha Advisor 是一个用于管理 WorldQuant Brain 数据和�
 1. 克隆项目代码：
    ```bash
    git clone <项目代码路径>
-   cd worldquant-brain-alpha-advisor
+   cd alphapower
    ```
 
 2. 安装依赖：
