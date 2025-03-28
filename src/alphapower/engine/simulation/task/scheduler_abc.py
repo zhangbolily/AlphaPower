@@ -1,3 +1,7 @@
+"""
+定义调度器的抽象类。
+"""
+
 from abc import ABC, abstractmethod
 from typing import List
 
@@ -18,15 +22,13 @@ class AbstractScheduler(ABC):
         :param batch_size: 批量任务的大小，默认为 1
         :return: SimulationTask 对象的列表
         """
-        pass
 
     @abstractmethod
-    def add_tasks(sself, tasks: List[SimulationTask]) -> None:
+    def add_tasks(self, tasks: List[SimulationTask]) -> None:
         """
-        添加一个任务到调度器。
-        :param task: SimulationTask 对象
+        添加任务到调度器。
+        :param tasks: SimulationTask 对象列表
         """
-        pass
 
     @abstractmethod
     async def has_tasks(self) -> bool:
@@ -34,7 +36,6 @@ class AbstractScheduler(ABC):
         检查是否还有任务待调度。
         :return: 如果有任务返回 True，否则返回 False
         """
-        pass
 
     @abstractmethod
     def set_task_provider(self, task_provider: AbstractTaskProvider) -> None:
@@ -42,4 +43,3 @@ class AbstractScheduler(ABC):
         设置任务提供者。
         :param task_provider: AbstractTaskProvider 对象
         """
-        pass

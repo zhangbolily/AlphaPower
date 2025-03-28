@@ -1,13 +1,14 @@
 import importlib
+from asyncio import Lock
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import AsyncGenerator
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from alphapower.config.settings import DATABASES
 from alphapower.internal.entity import AlphasBase, DataBase, SimulationBase
 from alphapower.internal.utils import setup_logging
-
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_async_engine
 
 # 配置日志
 logger = setup_logging(__name__)
@@ -16,7 +17,7 @@ logger = setup_logging(__name__)
 engines = {
     db_name: create_async_engine(
         db_config["url"],
-        echo=False,
+        echo=True,
     )
     for db_name, db_config in DATABASES.items()
 }
@@ -33,6 +34,9 @@ SessionFactories: dict[str, async_sessionmaker] = {
     )
     for db_name, engine in engines.items()
 }
+
+# 创建一个全局异步锁
+lock = Lock()
 
 
 @lru_cache
@@ -102,11 +106,20 @@ async def get_db(db_name: str) -> AsyncGenerator[AsyncSession, None]:
     if db_name not in SessionFactories:
         raise ValueError(f"未知的数据库名称: {db_name}")
     try:
-        await create_tables_if_needed(db_name)
-        session: AsyncSession = SessionFactories[db_name]()  # 显式声明 session 类型
+        # 使用异步锁保护对共享资源的访问
+        async with lock:
+            await create_tables_if_needed(db_name)
+            session: AsyncSession = SessionFactories[db_name]()  # 显式声明 session 类型
         try:
             yield session
+            # 显式提交事务，确保所有事务都已完成
+            await session.commit()
+        except Exception:
+            # 如果发生异常，回滚事务
+            await session.rollback()
+            raise
         finally:
+            # 确保会话关闭之前没有进行中的事务
             await session.close()
     except Exception as e:
         logger.exception(f"获取数据库会话时出错: {e}")

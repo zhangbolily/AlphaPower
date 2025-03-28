@@ -1,14 +1,22 @@
+"""
+任务调度器模块，提供任务调度器的实现。
+"""
+
+import asyncio
 from bisect import insort
 from typing import Dict, List, Optional
 
-from alphapower.internal.entity import SimulationTask
+from alphapower.internal.entity import SimulationTask, SimulationTaskStatus
 
 from .provider_abc import AbstractTaskProvider
-
 from .scheduler_abc import AbstractScheduler
 
 
 class PriorityScheduler(AbstractScheduler):
+    """
+    优先级调度器，根据任务的优先级调度任务。
+    """
+
     def __init__(
         self,
         tasks: Optional[List[SimulationTask]] = None,
@@ -30,12 +38,24 @@ class PriorityScheduler(AbstractScheduler):
         self.low_priority_threshold: int = low_priority_threshold  # 保存阈值
         self.low_priority_counter: Dict[str, int] = {}  # 记录低优先级任务的调度次数
 
+        self._post_async_tasks: List[asyncio.Task] = []  # 保存后续异步任务
+        self._post_async_tasks_lock: asyncio.Lock = asyncio.Lock()
+
         # 初始化 settings_group_map 映射关系
         for task in self.tasks:
             group_key: str = str(task.settings_group_key)
             if group_key not in self.settings_group_map:
                 self.settings_group_map[group_key] = []
             self.settings_group_map[group_key].append(task)
+
+    def __del__(self):
+        """
+        析构函数，用于清理后续异步任务。
+        """
+        for task in self._post_async_tasks:
+            if not task.done():
+                task.cancel()
+        self._post_async_tasks.clear()
 
     async def fetch_tasks_from_provider(self) -> None:
         """
@@ -106,19 +126,14 @@ class PriorityScheduler(AbstractScheduler):
                 )  # 重新排序
                 self.low_priority_counter[group_key] = 0  # 重置计数器
 
-    async def schedule(self, batch_size: int = 1) -> List[SimulationTask]:
+    async def _do_schedule(self, batch_size: int) -> List[SimulationTask]:
         """
         调度任务，支持单个任务或批量任务。
-        :param batch_size: 批量任务的大小，默认为 1
+        :param batch_size: 批量任务的大小
         :return: SimulationTask 对象的列表
         """
         if not self.tasks:
-            await self.fetch_tasks_from_provider()
-            if not self.tasks:
-                raise ValueError("任务列表为空，无法调度任务。")
-
-        # 调度前检查并提升低优先级任务
-        self.promote_low_priority_tasks()
+            return []
 
         if batch_size == 1:
             # 返回单个任务
@@ -141,3 +156,65 @@ class PriorityScheduler(AbstractScheduler):
         self.low_priority_counter[target_group_key] += 1
 
         return batch
+
+    async def _before_schedule(self) -> None:
+        """
+        调度前的处理，用于检查是否有任务待调度。
+        """
+        if not self.tasks:
+            await self.fetch_tasks_from_provider()
+
+        # 调度前检查并提升低优先级任务
+        self.promote_low_priority_tasks()
+
+    async def _post_schedule(
+        self, scheduled_tasks: Optional[List[SimulationTask]]
+    ) -> None:
+        """
+        调度后的处理，用于确认调度的任务。
+        :param scheduled_tasks: SimulationTask 对象的列表
+        """
+        if scheduled_tasks:
+            for task in scheduled_tasks:
+                if task.status != SimulationTaskStatus.PENDING:
+                    raise ValueError(f"任务状态 {task.status} 错误，无法调度。")
+                task.status = SimulationTaskStatus.SCHEDULED
+
+        if self.task_provider and scheduled_tasks:
+            task_ids: List[int] = [task.id for task in scheduled_tasks]
+
+            async with self._post_async_tasks_lock:
+                for post_async_task in self._post_async_tasks:
+                    if post_async_task.done():
+                        self._post_async_tasks.remove(post_async_task)
+
+                self._post_async_tasks.append(
+                    asyncio.create_task(
+                        self.task_provider.acknowledge_scheduled_tasks(task_ids)
+                    )
+                )
+
+    async def wait_for_post_async_tasks(self) -> None:
+        """
+        等待后续异步任务完成。
+        """
+        async with self._post_async_tasks_lock:
+            result = await asyncio.gather(
+                *self._post_async_tasks, return_exceptions=True
+            )
+            for task in result:
+                if isinstance(task, Exception):
+                    raise task
+            self._post_async_tasks.clear()
+
+    async def schedule(self, batch_size: int = 1) -> List[SimulationTask]:
+        """
+        调度任务，支持单个任务或批量任务。
+        :param batch_size: 批量任务的大小，默认为 1
+        :return: SimulationTask 对象的列表
+        """
+        await self._before_schedule()
+        scheduled_tasks: List[SimulationTask] = await self._do_schedule(batch_size)
+        await self._post_schedule(scheduled_tasks)
+
+        return scheduled_tasks

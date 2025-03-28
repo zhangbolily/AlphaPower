@@ -1,7 +1,10 @@
 import hashlib
 import json
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import Dict, List, Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from alphapower.internal.entity import (
     SimulationTask,
@@ -9,10 +12,6 @@ from alphapower.internal.entity import (
     SimulationTaskType,
 )
 from alphapower.internal.http_api.model import SimulationSettings
-from alphapower.internal.wraps import transactional
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 
 def get_settings_group_key(settings: SimulationSettings) -> str:
@@ -68,7 +67,6 @@ def _create_task(
     )
 
 
-@transactional(nested_transaction=False)
 async def create_simulation_task(
     session: AsyncSession,
     regular: str,
@@ -92,7 +90,6 @@ async def create_simulation_task(
     return task
 
 
-@transactional(nested_transaction=False)
 async def create_simulation_tasks(
     session: AsyncSession,
     regular: List[str],
@@ -120,7 +117,6 @@ async def create_simulation_tasks(
     return tasks
 
 
-@transactional(nested_transaction=False)
 async def update_simulation_task_status(
     session: AsyncSession, task_id: int, status: SimulationTaskStatus
 ) -> SimulationTask:
@@ -135,17 +131,20 @@ async def update_simulation_task_status(
     return task
 
 
-@transactional(nested_transaction=False)
-async def update_simulation_task_scheduled_time(
-    session: AsyncSession, task_id: int, scheduled_at: datetime
+async def update_simulation_task_scheduled_info(
+    session: AsyncSession,
+    task_id: int,
+    scheduled_at: datetime,
+    status: SimulationTaskStatus,
 ) -> SimulationTask:
     """
-    更新指定任务的调度时间。
+    更新指定任务的调度信息。
     """
     task: Optional[SimulationTask] = await session.get(SimulationTask, task_id)
     if task is None:
         raise ValueError(f"找不到 ID 为 {task_id} 的任务")
     task.scheduled_at = scheduled_at
+    task.status = status
     await session.merge(task)
     return task
 
@@ -166,6 +165,8 @@ async def get_simulation_tasks_by(
     session: AsyncSession,
     status: Optional[SimulationTaskStatus] = None,
     priority: Optional[int] = None,
+    not_in_: Optional[Dict[str, List[int]]] = None,
+    in_: Optional[Dict[str, List[int]]] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
 ) -> List[SimulationTask]:
@@ -177,6 +178,23 @@ async def get_simulation_tasks_by(
         filters.append(SimulationTask.status == status)
     if priority is not None:
         filters.append(SimulationTask.priority == priority)
+    if not_in_ is not None:
+        for key, values in not_in_.items():
+            if hasattr(SimulationTask, key):
+                column = getattr(SimulationTask, key)
+                filters.append(column.notin_(values))
+            else:
+                raise ValueError(f"无效的字段名: {key}")
+    if in_ is not None:
+        for key, values in in_.items():
+            if hasattr(SimulationTask, key):
+                column = getattr(SimulationTask, key)
+                filters.append(column.in_(values))
+            else:
+                raise ValueError(f"无效的字段名: {key}")
+
+    if not filters:
+        raise ValueError("至少需要一个过滤条件")
 
     query = select(SimulationTask).filter(*filters)
     if limit is not None:

@@ -1,17 +1,14 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from alphapower.engine.simulation.task.core import create_simulation_tasks
-from alphapower.engine.simulation.task.provider import DatabaseTaskProvider
-from alphapower.internal.entity import (
-    SimulationBase,
-    SimulationTask,
-    SimulationTaskStatus,
-)
-from alphapower.internal.http_api.model import SimulationSettings
-from alphapower.internal.wraps import with_session
 from sqlalchemy import text  # 添加导入
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from alphapower.engine.simulation.task.core import create_simulation_tasks
+from alphapower.engine.simulation.task.provider import DatabaseTaskProvider
+from alphapower.internal.entity import SimulationTask, SimulationTaskStatus
+from alphapower.internal.http_api.model import SimulationSettings
+from alphapower.internal.wraps import with_session
 
 
 @pytest.mark.asyncio  # 确保每个异步测试函数都使用了 pytest.mark.asyncio
@@ -31,6 +28,7 @@ async def test_fetch_tasks(session: AsyncSession):
 
     # 向数据库插入测试数据
     await create_simulation_tasks(session, regular, settings, priority)
+    await session.commit()
 
     # 初始化 DatabaseTaskProvider
     provider = DatabaseTaskProvider(session=session)
@@ -84,6 +82,7 @@ async def test_fetch_tasks_invalid_priority(session: AsyncSession):
 
     # 向数据库插入测试数据
     await create_simulation_tasks(session, regular, settings, priority)
+    await session.commit()
 
     # 初始化 DatabaseTaskProvider
     provider = DatabaseTaskProvider(session=session)
