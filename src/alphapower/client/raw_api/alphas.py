@@ -165,7 +165,7 @@ async def get_alpha_self_correlations(
     Tuple[bool, Optional[float], Optional[AlphaCorrelations], RateLimit]:
         包含请求完成状态、重试时间、自相关性数据和速率限制信息的元组。
     """
-    url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id)}"
+    url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id, 'self')}"
     async with session.get(url) as response:
         response.raise_for_status()
         retry_after: float = retry_after_from_headers(response.headers)

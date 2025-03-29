@@ -20,8 +20,8 @@ def ENDPOINT_ALPHA_PNL(alpha_id):
     return f"alphas/{alpha_id}/recordsets/pnl"
 
 
-def ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id):
-    return f"alphas/{alpha_id}/correlations/self"
+def ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id: str, correlation_type: str):
+    return f"alphas/{alpha_id}/correlations/{correlation_type}"
 
 
 ENDPOINT_SIMULATION = "simulations"

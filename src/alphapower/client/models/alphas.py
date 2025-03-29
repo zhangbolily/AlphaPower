@@ -3,7 +3,7 @@ This module contains the data models for the AlphaPower API.
 """
 
 from datetime import datetime
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +43,7 @@ class Regular(BaseModel):
     """
 
     code: str
-    description: str
+    description: Optional[str] = None
     operatorCount: int
 
 
@@ -99,8 +99,8 @@ class AlphaCheckItem(BaseModel):
     message: Optional[str] = None
     year: Optional[int] = None
     pyramids: Optional[List[Pyramid]] = None
-    startDate: Optional[str] = None
-    endDate: Optional[str] = None
+    start_date: Optional[str] = Field(default=None, alias="startDate")
+    end_date: Optional[str] = Field(default=None, alias="endDate")
     multiplier: Optional[float] = None
 
 
@@ -110,21 +110,23 @@ class AlphaSample(BaseModel):
     """
 
     pnl: Optional[float] = None
-    bookSize: Optional[float] = None
-    longCount: Optional[int] = None
-    shortCount: Optional[int] = None
+    book_size: Optional[float] = Field(default=None, alias="bookSize")
+    long_count: Optional[int] = Field(default=None, alias="longCount")
+    short_count: Optional[int] = Field(default=None, alias="shortCount")
     turnover: Optional[float] = None
     returns: Optional[float] = None
     drawdown: Optional[float] = None
     margin: Optional[float] = None
     sharpe: Optional[float] = None
     fitness: Optional[float] = None
-    startDate: Optional[datetime] = None
+    start_date: Optional[datetime] = Field(default=None, alias="startDate")
     checks: Optional[List["AlphaCheckItem"]] = None
-    selfCorrelation: Optional[float] = None
-    prodCorrelation: Optional[float] = None
-    osISSharpeRatio: Optional[float] = None
-    preCloseSharpeRatio: Optional[float] = None
+    self_correlation: Optional[float] = Field(default=None, alias="selfCorrelation")
+    prod_correlation: Optional[float] = Field(default=None, alias="prodCorrelation")
+    os_is_sharpe_ratio: Optional[float] = Field(default=None, alias="osISSharpeRatio")
+    pre_close_sharpe_ratio: Optional[float] = Field(
+        default=None, alias="preCloseSharpeRatio"
+    )
 
 
 class Alpha(BaseModel):
@@ -135,29 +137,29 @@ class Alpha(BaseModel):
     id: str
     type: str
     author: str
-    settings: Union[SimulationSettings, dict]
-    regular: Union[Regular, dict]
-    dateCreated: Optional[datetime] = None
-    dateSubmitted: Optional[datetime] = None
-    dateModified: Optional[datetime] = None
+    settings: SimulationSettings
+    regular: Regular
+    date_created: Optional[datetime] = Field(default=None, alias="dateCreated")
+    date_submitted: Optional[datetime] = Field(default=None, alias="dateSubmitted")
+    date_modified: Optional[datetime] = Field(default=None, alias="dateModified")
     name: str = ""
     favorite: bool = False
     hidden: bool = False
     color: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
-    classifications: Optional[List[Union[Classification, dict]]] = None
+    classifications: Optional[List[Classification]] = None
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
-    inSample: Optional[Union[AlphaSample, dict]] = Field(default=None, alias="is")
-    outSample: Optional[Union[AlphaSample, dict]] = Field(default=None, alias="os")
-    train: Optional[Union[AlphaSample, dict]] = None
-    test: Optional[Union[AlphaSample, dict]] = None
-    prod: Optional[Union[AlphaSample, dict]] = None
-    competitions: Optional[List[Union[Competition, dict]]] = None
+    in_sample: Optional[AlphaSample] = Field(default=None, alias="is")
+    out_sample: Optional[AlphaSample] = Field(default=None, alias="os")
+    train: Optional[AlphaSample] = None
+    test: Optional[AlphaSample] = None
+    prod: Optional[AlphaSample] = None
+    competitions: Optional[List[Competition]] = None
     themes: Optional[List[str]] = None
-    pyramids: Optional[List[Union[Pyramid, dict]]] = None
+    pyramids: Optional[List[Pyramid]] = None
     team: Optional[str] = None
 
 
@@ -180,8 +182,8 @@ class AlphaDetail(BaseModel):
     id: str
     type: str
     author: str
-    settings: Union[SimulationSettings, dict]
-    regular: Union[Regular, dict]
+    settings: SimulationSettings
+    regular: Regular
     date_created: Optional[datetime] = Field(default=None, alias="dateCreated")
     date_submitted: Optional[datetime] = Field(default=None, alias="dateSubmitted")
     date_modified: Optional[datetime] = Field(default=None, alias="dateModified")
@@ -191,7 +193,7 @@ class AlphaDetail(BaseModel):
     color: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
-    classifications: Optional[List[Union[Classification, dict]]] = None
+    classifications: Optional[List[Classification]] = None
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
@@ -202,7 +204,7 @@ class AlphaDetail(BaseModel):
     prod: Optional["AlphaDetail.Sample"] = None
     competitions: Optional[List[Competition]] = None
     themes: Optional[List[str]] = None
-    pyramids: Optional[List[Union[Pyramid, dict]]] = None
+    pyramids: Optional[List[Pyramid]] = None
     team: Optional[str] = None
 
     class Sample(BaseModel):
@@ -210,28 +212,32 @@ class AlphaDetail(BaseModel):
         表示 Alpha 样本详细信息的类。
         """
 
-        investability_constrained: Optional["AlphaSample"] = Field(
+        investability_constrained: Optional[AlphaSample] = Field(
             default=None, alias="investabilityConstrained"
         )
-        risk_neutralized: Optional["AlphaSample"] = Field(
+        risk_neutralized: Optional[AlphaSample] = Field(
             default=None, alias="riskNeutralized"
         )
         pnl: Optional[float] = None
-        bookSize: Optional[float] = None
-        longCount: Optional[int] = None
-        shortCount: Optional[int] = None
+        book_size: Optional[float] = Field(default=None, alias="bookSize")
+        long_count: Optional[int] = Field(default=None, alias="longCount")
+        short_count: Optional[int] = Field(default=None, alias="shortCount")
         turnover: Optional[float] = None
         returns: Optional[float] = None
         drawdown: Optional[float] = None
         margin: Optional[float] = None
         sharpe: Optional[float] = None
         fitness: Optional[float] = None
-        startDate: Optional[datetime] = None
+        start_date: Optional[datetime] = Field(default=None, alias="startDate")
         checks: Optional[List[AlphaCheckItem]] = None
-        selfCorrelation: Optional[float] = None
-        prodCorrelation: Optional[float] = None
-        osISSharpeRatio: Optional[float] = None
-        preCloseSharpeRatio: Optional[float] = None
+        self_correlation: Optional[float] = Field(default=None, alias="selfCorrelation")
+        prod_correlation: Optional[float] = Field(default=None, alias="prodCorrelation")
+        os_is_sharpe_ratio: Optional[float] = Field(
+            default=None, alias="osISSharpeRatio"
+        )
+        pre_close_sharpe_ratio: Optional[float] = Field(
+            default=None, alias="preCloseSharpeRatio"
+        )
 
 
 class AlphaYearlyStatsProperty(BaseModel):
@@ -261,9 +267,9 @@ class AlphaYearlyStatsRecord(BaseModel):
 
     year: int
     pnl: float
-    bookSize: float
-    longCount: int
-    shortCount: int
+    book_size: float = Field(alias="bookSize")
+    long_count: int = Field(alias="longCount")
+    short_count: int = Field(alias="shortCount")
     turnover: float
     sharpe: float
     returns: float
@@ -347,7 +353,7 @@ class AlphaCorrelationRecord(BaseModel):
 
     id: str
     name: str
-    instrumentType: str
+    instrument_type: str = Field(alias="instrumentType")
     region: str
     universe: str
     correlation: float
@@ -394,8 +400,8 @@ class AlphaCheckResult(BaseModel):
     表示 Alpha 检查结果的类。
     """
 
-    inSample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="is")
-    outSample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="os")
+    in_sample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="is")
+    out_sample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="os")
 
     class Sample(BaseModel):
         """
@@ -403,5 +409,9 @@ class AlphaCheckResult(BaseModel):
         """
 
         checks: Optional[List[AlphaCheckItem]] = None
-        selfCorrelated: Optional[AlphaCorrelations] = None
-        prodCorrelated: Optional[AlphaCorrelations] = None
+        self_correlated: Optional[AlphaCorrelations] = Field(
+            default=None, alias="selfCorrelated"
+        )
+        prod_correlated: Optional[AlphaCorrelations] = Field(
+            default=None, alias="prodCorrelated"
+        )
