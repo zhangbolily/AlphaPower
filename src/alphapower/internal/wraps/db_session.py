@@ -1,4 +1,4 @@
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, Coroutine, Never
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +7,10 @@ from alphapower.internal.storage import get_db
 
 def with_session(
     db_name: str = "default",
-) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+) -> Callable[
+    [Callable[..., Coroutine[Any, Any, Never]]],
+    Callable[..., Coroutine[Any, Any, Never]],
+]:
     """
     装饰器，用于在异步函数中注入数据库会话。
 
@@ -18,7 +21,9 @@ def with_session(
     function: 包装后的异步函数。
     """
 
-    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+    def decorator(
+        func: Callable[..., Coroutine[Any, Any, Never]],
+    ) -> Callable[..., Coroutine[Any, Any, Never]]:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             async with get_db(db_name) as session:
                 return await func(session, *args, **kwargs)

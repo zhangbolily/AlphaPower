@@ -4,24 +4,24 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select  # 添加导入
 
-from alphapower.client import create_client, WorldQuantClient  # 引入客户端
-
+from alphapower.client import (
+    Alpha,
+    SelfAlphaListQueryParams,  # 引入客户端
+    WorldQuantClient,
+    create_client,
+)
 from alphapower.config.settings import get_credentials
-from alphapower.entity import (
+from alphapower.internal.entity import (
     Alphas,
     Alphas_Classification,
     Alphas_Competition,
     Alphas_Regular,
     Alphas_Settings,
 )
-
-from alphapower.internal.http_api import Alpha, SelfAlphaListQueryParams
-from alphapower.internal.utils import (
-    create_sample,
-    get_or_create_entity,
-    setup_logging,
-)  # 引入公共方法
+from alphapower.internal.utils import setup_logging  # 引入公共方法
 from alphapower.internal.wraps import with_session
+
+from .utils import create_sample, get_or_create_entity
 
 # 配置日志
 console_logger = setup_logging(__name__, enable_console=True)

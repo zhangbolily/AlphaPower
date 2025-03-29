@@ -3,7 +3,7 @@ import unittest
 
 from alphapower.client.core import create_client
 from alphapower.config.settings import get_credentials
-from alphapower.internal.http_api.simulation import (
+from alphapower.internal.raw_api.simulation import (
     MultiSimulationRequest,
     MultiSimulationResult,
     SimulationProgress,

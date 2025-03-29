@@ -11,7 +11,7 @@ from alphapower.internal.entity import (
     SimulationTaskStatus,
     SimulationTaskType,
 )
-from alphapower.internal.http_api.model import SimulationSettings
+from alphapower.client.models import SimulationSettings
 
 
 def get_settings_group_key(settings: SimulationSettings) -> str:

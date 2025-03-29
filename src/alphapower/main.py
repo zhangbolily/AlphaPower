@@ -4,20 +4,19 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import click
-from services.sync_alphas import sync_alphas
-from services.sync_datafields import sync_datafields
-from services.sync_datasets import sync_datasets
 
-from alphapower.internal.utils.logging import setup_logging
-
-from alphapower.internal.storage.session import close_resources
+from .internal.storage import close_resources
+from .internal.utils.logging import setup_logging
+from .services.sync_alphas import sync_alphas
+from .services.sync_datafields import sync_datafields
+from .services.sync_datasets import sync_datasets
 
 logger = setup_logging(__name__)
 
 
-def handle_exit_signal(signum, frame):
-    logger.info(f"接收到信号 {signum}，正在进行清理工作...")
-    close_resources()  # 调用关闭资源的函数
+async def handle_exit_signal(signum, frame):
+    logger.info("接收到信号 %s，正在进行清理工作...", signum)
+    await close_resources()  # 调用关闭资源的函数
     sys.exit(0)
 
 
@@ -34,7 +33,7 @@ def cli():
 @cli.group()
 def sync():
     """同步命令组"""
-    pass
+    logger.debug("同步命令组初始化完成")
 
 
 @sync.command()
@@ -45,7 +44,12 @@ def sync():
 def datasets(region, universe, delay, parallel):
     """同步数据集"""
     asyncio.run(
-        sync_datasets(region=region, universe=universe, delay=delay, parallel=parallel)
+        sync_datasets(
+            region=region,
+            universe=universe,
+            delay=delay,
+            parallel=parallel,
+        )
     )
 
 
@@ -83,7 +87,9 @@ def datafields(instrument_type, dataset_id, parallel):
     """同步数据字段"""
     asyncio.run(
         sync_datafields(
-            instrument_type=instrument_type, dataset_id=dataset_id, parallel=parallel
+            instrument_type=instrument_type,
+            dataset_id=dataset_id,
+            parallel=parallel,
         )
     )
 

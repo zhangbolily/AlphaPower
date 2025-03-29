@@ -2,11 +2,12 @@ import enum
 from datetime import datetime
 from typing import Dict, Optional
 
-from sqlalchemy import DateTime, Enum, func, Integer, JSON, String
+from sqlalchemy import JSON, DateTime, Enum, Integer, String, func
+from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 

@@ -1,14 +1,12 @@
 from typing import Optional, Type
 
-from alphapower.internal.entity import (
-    Alphas_Sample as AlphasSampleEntity,
-    Data_Category as Category,
-    Data_Subcategory as Subcategory,
-)
-from alphapower.internal.http_api import AlphaSample as AlphaSampleModel
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
+from alphapower.client import AlphaSample as AlphaSampleModel
+from alphapower.internal.entity import Alphas_Sample as AlphasSampleEntity
+from alphapower.internal.entity import Data_Category as Category
+from alphapower.internal.entity import Data_Subcategory as Subcategory
 
 
 async def get_or_create_entity(
@@ -17,11 +15,16 @@ async def get_or_create_entity(
     """
     通用方法，用于获取或创建数据库实体。
     """
+    if not hasattr(model, unique_field):
+        raise ValueError(f"实体类型 {model.__class__} 没有属性 {unique_field}")
+    if not hasattr(data, "id") or not hasattr(data, "name"):
+        raise ValueError(f"数据对象 {data.__class__} 没有属性 id 或 name")
+
     result = await session.execute(select(model).filter_by(**{unique_field: data.id}))
     entity: Optional[object] = result.scalars().first()
     if entity is None:
         entity = model(**{unique_field: data.id, "name": data.name})
-        await session.add(entity)
+        session.add(entity)
     return entity
 
 
@@ -30,7 +33,7 @@ async def get_or_create_category(session: AsyncSession, category_name: str) -> C
     category: Optional[Category] = result.scalars().first()
     if category is None:
         category = Category(name=category_name)
-        await session.add(category)
+        session.add(category)
     return category
 
 
@@ -41,7 +44,7 @@ async def get_or_create_subcategory(
     subcategory: Optional[Subcategory] = result.scalars().first()
     if subcategory is None:
         subcategory = Subcategory(name=subcategory_name)
-        await session.add(subcategory)
+        session.add(subcategory)
     return subcategory
 
 

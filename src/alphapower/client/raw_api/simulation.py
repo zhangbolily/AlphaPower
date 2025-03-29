@@ -7,7 +7,7 @@ from typing import Any, List, Union
 import aiohttp
 
 from .common import BASE_URL, ENDPOINT_ACTIVITIES_SIMULATION, ENDPOINT_SIMULATION
-from .model import (
+from alphapower.client.models import (
     MultiSimulationResult,
     SelfSimulationActivities,
     SimulationProgress,

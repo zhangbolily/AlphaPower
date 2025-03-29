@@ -32,23 +32,6 @@ ENDPOINT_DATA_FIELDS = "data-fields"
 ENDPOINT_OPERATORS = "operators"
 
 
-class RateLimit:
-    def __init__(self, limit: int, remaining: int, reset: int):
-        self.limit = limit
-        self.remaining = remaining
-        self.reset = reset
-
-    @classmethod
-    def from_headers(cls, headers):
-        limit = int(headers.get("RateLimit-Limit", 0))
-        remaining = int(headers.get("RateLimit-Remaining", 0))
-        reset = int(headers.get("RateLimit-Reset", 0))
-        return cls(limit, remaining, reset)
-
-    def __str__(self):
-        return f"RateLimit(limit={self.limit}, remaining={self.remaining}, reset={self.reset})"
-
-
 # HTTP 错误代码映射关系
 HttpCodeMessage: Final[Dict] = {
     100: "Continue",

@@ -31,6 +31,7 @@ SessionFactories: dict[str, async_sessionmaker] = {
         class_=AsyncSession,
         autoflush=False,
         autocommit=False,
+        expire_on_commit=False,
     )
     for db_name, engine in engines.items()
 }

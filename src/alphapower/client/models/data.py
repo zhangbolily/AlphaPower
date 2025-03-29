@@ -1,10 +1,21 @@
+"""
+数据模型模块
+用于定义数据结构和处理 JSON 数据
+"""
+
 import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+# 数据模型模块，用于定义数据结构和处理 JSON 数据
+
 
 @dataclass
 class DataCategoriesChild:
+    """
+    数据类别子节点类，表示数据类别的子节点信息。
+    """
+
     id: str
     name: str
     datasetCount: int
@@ -16,22 +27,45 @@ class DataCategoriesChild:
     children: List["DataCategoriesChild"] = field(default_factory=list)
 
     def __post_init__(self):
-        self.children = [DataCategoriesChild(**child) for child in self.children]
+        """
+        初始化子节点，将字典类型的子节点转换为 DataCategoriesChild 实例。
+        """
+        self.children = [
+            (DataCategoriesChild(**child) if isinstance(child, dict) else child)
+            for child in self.children
+        ]
 
 
 @dataclass
 class DataCategoriesParent(DataCategoriesChild):
+    """
+    数据类别父节点类，继承自 DataCategoriesChild，表示数据类别的父节点信息。
+    """
+
     @classmethod
     def from_json(cls, json_data: str) -> List["DataCategoriesParent"]:
+        """
+        从 JSON 数据创建 DataCategoriesParent 实例列表。
+
+        参数:
+            json_data (str): JSON 格式的字符串数据。
+
+        返回:
+            List[DataCategoriesParent]: DataCategoriesParent 实例列表。
+        """
         try:
             data = json.loads(json_data)
             return [cls(**item) for item in data] if data else []
         except (json.JSONDecodeError, TypeError) as e:
-            raise ValueError(f"Invalid JSON data: {e}")
+            raise ValueError(f"Invalid JSON data: {e}") from e
 
 
 @dataclass
 class DataSetsQueryParams:
+    """
+    数据集查询参数类，用于构建查询参数。
+    """
+
     category: Optional[str] = None
     delay: Optional[int] = None
     instrumentType: Optional[str] = None
@@ -41,6 +75,12 @@ class DataSetsQueryParams:
     universe: Optional[str] = None
 
     def to_params(self) -> Dict[str, Any]:
+        """
+        将类属性转换为请求参数字典。
+
+        返回:
+            Dict[str, Any]: 请求参数字典。
+        """
         return {k: v for k, v in vars(self).items() if v is not None}
 
 
@@ -58,6 +98,10 @@ class DataSets_ItemSubcategory:
 
 @dataclass
 class DataSets_Item:
+    """
+    数据集项类，表示单个数据集的详细信息。
+    """
+
     id: str
     name: str
     description: str
@@ -77,6 +121,15 @@ class DataSets_Item:
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> "DataSets_Item":
+        """
+        从字典数据创建 DataSets_Item 实例。
+
+        参数:
+            data (Dict[str, Any]): 数据字典。
+
+        返回:
+            DataSets_Item: 数据集项实例。
+        """
         data["category"] = (
             DataSets_ItemCategory(**data["category"]) if data.get("category") else None
         )
@@ -90,11 +143,24 @@ class DataSets_Item:
 
 @dataclass
 class DataSets:
+    """
+    数据集类，表示数据集的集合。
+    """
+
     count: int
     results: List[DataSets_Item] = field(default_factory=list)
 
     @classmethod
     def from_json(cls, json_data: str) -> "DataSets":
+        """
+        从 JSON 数据创建 DataSets 实例。
+
+        参数:
+            json_data (str): JSON 格式的字符串数据。
+
+        返回:
+            DataSets: 数据集实例。
+        """
         try:
             data = json.loads(json_data)
             data["results"] = (
@@ -104,7 +170,7 @@ class DataSets:
             )
             return cls(**data)
         except (json.JSONDecodeError, TypeError) as e:
-            raise ValueError(f"Invalid JSON data: {e}")
+            raise ValueError(f"Invalid JSON data: {e}") from e
 
 
 @dataclass
@@ -142,6 +208,10 @@ class DatasetDetail_ResearchPaper:
 
 @dataclass
 class DatasetDetail:
+    """
+    数据集详情类，表示数据集的详细信息。
+    """
+
     name: str
     description: str
     category: DatasetDetail_Category
@@ -151,6 +221,15 @@ class DatasetDetail:
 
     @classmethod
     def from_json(cls, json_data: str) -> "DatasetDetail":
+        """
+        从 JSON 数据创建 DatasetDetail 实例。
+
+        参数:
+            json_data (str): JSON 格式的字符串数据。
+
+        返回:
+            DatasetDetail: 数据集详情实例。
+        """
         try:
             data = json.loads(json_data)
             data["category"] = (
@@ -178,7 +257,7 @@ class DatasetDetail:
             )
             return cls(**data)
         except (json.JSONDecodeError, TypeError) as e:
-            raise ValueError(f"Invalid JSON data: {e}")
+            raise ValueError(f"Invalid JSON data: {e}") from e
 
 
 @dataclass
@@ -212,6 +291,10 @@ class DataFieldDetail_Dataset:
 
 @dataclass
 class DataFieldDetail:
+    """
+    数据字段详情类，表示数据字段的详细信息。
+    """
+
     dataset: DataFieldDetail_Dataset
     category: DataFieldDetail_Category
     subcategory: DataFieldDetail_Subcategory
@@ -221,6 +304,15 @@ class DataFieldDetail:
 
     @classmethod
     def from_json(cls, json_data: str) -> "DataFieldDetail":
+        """
+        从 JSON 数据创建 DataFieldDetail 实例。
+
+        参数:
+            json_data (str): JSON 格式的字符串数据。
+
+        返回:
+            DataFieldDetail: 数据字段详情实例。
+        """
         try:
             data = json.loads(json_data)
             data["dataset"] = (
@@ -268,6 +360,10 @@ class DataField_Subcategory:
 
 @dataclass
 class DataField:
+    """
+    数据字段类，表示单个数据字段的详细信息。
+    """
+
     id: str
     description: str
     dataset: DataField_Dataset
@@ -284,20 +380,39 @@ class DataField:
     pyramidMultiplier: Optional[float] = None
 
     def __post_init__(self):
-        self.dataset = DataField_Dataset(**self.dataset) if self.dataset else None
-        self.category = DataField_Category(**self.category) if self.category else None
-        self.subcategory = (
-            DataField_Subcategory(**self.subcategory) if self.subcategory else None
-        )
+        """
+        初始化数据字段，将字典类型的属性转换为对应的类实例。
+        """
+        if self.dataset and isinstance(self.dataset, dict):
+            self.dataset = DataField_Dataset(**self.dataset)
+        if self.category and isinstance(self.category, dict):
+            self.category = DataField_Category(**self.category)
+        if self.subcategory and isinstance(self.subcategory, dict):
+            self.subcategory = DataField_Subcategory(**self.subcategory)
+        if self.themes is None:
+            self.themes = []
 
 
 @dataclass
 class DatasetDataFields:
+    """
+    数据集字段集合类，表示数据集中的字段集合。
+    """
+
     count: int
     results: List[DataField] = field(default_factory=list)
 
     @classmethod
     def from_json(cls, json_data: str) -> "DatasetDataFields":
+        """
+        从 JSON 数据创建 DatasetDataFields 实例。
+
+        参数:
+            json_data (str): JSON 格式的字符串数据。
+
+        返回:
+            DatasetDataFields: 数据集字段集合实例。
+        """
         try:
             data = json.loads(json_data)
             data["results"] = (
@@ -312,6 +427,10 @@ class DatasetDataFields:
 
 @dataclass
 class GetDataFieldsQueryParams:
+    """
+    获取数据字段查询参数类，用于构建查询参数。
+    """
+
     dataset_id: str
     delay: Optional[int] = None
     instrumentType: Optional[str] = None
@@ -321,7 +440,12 @@ class GetDataFieldsQueryParams:
     universe: Optional[str] = None
 
     def to_params(self) -> Dict[str, Any]:
-        # 将类属性转换为请求参数字典
+        """
+        将类属性转换为请求参数字典。
+
+        返回:
+            Dict[str, Any]: 请求参数字典。
+        """
         params = {k: v for k, v in vars(self).items() if v is not None}
         params["dataset.id"] = params.pop(
             "dataset_id", None

@@ -1,9 +1,11 @@
 import asyncio
 from functools import wraps
 
-from alphapower.internal.http_api.common import RateLimit
 from alphapower.internal.utils import setup_logging
 
+from .models import RateLimit
+
+# 配置日志
 logger = setup_logging(__name__)
 
 

@@ -1,17 +1,18 @@
 from sqlalchemy import (
+    JSON,
     Column,
     Float,
     ForeignKey,
     Integer,
-    JSON,
     String,
     Table,
     UniqueConstraint,
 )
+from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
 
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 

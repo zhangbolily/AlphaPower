@@ -1,6 +1,6 @@
 import aiohttp
 from .common import *
-from .model import *
+from alphapower.client.models import *
 
 
 def quote_alpha_list_query_params(params):

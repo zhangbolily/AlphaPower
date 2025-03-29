@@ -6,24 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from tqdm import tqdm  # 引入进度条库
 
-from alphapower.client import create_client, WorldQuantClient
+from alphapower.client import DataSetsQueryParams, WorldQuantClient, create_client
 from alphapower.config.settings import get_credentials
-from alphapower.entity import (
-    Data_Category,
-    Data_Subcategory,
-    DataSet,
-    DataSet as DataSetEntity,
-    ResearchPaper,
-    StatsData,
-)
-
-from alphapower.internal.http_api import DataSetsQueryParams
-from alphapower.internal.utils import (
-    get_or_create_entity,
-    setup_logging,
-)  # 引入公共方法
-
+from alphapower.internal.entity import Data_Category, Data_Subcategory
+from alphapower.internal.entity import DataSet as DataSetEntity
+from alphapower.internal.entity import ResearchPaper, StatsData
+from alphapower.internal.utils import setup_logging
 from alphapower.internal.wraps import log_time_elapsed, with_session  # 引入公共方法
+
+from .utils import get_or_create_entity  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
 logger = setup_logging(f"{__name__}_file", enable_console=False)
@@ -81,7 +72,7 @@ def process_dataset(session: Session, dataset: DataSetEntity, detail):
 
     # 查询数据库中是否已存在该数据集
     existing_dataset = (
-        session.query(DataSet)
+        session.query(DataSetEntity)
         .filter_by(
             dataset_id=dataset.id,
             region=dataset.region,
@@ -220,7 +211,7 @@ async def sync_datasets(
     universe: str = None,
     delay: int = None,
     parallel: int = 5,
-):
+) -> None:
     """
     同步数据集，增加异常处理和进度条更新。
 
@@ -279,7 +270,7 @@ async def sync_datasets(
             await process_datasets_concurrently(
                 session, client, query_params_list, parallel, progress_bar, lock
             )
-            session.commit()  # 提交数据库事务
+            await session.commit()  # 提交数据库事务
         except Exception as e:
             logger.error(f"同步数据集时出错: {e}")
             await session.rollback()  # 回滚事务

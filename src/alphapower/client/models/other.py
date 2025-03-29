@@ -1,6 +1,4 @@
-from .common import *
 import json
-import requests
 
 
 class Operator:
@@ -24,10 +22,3 @@ class Operators:
     def from_json(cls, json_data):
         data = json.loads(json_data)
         return cls(data)
-
-
-def get_all_operators(session: requests.Session):
-    url = f"{BASE_URL}/{ENDPOINT_OPERATORS}"
-    response = session.get(url)
-    response.raise_for_status()
-    return Operators.from_json(response.content)

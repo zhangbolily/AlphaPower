@@ -5,7 +5,6 @@ from functools import wraps
 from typing import Callable, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from alphapower.internal.storage import get_db
 
 
 class Propagation(Enum):
