@@ -1,7 +1,7 @@
 from datetime import datetime
 
 
-class BaseModel:
+class DeprecatedBaseModel:
     def _convert_fields(self, field_mapping):
         for field_name, target_type in field_mapping.items():
             value = getattr(self, field_name, None)

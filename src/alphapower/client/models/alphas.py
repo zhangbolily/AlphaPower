@@ -1,16 +1,17 @@
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 
 import pandas as pd
+from pydantic import BaseModel, Field
 
-from .base import BaseModel, map_fields
+from .base import DeprecatedBaseModel, map_fields
 from .sumulation import SimulationSettings
 
 
 @dataclass
-class Pyramid:
+class Pyramid(BaseModel):
     name: str
     multiplier: float
 
@@ -22,7 +23,7 @@ class Classification:
 
 
 @dataclass
-class Competition:
+class Competition(BaseModel):
     id: str
     name: str
 
@@ -67,7 +68,23 @@ class SelfAlphaListQueryParams:
 
 
 @dataclass
-class AlphaSample(BaseModel):
+class AlphaCheckItem(BaseModel):
+    name: str
+    result: str
+    limit: Optional[float] = None
+    value: Optional[float] = None
+    date: Optional[datetime] = None
+    competitions: Optional[List[Competition]] = None
+    message: Optional[str] = None
+    year: Optional[int] = None
+    pyramids: Optional[List[Pyramid]] = None
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
+    multiplier: Optional[float] = None
+
+
+@dataclass
+class AlphaSample(DeprecatedBaseModel):
     pnl: Optional[float] = None
     bookSize: Optional[float] = None
     longCount: Optional[int] = None
@@ -79,36 +96,18 @@ class AlphaSample(BaseModel):
     sharpe: Optional[float] = None
     fitness: Optional[float] = None
     startDate: Optional[datetime] = None
-    checks: Optional[List["AlphaSample.Check"]] = field(default_factory=list)
+    checks: Optional[List[AlphaCheckItem]] = field(default_factory=list)
     selfCorrelation: Optional[float] = None
     prodCorrelation: Optional[float] = None
     osISSharpeRatio: Optional[float] = None
     preCloseSharpeRatio: Optional[float] = None
-
-    @dataclass
-    class Check(BaseModel):
-        name: str
-        result: str
-        limit: Optional[float] = None
-        value: Optional[float] = None
-        date: Optional[datetime] = None
-        competitions: Optional[List[str]] = None
-        message: Optional[str] = None
-        year: Optional[int] = None
-        pyramids: Optional[List[Pyramid]] = field(default_factory=list)
-        startDate: Optional[str] = None
-        endDate: Optional[str] = None
-        multiplier: Optional[float] = None
-
-        def __post_init__(self):
-            self._convert_fields({"date": datetime})
 
     def __post_init__(self):
         self._convert_fields({"startDate": datetime})
 
 
 @dataclass
-class Alpha(BaseModel):
+class Alpha(DeprecatedBaseModel):
     id: str
     type: str
     author: str
@@ -174,74 +173,58 @@ class SelfAlphaList:
         return cls(**mapped_data)
 
 
-@dataclass
 class AlphaDetail(BaseModel):
     id: str
     type: str
     author: str
     settings: Union[SimulationSettings, dict]
     regular: Union[Regular, dict]
-    dateCreated: Optional[datetime] = None
-    dateSubmitted: Optional[datetime] = None
-    dateModified: Optional[datetime] = None
+    date_created: Optional[datetime] = Field(default=None, alias="dateCreated")
+    date_submitted: Optional[datetime] = Field(default=None, alias="dateSubmitted")
+    date_modified: Optional[datetime] = Field(default=None, alias="dateModified")
     name: str = ""
     favorite: bool = False
     hidden: bool = False
     color: Optional[str] = None
     category: Optional[str] = None
-    tags: Optional[List[str]] = field(default_factory=list)
-    classifications: Optional[List[Union[Classification, dict]]] = field(
-        default_factory=list
-    )
+    tags: Optional[List[str]] = None
+    classifications: Optional[List[Union[Classification, dict]]] = None
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
-    inSample: Optional[Union["AlphaDetail.Sample", dict]] = None
-    outSample: Optional[Union["AlphaDetail.Sample", dict]] = None
-    train: Optional[Union["AlphaDetail.Sample", dict]] = None
-    test: Optional[Union["AlphaDetail.Sample", dict]] = None
-    prod: Optional[Union["AlphaDetail.Sample", dict]] = None
-    competitions: Optional[List[Competition]] = field(default_factory=list)
-    themes: Optional[List[str]] = field(default_factory=list)
-    pyramids: Optional[List[Union[Pyramid, dict]]] = field(default_factory=list)
+    in_sample: Optional["AlphaDetail.Sample"] = Field(default=None, alias="is")
+    out_sample: Optional["AlphaDetail.Sample"] = Field(default=None, alias="os")
+    train: Optional["AlphaDetail.Sample"] = None
+    test: Optional["AlphaDetail.Sample"] = None
+    prod: Optional["AlphaDetail.Sample"] = None
+    competitions: Optional[List[Competition]] = None
+    themes: Optional[List[str]] = None
+    pyramids: Optional[List[Union[Pyramid, dict]]] = None
     team: Optional[str] = None
 
-    @dataclass
-    class Sample(AlphaSample):
-        investabilityConstrained: Optional[AlphaSample] = None
-        riskNeutralized: Optional[AlphaSample] = None
-
-        def __post_init__(self):
-            super().__post_init__()
-
-            self._convert_fields(
-                {
-                    "investabilityConstrained": AlphaSample,
-                    "riskNeutralized": AlphaSample,
-                }
-            )
-
-    def __post_init__(self):
-        self._convert_fields(
-            {
-                "classifications": Classification,
-                "dateCreated": datetime,
-                "dateModified": datetime,
-                "dateSubmitted": datetime,
-                "inSample": AlphaDetail.Sample,
-                "outSample": AlphaDetail.Sample,
-                "pyramids": Pyramid,
-                "regular": Regular,
-                "settings": SimulationSettings,
-                "test": AlphaDetail.Sample,
-                "train": AlphaDetail.Sample,
-            }
+    class Sample(BaseModel):
+        investability_constrained: Optional["AlphaSample"] = Field(
+            default=None, alias="investabilityConstrained"
         )
-
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        return cls(**data)
+        risk_neutralized: Optional["AlphaSample"] = Field(
+            default=None, alias="riskNeutralized"
+        )
+        pnl: Optional[float] = None
+        bookSize: Optional[float] = None
+        longCount: Optional[int] = None
+        shortCount: Optional[int] = None
+        turnover: Optional[float] = None
+        returns: Optional[float] = None
+        drawdown: Optional[float] = None
+        margin: Optional[float] = None
+        sharpe: Optional[float] = None
+        fitness: Optional[float] = None
+        startDate: Optional[datetime] = None
+        checks: Optional[List[AlphaCheckItem]] = None
+        selfCorrelation: Optional[float] = None
+        prodCorrelation: Optional[float] = None
+        osISSharpeRatio: Optional[float] = None
+        preCloseSharpeRatio: Optional[float] = None
 
 
 @dataclass
@@ -310,7 +293,7 @@ class AlphaPnL_Schema:
 
 
 @dataclass
-class AlphaPnL_Record(BaseModel):
+class AlphaPnL_Record(DeprecatedBaseModel):
     date: datetime
     pnl: float
 
@@ -330,21 +313,21 @@ class AlphaPnL:
 
 
 @dataclass
-class AlphaSelfCorrelations_Property:
+class AlphaCorrelationsProperty(BaseModel):
     name: str
     title: str
     type: str
 
 
 @dataclass
-class AlphaSelfCorrelations_Schema:
+class AlphaCorrelationsSchema(BaseModel):
     name: str
     title: str
-    properties: List[AlphaSelfCorrelations_Property]
+    properties: List[AlphaCorrelationsProperty]
 
 
 @dataclass
-class AlphaSelfCorrelations_Record:
+class AlphaCorrelationRecord(BaseModel):
     id: str
     name: str
     instrumentType: str
@@ -359,16 +342,11 @@ class AlphaSelfCorrelations_Record:
 
 
 @dataclass
-class AlphaSelfCorrelations:
-    schema: AlphaSelfCorrelations_Schema
-    records: List[AlphaSelfCorrelations_Record]
-    min: float
-    max: float
-
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        return cls(**data)
+class AlphaCorrelations(BaseModel):
+    table_schema: AlphaCorrelationsSchema = Field(alias="schema")
+    records: List[List[Any]]
+    min: Optional[float] = 0.0
+    max: Optional[float] = 0.0
 
 
 @dataclass
@@ -391,13 +369,12 @@ class AlphaPropertiesBody:
 
 
 @dataclass
-class AplhaCheckResult:
-    inSample: dict
-    outSample: dict
+class AlphaCheckResult(BaseModel):
+    inSample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="is")
+    outSample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="os")
 
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        field_mapping = {"is": "inSample", "os": "outSample"}
-        mapped_data = map_fields(data, field_mapping)
-        return cls(**mapped_data)
+    @dataclass
+    class Sample(BaseModel):
+        checks: List[AlphaCheckItem] = None
+        selfCorrelated: Optional[AlphaCorrelations] = None
+        prodCorrelated: Optional[AlphaCorrelations] = None

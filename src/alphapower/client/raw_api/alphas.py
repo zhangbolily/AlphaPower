@@ -41,9 +41,9 @@ async def get_alpha_detail(session: aiohttp.ClientSession, alpha_id):
     url = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return AlphaDetail.from_json(await response.text()), RateLimit.from_headers(
-            response.headers
-        )
+        return AlphaDetail.model_validate(
+            await response.json()
+        ), RateLimit.from_headers(response.headers)
 
 
 async def get_alpha_yearly_stats(session: aiohttp.ClientSession, alpha_id):
@@ -95,7 +95,7 @@ async def get_alpha_self_correlations(session: aiohttp.ClientSession, alpha_id):
             return (
                 True,
                 None,
-                AlphaSelfCorrelations.from_json(await response.text()),
+                AlphaCorrelations.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
 
@@ -109,8 +109,11 @@ async def set_alpha_properties(
         return await response.json(), RateLimit.from_headers(response.headers)
 
 
-async def alpha_check_submission(session: aiohttp.ClientSession, alpha_id):
+async def alpha_check_submission(
+    session: aiohttp.ClientSession, alpha_id: str
+) -> tuple[bool, float, AlphaCheckResult | None, RateLimit]:
     url = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}/check"
+
     async with session.get(url) as response:
         response.raise_for_status()
         retry_after = response.headers.get("Retry-After")
@@ -118,14 +121,14 @@ async def alpha_check_submission(session: aiohttp.ClientSession, alpha_id):
         if retry_after is not None:
             return (
                 False,
-                retry_after,
+                float(retry_after),
                 None,
                 RateLimit.from_headers(response.headers),
             )
         else:
             return (
                 True,
-                None,
-                AplhaCheckResult.from_json(await response.text()),
+                0.0,
+                AlphaCheckResult.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
