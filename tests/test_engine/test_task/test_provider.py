@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.engine.simulation.task.core import create_simulation_tasks
 from alphapower.engine.simulation.task.provider import DatabaseTaskProvider
-from alphapower.internal.entity import SimulationTask, SimulationTaskStatus
+from alphapower.internal import SimulationTask, SimulationTaskStatus
 from alphapower.client.models import SimulationSettings
 from alphapower.internal.wraps import with_session
 

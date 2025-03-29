@@ -11,7 +11,7 @@ from alphapower.engine.simulation.task import (
     PriorityScheduler,
     create_simulation_tasks,
 )
-from alphapower.internal.entity import SimulationTask, SimulationTaskStatus
+from alphapower.internal import SimulationTask, SimulationTaskStatus
 from alphapower.client.models import SimulationSettings
 from alphapower.internal.wraps import with_session
 

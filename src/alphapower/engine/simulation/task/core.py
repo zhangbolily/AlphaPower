@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from alphapower.internal.entity import (
+from alphapower.internal import (
     SimulationTask,
     SimulationTaskStatus,
     SimulationTaskType,

@@ -3,7 +3,7 @@ import time
 from typing import List
 
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
-from alphapower.internal.entity import SimulationTask
+from alphapower.internal import SimulationTask
 
 
 async def benchmark_scheduler():

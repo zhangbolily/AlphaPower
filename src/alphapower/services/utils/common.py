@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from alphapower.client import AlphaSample as AlphaSampleModel
-from alphapower.internal.entity import Alphas_Sample as AlphasSampleEntity
-from alphapower.internal.entity import Data_Category as Category
-from alphapower.internal.entity import Data_Subcategory as Subcategory
+from alphapower.internal import Alphas_Sample as AlphasSampleEntity
+from alphapower.internal import Data_Category as Category
+from alphapower.internal import Data_Subcategory as Subcategory
 
 
 async def get_or_create_entity(

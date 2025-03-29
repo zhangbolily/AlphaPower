@@ -11,7 +11,7 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
-from alphapower.internal.entity import (
+from alphapower.internal import (
     Alphas,
     Alphas_Classification,
     Alphas_Competition,

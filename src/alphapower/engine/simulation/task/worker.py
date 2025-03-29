@@ -10,7 +10,7 @@
 import asyncio
 from typing import List, Optional
 
-from alphapower.internal.entity import SimulationTask, SimulationTaskStatus
+from alphapower.internal import SimulationTask, SimulationTaskStatus
 
 from .scheduler_abc import AbstractScheduler
 from .worker_abc import AbstractWorker

@@ -10,7 +10,7 @@ DATABASES = {
     "alphas": {
         "url": os.getenv("DATABASE_ALPHAS_URL", "sqlite+aiosqlite:///db/alphas.db"),
         "description": "用户回测因子的信息",
-        "base_class": "AlphasBase",
+        "base_class": "AlphaBase",
     },
     "data": {
         "url": os.getenv("DATABASE_DATASETS_URL", "sqlite+aiosqlite:///db/data.db"),
@@ -29,7 +29,7 @@ DATABASES = {
             "DATABASE_ALPHAS_TEST_URL", "sqlite+aiosqlite:///db/alphas_test.db"
         ),
         "description": "用户回测因子的信息",
-        "base_class": "AlphasBase",
+        "base_class": "AlphaBase",
     },
     "data_test": {
         "url": os.getenv(

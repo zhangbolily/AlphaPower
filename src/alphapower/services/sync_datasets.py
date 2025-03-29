@@ -8,9 +8,9 @@ from tqdm import tqdm  # 引入进度条库
 
 from alphapower.client import DataSetsQueryParams, WorldQuantClient, create_client
 from alphapower.config.settings import get_credentials
-from alphapower.internal.entity import Data_Category, Data_Subcategory
-from alphapower.internal.entity import DataSet as DataSetEntity
-from alphapower.internal.entity import ResearchPaper, StatsData
+from alphapower.internal import Data_Category, Data_Subcategory
+from alphapower.internal import DataSet as DataSetEntity
+from alphapower.internal import ResearchPaper, StatsData
 from alphapower.internal.utils import setup_logging
 from alphapower.internal.wraps import log_time_elapsed, with_session  # 引入公共方法
 

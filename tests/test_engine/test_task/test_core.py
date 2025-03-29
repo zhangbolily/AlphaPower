@@ -10,7 +10,7 @@ from alphapower.engine.simulation.task.core import (
     update_simulation_task_scheduled_time,
     update_simulation_task_status,
 )
-from alphapower.internal.entity import (
+from alphapower.internal import (
     SimulationTask,
     SimulationTaskStatus,
     SimulationTaskType,

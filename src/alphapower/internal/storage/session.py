@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from alphapower.config.settings import DATABASES
-from alphapower.internal.entity import AlphasBase, DataBase, SimulationBase
+from alphapower.internal import AlphaBase, DataBase, SimulationBase
 from alphapower.internal.utils import setup_logging
 
 # 配置日志
@@ -22,7 +22,7 @@ engines = {
     for db_name, db_config in DATABASES.items()
 }
 
-all_entity_bases = (AlphasBase, DataBase, SimulationBase)
+all_entity_bases = (AlphaBase, DataBase, SimulationBase)
 
 
 SessionFactories: dict[str, async_sessionmaker] = {
@@ -54,7 +54,7 @@ def load_module(db_name: str):
     异常:
     ValueError: 如果模块未定义 Base 或加载失败。
     """
-    module_name = f"alphapower.internal.entity.{db_name}"
+    module_name = f"alphapower.internal.{db_name}"
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as e:

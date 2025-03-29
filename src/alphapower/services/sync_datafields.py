@@ -24,10 +24,10 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
-from alphapower.internal.entity import Data_Category as Data_CategoryEntity
-from alphapower.internal.entity import Data_Subcategory as Data_SubcategoryEntity
-from alphapower.internal.entity import DataField as DataFieldEntity
-from alphapower.internal.entity import DataSet as DataSetEntity
+from alphapower.internal import Data_Category as Data_CategoryEntity
+from alphapower.internal import Data_Subcategory as Data_SubcategoryEntity
+from alphapower.internal import DataField as DataFieldEntity
+from alphapower.internal import DataSet as DataSetEntity
 from alphapower.internal.utils import setup_logging  # 修复导入
 from alphapower.internal.wraps import with_session
 

@@ -5,6 +5,15 @@ description = "A tool for managing WorldQuant Brain platform data and operations
 authors = [{ name = "Ball Chang", email = "contact@ballchang.com" }]
 license = "Proprietary"
 readme = "README.md"
+keywords = ["alphapower", "worldquant", "brain", "data", "management"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 requires-python = ">=3.12,<4.0"
 dependencies = [
     "argcomplete==2.1.2",
@@ -35,9 +44,37 @@ dependencies = [
     "urllib3==2.3.0",
 ]
 
+[project.urls]
+"WorldQuant Brain Platform" = "https://platform.worldquantbrain.com"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_third_party = ["alphapower"]
+skip_gitignore = true
+
+[tool.pylint]
+jobs = 0
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = ["--rootdir=tests"]
+python_files = ["test_*.py", "*.tests.py", "tests.py"]
+
+[tool.mypy]
+warn_unused_ignores = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+show_error_codes = true
+python_version = "3.12"
