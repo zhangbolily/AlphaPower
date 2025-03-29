@@ -44,7 +44,7 @@ class Regular(BaseModel):
 
     code: str
     description: Optional[str] = None
-    operatorCount: int
+    operator_count: Optional[int] = Field(default=None, alias="operatorCount")
 
 
 class SelfAlphaListQueryParams(BaseModel):
@@ -183,11 +183,13 @@ class AlphaDetail(BaseModel):
     type: str
     author: str
     settings: SimulationSettings
-    regular: Regular
+    regular: Optional[Regular] = None
+    selection: Optional[Regular] = None
+    combo: Optional[Regular] = None
     date_created: Optional[datetime] = Field(default=None, alias="dateCreated")
     date_submitted: Optional[datetime] = Field(default=None, alias="dateSubmitted")
     date_modified: Optional[datetime] = Field(default=None, alias="dateModified")
-    name: str = ""
+    name: Optional[str] = None
     favorite: bool = False
     hidden: bool = False
     color: Optional[str] = None

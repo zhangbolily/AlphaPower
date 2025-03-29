@@ -145,14 +145,17 @@ async def test_alphas_detail(setup_mock_responses: str) -> None:
     """
     测试 Alphas Detail 的响应
     """
+    session: ClientSession = ClientSession()
+
     with patch("alphapower.client.raw_api.alphas.BASE_URL", new=setup_mock_responses):
-        alpha_id = "alpha_id"
-        session: ClientSession = ClientSession()
+        alpha_ids = ["regular_alpha_0", "regular_alpha_1", "super_alpha_0"]
+        for alpha_id in alpha_ids:
+            # 使用不同的 alpha_id 测试
+            result, rate_limit = await get_alpha_detail(session, alpha_id)
 
-        result, rate_limit = await get_alpha_detail(session, alpha_id)
-
-        assert_alpha_detail(result)
-        assert rate_limit is not None
+            assert_alpha_detail(result)
+            assert rate_limit is not None
+            assert isinstance(rate_limit, RateLimit)
 
 
 @pytest.mark.asyncio

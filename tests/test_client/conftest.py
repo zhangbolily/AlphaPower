@@ -39,20 +39,29 @@ def load_json_fixture(filename: str) -> Dict[str, Any]:
 
 def setup_alphas_check(mock_server: HTTPServer):
     """设置 Alphas Check 的 mock 响应"""
-    mock_server.expect_request(uri="/alphas/alpha_id/check").respond_with_json(
-        load_json_fixture("alpha_check.json")
+    mock_server.expect_request(uri="/alphas/regular_alpha_0/check").respond_with_json(
+        load_json_fixture("alpha_check_0.json")
+    )
+    mock_server.expect_request(uri="/alphas/regular_alpha_1/check").respond_with_json(
+        load_json_fixture("alpha_check_1.json")
     )
 
 
 def setup_alphas_detail(mock_server: HTTPServer):
     """设置 Alphas Detail 的 mock 响应"""
-    mock_server.expect_request(uri="/alphas/alpha_id").respond_with_json(
+    mock_server.expect_request(uri="/alphas/regular_alpha_0").respond_with_json(
         load_json_fixture("alpha_detail_0.json")
+    )
+    mock_server.expect_request(uri="/alphas/regular_alpha_1").respond_with_json(
+        load_json_fixture("alpha_detail_1.json")
+    )
+    mock_server.expect_request(uri="/alphas/super_alpha_0").respond_with_json(
+        load_json_fixture("super_alpha_detail_0.json")
     )
 
 
 def setup_self_alpha_list(mock_server: HTTPServer):
     """设置 Self Alpha List 的 mock 响应"""
     mock_server.expect_request(uri="/users/self/alphas").respond_with_json(
-        load_json_fixture("self_alpha_list.json")
+        load_json_fixture("self_alpha_list_0.json")
     )
