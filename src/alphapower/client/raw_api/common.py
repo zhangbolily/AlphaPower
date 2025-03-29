@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-from typing import Final, Dict
+from typing import Dict, Final
+
+from multidict import CIMultiDictProxy
 
 BASE_URL = "https://api.worldquantbrain.com"
 
@@ -120,3 +122,19 @@ SUBINDUSTRY: Final[str] = "SUBINDUSTRY"
 SECTOR: Final[str] = "SECTOR"
 
 NEUTRALIZATION: Final[list] = [NONE, MARKET, INDUSTRY, SUBINDUSTRY, SECTOR]
+
+
+def retry_after_from_headers(headers: CIMultiDictProxy[str]) -> float:
+    """ "
+    从响应头中提取重试时间
+
+    :param headers: 响应头
+    :return: 重试时间（秒）
+    """
+    retry_after = headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return float(retry_after)
+        except ValueError:
+            pass
+    return 0.0

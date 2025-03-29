@@ -1,59 +1,77 @@
-import json
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import List, Optional, Union, Any
+"""
+This module contains the data models for the AlphaPower API.
+"""
 
-import pandas as pd
+from datetime import datetime
+from typing import Any, List, Optional, Union
+
 from pydantic import BaseModel, Field
 
-from .base import DeprecatedBaseModel, map_fields
 from .sumulation import SimulationSettings
 
 
-@dataclass
 class Pyramid(BaseModel):
+    """
+    表示金字塔模型的类。
+    """
+
     name: str
     multiplier: float
 
 
-@dataclass
-class Classification:
+class Classification(BaseModel):
+    """
+    表示分类信息的类。
+    """
+
     id: str
     name: str
 
 
-@dataclass
 class Competition(BaseModel):
+    """
+    表示竞赛信息的类。
+    """
+
     id: str
     name: str
 
 
-@dataclass
-class Regular:
+class Regular(BaseModel):
+    """
+    表示常规信息的类。
+    """
+
     code: str
     description: str
     operatorCount: int
 
 
-@dataclass
-class SelfAlphaListQueryParams:
+class SelfAlphaListQueryParams(BaseModel):
+    """
+    表示 Alpha 列表查询参数的类。
+    """
+
     hidden: Optional[bool] = None
     limit: Optional[int] = None
     offset: Optional[int] = None
     order: Optional[str] = None
-    status_eq: Optional[str] = None
-    status_ne: Optional[str] = None
-    date_created_gt: Optional[str] = None
-    date_created_lt: Optional[str] = None
+    status_eq: Optional[str] = Field(default=None, alias="status")
+    status_ne: Optional[str] = Field(default=None, alias="status//!")
+    date_created_gt: Optional[str] = Field(default=None, alias="dateCreated>")
+    date_created_lt: Optional[str] = Field(default=None, alias="dateCreated<")
 
     def to_params(self):
+        """
+        将查询参数转换为字典格式。
+        """
         params = {}
         if self.hidden is not None:
             params["hidden"] = "true" if self.hidden else "false"
         if self.limit is not None:
-            params["limit"] = self.limit
+            params["limit"] = str(self.limit)
         if self.offset is not None:
-            params["offset"] = self.offset
+            params["offset"] = str(self.offset)
         if self.order is not None:
             params["order"] = self.order
         if self.status_eq is not None:
@@ -67,8 +85,11 @@ class SelfAlphaListQueryParams:
         return params
 
 
-@dataclass
 class AlphaCheckItem(BaseModel):
+    """
+    表示 Alpha 检查项的类。
+    """
+
     name: str
     result: str
     limit: Optional[float] = None
@@ -83,8 +104,11 @@ class AlphaCheckItem(BaseModel):
     multiplier: Optional[float] = None
 
 
-@dataclass
-class AlphaSample(DeprecatedBaseModel):
+class AlphaSample(BaseModel):
+    """
+    表示 Alpha 样本数据的类。
+    """
+
     pnl: Optional[float] = None
     bookSize: Optional[float] = None
     longCount: Optional[int] = None
@@ -96,18 +120,18 @@ class AlphaSample(DeprecatedBaseModel):
     sharpe: Optional[float] = None
     fitness: Optional[float] = None
     startDate: Optional[datetime] = None
-    checks: Optional[List[AlphaCheckItem]] = field(default_factory=list)
+    checks: Optional[List["AlphaCheckItem"]] = None
     selfCorrelation: Optional[float] = None
     prodCorrelation: Optional[float] = None
     osISSharpeRatio: Optional[float] = None
     preCloseSharpeRatio: Optional[float] = None
 
-    def __post_init__(self):
-        self._convert_fields({"startDate": datetime})
 
+class Alpha(BaseModel):
+    """
+    表示 Alpha 实体的类。
+    """
 
-@dataclass
-class Alpha(DeprecatedBaseModel):
     id: str
     type: str
     author: str
@@ -121,59 +145,38 @@ class Alpha(DeprecatedBaseModel):
     hidden: bool = False
     color: Optional[str] = None
     category: Optional[str] = None
-    tags: Optional[List[str]] = field(default_factory=list)
-    classifications: Optional[List[Union[Classification, dict]]] = field(
-        default_factory=list
-    )
+    tags: Optional[List[str]] = None
+    classifications: Optional[List[Union[Classification, dict]]] = None
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
-    inSample: Optional[Union[AlphaSample, dict]] = None
-    outSample: Optional[Union[AlphaSample, dict]] = None
+    inSample: Optional[Union[AlphaSample, dict]] = Field(default=None, alias="is")
+    outSample: Optional[Union[AlphaSample, dict]] = Field(default=None, alias="os")
     train: Optional[Union[AlphaSample, dict]] = None
     test: Optional[Union[AlphaSample, dict]] = None
     prod: Optional[Union[AlphaSample, dict]] = None
-    competitions: Optional[List[Union[Competition, dict]]] = field(default_factory=list)
-    themes: Optional[List[str]] = field(default_factory=list)
-    pyramids: Optional[List[Union[Pyramid, dict]]] = field(default_factory=list)
+    competitions: Optional[List[Union[Competition, dict]]] = None
+    themes: Optional[List[str]] = None
+    pyramids: Optional[List[Union[Pyramid, dict]]] = None
     team: Optional[str] = None
 
-    def __post_init__(self):
-        self._convert_fields(
-            {
-                "settings": SimulationSettings,
-                "regular": Regular,
-                "classifications": Classification,
-                "inSample": AlphaSample,
-                "outSample": AlphaSample,
-                "train": AlphaSample,
-                "test": AlphaSample,
-                "prod": AlphaSample,
-                "competitions": Competition,
-                "pyramids": Pyramid,
-                "dateCreated": datetime,
-                "dateSubmitted": datetime,
-                "dateModified": datetime,
-            }
-        )
 
+class SelfAlphaList(BaseModel):
+    """
+    表示 Alpha 列表的类。
+    """
 
-class SelfAlphaList:
-    def __init__(self, count, next, previous, results):
-        self.count = count
-        self.next = next
-        self.previous = previous
-        self.results = [Alpha(**result) for result in (results or [])]
-
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        field_mapping = {"is": "inSample", "os": "outSample"}
-        mapped_data = map_fields(data, field_mapping)
-        return cls(**mapped_data)
+    count: int
+    next: Optional[str]
+    previous: Optional[str]
+    results: List[Alpha]
 
 
 class AlphaDetail(BaseModel):
+    """
+    表示 Alpha 详细信息的类。
+    """
+
     id: str
     type: str
     author: str
@@ -203,6 +206,10 @@ class AlphaDetail(BaseModel):
     team: Optional[str] = None
 
     class Sample(BaseModel):
+        """
+        表示 Alpha 样本详细信息的类。
+        """
+
         investability_constrained: Optional["AlphaSample"] = Field(
             default=None, alias="investabilityConstrained"
         )
@@ -227,22 +234,31 @@ class AlphaDetail(BaseModel):
         preCloseSharpeRatio: Optional[float] = None
 
 
-@dataclass
-class AlphaYearlyStats_Property:
+class AlphaYearlyStatsProperty(BaseModel):
+    """
+    表示 Alpha 年度统计属性的类。
+    """
+
     name: str
     title: str
     type: str
 
 
-@dataclass
-class AlphaYearlyStats_Schema:
+class AlphaYearlyStatsSchema(BaseModel):
+    """
+    表示 Alpha 年度统计模式的类。
+    """
+
     name: str
     title: str
-    properties: List[AlphaYearlyStats_Property]
+    properties: List[AlphaYearlyStatsProperty]
 
 
-@dataclass
-class AlphaYearlyStats_Record:
+class AlphaYearlyStatsRecord(BaseModel):
+    """
+    表示 Alpha 年度统计记录的类。
+    """
+
     year: int
     pnl: float
     bookSize: float
@@ -257,77 +273,78 @@ class AlphaYearlyStats_Record:
     stage: str
 
 
-@dataclass
-class AlphaYearlyStats:
-    schema: AlphaYearlyStats_Schema
-    records: List[AlphaYearlyStats_Record]
+class AlphaYearlyStats(BaseModel):
+    """
+    表示 Alpha 年度统计的类。
+    """
 
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        return cls(**data)
-
-    def to_dataframe(self):
-        data = []
-        for record in self.records or []:
-            data.append(
-                [getattr(record, prop.name) for prop in (self.schema.properties or [])]
-            )
-        return pd.DataFrame(
-            data, columns=[prop.title for prop in (self.schema.properties or [])]
-        )
+    table_schema: AlphaYearlyStatsSchema = Field(alias="schema")
+    records: List[AlphaYearlyStatsRecord]
 
 
-@dataclass
-class AlphaPnL_Property:
+class AlphaPnLProperty(BaseModel):
+    """
+    表示 Alpha 盈亏属性的类。
+    """
+
     name: str
     title: str
     type: str
 
 
-@dataclass
-class AlphaPnL_Schema:
+class AlphaPnLSchema(BaseModel):
+    """
+    表示 Alpha 盈亏模式的类。
+    """
+
     name: str
     title: str
-    properties: List[AlphaPnL_Property]
+    properties: List[AlphaPnLProperty]
 
 
-@dataclass
-class AlphaPnL_Record(DeprecatedBaseModel):
+class AlphaPnLRecord(BaseModel):
+    """
+    表示 Alpha 盈亏记录的类。
+    """
+
     date: datetime
     pnl: float
 
-    def __post_init__(self):
-        self._convert_fields({"date": datetime})
+
+class AlphaPnL(BaseModel):
+    """
+    表示 Alpha 盈亏的类。
+    """
+
+    table_schema: AlphaPnLSchema = Field(alias="schema")
+    records: List[AlphaPnLRecord]
 
 
-@dataclass
-class AlphaPnL:
-    schema: AlphaPnL_Schema
-    records: List[AlphaPnL_Record]
-
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        return cls(**data)
-
-
-@dataclass
 class AlphaCorrelationsProperty(BaseModel):
+    """
+    表示 Alpha 相关性属性的类。
+    """
+
     name: str
     title: str
     type: str
 
 
-@dataclass
 class AlphaCorrelationsSchema(BaseModel):
+    """
+    表示 Alpha 相关性模式的类。
+    """
+
     name: str
     title: str
     properties: List[AlphaCorrelationsProperty]
 
 
-@dataclass
 class AlphaCorrelationRecord(BaseModel):
+    """
+    表示 Alpha 相关性记录的类。
+    """
+
     id: str
     name: str
     instrumentType: str
@@ -341,40 +358,50 @@ class AlphaCorrelationRecord(BaseModel):
     margin: float
 
 
-@dataclass
 class AlphaCorrelations(BaseModel):
+    """
+    表示 Alpha 相关性的类。
+    """
+
     table_schema: AlphaCorrelationsSchema = Field(alias="schema")
     records: List[List[Any]]
     min: Optional[float] = 0.0
     max: Optional[float] = 0.0
 
 
-@dataclass
-class AlphaPropertiesBody_Regular:
+class AlphaPropertiesBodyRegular(BaseModel):
+    """
+    表示 Alpha 属性主体中的常规信息的类。
+    """
+
     description: str
 
 
-@dataclass
-class AlphaPropertiesBody:
+class AlphaPropertiesBody(BaseModel):
+    """
+    表示 Alpha 属性主体的类。
+    """
+
     color: str
     name: str
     tags: List[str]
     category: str
-    regular: AlphaPropertiesBody_Regular
-
-    @classmethod
-    def from_json(cls, json_data):
-        data = json.loads(json_data)
-        return cls(**data)
+    regular: AlphaPropertiesBodyRegular
 
 
-@dataclass
 class AlphaCheckResult(BaseModel):
+    """
+    表示 Alpha 检查结果的类。
+    """
+
     inSample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="is")
     outSample: Optional["AlphaCheckResult.Sample"] = Field(default=None, alias="os")
 
-    @dataclass
     class Sample(BaseModel):
-        checks: List[AlphaCheckItem] = None
+        """
+        表示 Alpha 检查结果样本的类。
+        """
+
+        checks: Optional[List[AlphaCheckItem]] = None
         selfCorrelated: Optional[AlphaCorrelations] = None
         prodCorrelated: Optional[AlphaCorrelations] = None
