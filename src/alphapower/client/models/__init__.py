@@ -1,22 +1,21 @@
+"""
+This module contains the models used in the AlphaPower API client.
+"""
+
 __all__ = [
     "Alpha",
     "AlphaDetail",
     "AlphaPnL",
-    "AlphaPnLProperty",
     "AlphaPnLRecord",
-    "AlphaPnLSchema",
     "AlphaPropertiesBody",
     "AlphaPropertiesBodyRegular",
     "AlphaSample",
     "AlphaCheckItem",
     "AlphaCorrelations",
-    "AlphaCorrelationsProperty",
     "AlphaCorrelationRecord",
-    "AlphaCorrelationsSchema",
     "AlphaYearlyStats",
     "AlphaYearlyStatsProperty",
     "AlphaYearlyStatsRecord",
-    "AlphaYearlyStatsSchema",
     "AlphaCheckResult",
     "RateLimit",
     "Classification",
@@ -59,6 +58,7 @@ __all__ = [
     "Authentication_User",
     "Operators",
     "Pyramid",
+    "TableSchema",
 ]
 
 from .alphas import (
@@ -67,20 +67,15 @@ from .alphas import (
     AlphaCheckResult,
     AlphaCorrelationRecord,
     AlphaCorrelations,
-    AlphaCorrelationsProperty,
-    AlphaCorrelationsSchema,
     AlphaDetail,
     AlphaPnL,
-    AlphaPnLProperty,
     AlphaPnLRecord,
-    AlphaPnLSchema,
     AlphaPropertiesBody,
     AlphaPropertiesBodyRegular,
     AlphaSample,
     AlphaYearlyStats,
     AlphaYearlyStatsProperty,
     AlphaYearlyStatsRecord,
-    AlphaYearlyStatsSchema,
     Classification,
     Competition,
     Pyramid,
@@ -88,7 +83,7 @@ from .alphas import (
     SelfAlphaList,
     SelfAlphaListQueryParams,
 )
-from .base import RateLimit
+from .base import RateLimit, TableSchema
 from .data import (
     DataCategoriesChild,
     DataCategoriesParent,

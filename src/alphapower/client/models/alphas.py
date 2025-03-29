@@ -7,6 +7,7 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
+from .base import TableSchema
 from .sumulation import SimulationSettings
 
 
@@ -252,16 +253,6 @@ class AlphaYearlyStatsProperty(BaseModel):
     type: str
 
 
-class AlphaYearlyStatsSchema(BaseModel):
-    """
-    表示 Alpha 年度统计模式的类。
-    """
-
-    name: str
-    title: str
-    properties: List[AlphaYearlyStatsProperty]
-
-
 class AlphaYearlyStatsRecord(BaseModel):
     """
     表示 Alpha 年度统计记录的类。
@@ -286,28 +277,8 @@ class AlphaYearlyStats(BaseModel):
     表示 Alpha 年度统计的类。
     """
 
-    table_schema: AlphaYearlyStatsSchema = Field(alias="schema")
+    table_schema: TableSchema = Field(alias="schema")
     records: List[AlphaYearlyStatsRecord]
-
-
-class AlphaPnLProperty(BaseModel):
-    """
-    表示 Alpha 盈亏属性的类。
-    """
-
-    name: str
-    title: str
-    type: str
-
-
-class AlphaPnLSchema(BaseModel):
-    """
-    表示 Alpha 盈亏模式的类。
-    """
-
-    name: str
-    title: str
-    properties: List[AlphaPnLProperty]
 
 
 class AlphaPnLRecord(BaseModel):
@@ -324,28 +295,8 @@ class AlphaPnL(BaseModel):
     表示 Alpha 盈亏的类。
     """
 
-    table_schema: AlphaPnLSchema = Field(alias="schema")
+    table_schema: TableSchema = Field(alias="schema")
     records: List[AlphaPnLRecord]
-
-
-class AlphaCorrelationsProperty(BaseModel):
-    """
-    表示 Alpha 相关性属性的类。
-    """
-
-    name: str
-    title: str
-    type: str
-
-
-class AlphaCorrelationsSchema(BaseModel):
-    """
-    表示 Alpha 相关性模式的类。
-    """
-
-    name: str
-    title: str
-    properties: List[AlphaCorrelationsProperty]
 
 
 class AlphaCorrelationRecord(BaseModel):
@@ -371,7 +322,7 @@ class AlphaCorrelations(BaseModel):
     表示 Alpha 相关性的类。
     """
 
-    table_schema: AlphaCorrelationsSchema = Field(alias="schema")
+    table_schema: TableSchema = Field(alias="schema")
     records: List[List[Any]]
     min: Optional[float] = 0.0
     max: Optional[float] = 0.0

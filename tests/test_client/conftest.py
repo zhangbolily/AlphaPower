@@ -25,6 +25,9 @@ def setup_mock_responses(mock_server: HTTPServer) -> Generator[str, None, None]:
     setup_alphas_detail(mock_server)
     setup_self_alpha_list(mock_server)
 
+    setup_simulation_result(mock_server)
+    setup_simulation_failed_result(mock_server)
+
     # 返回 mock server 的 base URL 供测试使用
     yield mock_server.url_for("/")
 
@@ -64,4 +67,33 @@ def setup_self_alpha_list(mock_server: HTTPServer):
     """设置 Self Alpha List 的 mock 响应"""
     mock_server.expect_request(uri="/users/self/alphas").respond_with_json(
         load_json_fixture("self_alpha_list_0.json")
+    )
+
+
+def setup_simulation_result(mock_server: HTTPServer):
+    """设置 Simulation Result 的 mock 响应"""
+    mock_server.expect_request(uri="/simulations/single_0").respond_with_json(
+        load_json_fixture("single_simulation_result_0.json")
+    )
+    mock_server.expect_request(uri="/simulations/single_1").respond_with_json(
+        load_json_fixture("single_simulation_result_1.json")
+    )
+    mock_server.expect_request(uri="/simulations/super_0").respond_with_json(
+        load_json_fixture("super_simulation_result_0.json")
+    )
+
+
+def setup_simulation_failed_result(mock_server: HTTPServer):
+    """设置 Simulation Failed Result 的 mock 响应"""
+    mock_server.expect_request(uri="/simulations/single_failed_0").respond_with_json(
+        load_json_fixture("single_simulation_failed_result_0.json")
+    )
+    mock_server.expect_request(uri="/simulations/single_failed_1").respond_with_json(
+        load_json_fixture("single_simulation_failed_result_1.json")
+    )
+    mock_server.expect_request(uri="/simulations/super_failed_0").respond_with_json(
+        load_json_fixture("super_simulation_failed_result_0.json")
+    )
+    mock_server.expect_request(uri="/simulations/multi_failed_0").respond_with_json(
+        load_json_fixture("multi_simulation_failed_result_0.json")
     )

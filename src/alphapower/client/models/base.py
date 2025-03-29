@@ -1,4 +1,6 @@
 from datetime import datetime
+from pydantic import BaseModel
+from typing import List
 
 
 class DeprecatedBaseModel:
@@ -46,3 +48,22 @@ class RateLimit:
 
     def __str__(self):
         return f"RateLimit(limit={self.limit}, remaining={self.remaining}, reset={self.reset})"
+
+
+class TableSchema(BaseModel):
+    """
+    表示记录的模式。
+    """
+
+    name: str
+    title: str
+    properties: List["TableSchema.Property"]
+
+    class Property(BaseModel):
+        """
+        表示模式中的一个属性。
+        """
+
+        name: str
+        title: str
+        type: str

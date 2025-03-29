@@ -17,17 +17,21 @@ from alphapower.client.models import (
     AlphaDetail,
     Classification,
     Competition,
+    MultiSimulationResult,
     Pyramid,
     RateLimit,
     Regular,
     SelfAlphaList,
+    SimulationProgress,
     SimulationSettings,
+    SingleSimulationResult,
 )
 from alphapower.client.raw_api.alphas import (
     alpha_check_submission,
     get_alpha_detail,
     get_self_alphas,
 )
+from alphapower.client.raw_api.simulation import get_simulation_progress
 
 
 def assert_alpha_check_result(result: Optional[AlphaCheckResult]) -> None:
@@ -120,6 +124,57 @@ def assert_alpha_list(result: Optional[SelfAlphaList]) -> None:
         assert_alpha_item(alpha)
 
 
+def assert_single_simulation_result(
+    result: Optional[
+        SingleSimulationResult | MultiSimulationResult | SimulationProgress
+    ],
+) -> None:
+    """
+    验证 SingleSimulationResult 对象的结构和类型。
+    """
+    assert isinstance(result, SingleSimulationResult)
+    assert isinstance(result.id, str)
+    assert isinstance(result.type, str)
+    assert isinstance(result.status, str)
+    if result.message:
+        assert isinstance(result.message, str)
+    if result.location:
+        assert isinstance(result.location, SingleSimulationResult.ErrorLocation)
+        if result.location.line:
+            assert isinstance(result.location.line, int)
+        if result.location.start:
+            assert isinstance(result.location.start, int)
+        if result.location.end:
+            assert isinstance(result.location.end, int)
+        if result.location.property:
+            assert isinstance(result.location.property, str)
+    if result.settings:
+        assert isinstance(result.settings, SimulationSettings)
+    if result.regular:
+        assert isinstance(result.regular, str)
+    if result.alpha:
+        assert isinstance(result.alpha, str)
+    if result.parent:
+        assert isinstance(result.parent, str)
+
+
+def assert_multi_simulation_result(
+    result: Optional[
+        SingleSimulationResult | MultiSimulationResult | SimulationProgress
+    ],
+) -> None:
+    """
+    验证 MultiSimulationResult 对象的结构和类型。
+    """
+    assert isinstance(result, MultiSimulationResult)
+    assert isinstance(result.children, list)
+    assert all(isinstance(child, str) for child in result.children)
+    assert isinstance(result.status, str)
+    assert isinstance(result.type, str)
+    if result.status == "COMPELETE" and result.settings:
+        assert isinstance(result.settings, SimulationSettings)
+
+
 @pytest.mark.asyncio
 async def test_alpha_check_submission(setup_mock_responses: str) -> None:
     """
@@ -170,3 +225,56 @@ async def test_self_alpha_list(setup_mock_responses: str) -> None:
         assert_alpha_list(result)
         assert rate_limit is not None
         assert isinstance(rate_limit, RateLimit)
+
+
+@pytest.mark.asyncio
+async def test_simulation_result(setup_mock_responses: str) -> None:
+    """
+    测试模拟结果的响应
+    """
+    with patch(
+        "alphapower.client.raw_api.simulation.BASE_URL", new=setup_mock_responses
+    ):
+        session: ClientSession = ClientSession()
+
+        single_progress_ids = [
+            "single_0",
+            "single_1",
+            "single_failed_0",
+            "single_failed_1",
+            "super_failed_0",
+        ]
+        multi_progress_ids = [
+            "multi_failed_0",
+        ]
+        super_progress_ids = [
+            "super_0",
+            "super_failed_0",
+        ]
+
+        for progress_id in single_progress_ids:
+            # 使用不同的 progress_id 测试
+            finished, result, retry_after = await get_simulation_progress(
+                session, progress_id, is_multi=False
+            )
+            assert finished is True
+            assert retry_after == 0.0
+            assert_single_simulation_result(result)
+
+        for progress_id in multi_progress_ids:
+            # 使用不同的 progress_id 测试
+            finished, result, retry_after = await get_simulation_progress(
+                session, progress_id, is_multi=True
+            )
+            assert finished is True
+            assert retry_after == 0.0
+            assert_multi_simulation_result(result)
+
+        for progress_id in super_progress_ids:
+            # 使用不同的 progress_id 测试
+            finished, result, retry_after = await get_simulation_progress(
+                session, progress_id, is_multi=False
+            )
+            assert finished is True
+            assert retry_after == 0.0
+            assert_single_simulation_result(result)
