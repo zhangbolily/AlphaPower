@@ -9,15 +9,15 @@ from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 
-from alphapower.client.models import (
-    AlphaCheckResult,
-    AlphaCorrelations,
-    AlphaDetail,
-    AlphaPnL,
-    AlphaPropertiesBody,
-    AlphaYearlyStats,
+from ...client import (
+    AlphaCheckResultView,
+    AlphaCorrelationsView,
+    AlphaDetailView,
+    AlphaPnLView,
+    AlphaPropertiesPayload,
+    AlphaYearlyStatsView,
     RateLimit,
-    SelfAlphaList,
+    SelfAlphaListView,
 )
 
 from .common import (
@@ -69,7 +69,7 @@ def quote_alpha_list_query_params(
 
 async def get_self_alphas(
     session: aiohttp.ClientSession, params: Optional[Dict[str, Any]] = None
-) -> Tuple[SelfAlphaList, RateLimit]:
+) -> Tuple[SelfAlphaListView, RateLimit]:
     """
     获取当前用户的 alpha 列表。
 
@@ -83,14 +83,14 @@ async def get_self_alphas(
     url: str = f"{BASE_URL}/{ENDPOINT_SELF_ALPHA_LIST}"
     async with session.get(url, params=params) as response:
         response.raise_for_status()
-        return SelfAlphaList.model_validate(
+        return SelfAlphaListView.model_validate(
             await response.json()
         ), RateLimit.from_headers(response.headers)
 
 
 async def get_alpha_detail(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[AlphaDetail, RateLimit]:
+) -> Tuple[AlphaDetailView, RateLimit]:
     """
     获取指定 alpha 的详细信息。
 
@@ -104,14 +104,14 @@ async def get_alpha_detail(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return AlphaDetail.model_validate(
+        return AlphaDetailView.model_validate(
             await response.json()
         ), RateLimit.from_headers(response.headers)
 
 
 async def get_alpha_yearly_stats(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[AlphaYearlyStats, RateLimit]:
+) -> Tuple[AlphaYearlyStatsView, RateLimit]:
     """
     获取指定 alpha 的年度统计数据。
 
@@ -125,14 +125,14 @@ async def get_alpha_yearly_stats(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_YEARLY_STATS(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return AlphaYearlyStats.model_validate(
+        return AlphaYearlyStatsView.model_validate(
             await response.json()
         ), RateLimit.from_headers(response.headers)
 
 
 async def get_alpha_pnl(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[AlphaPnL, RateLimit]:
+) -> Tuple[AlphaPnLView, RateLimit]:
     """
     获取指定 alpha 的收益数据。
 
@@ -146,14 +146,14 @@ async def get_alpha_pnl(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_PNL(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return AlphaPnL.model_validate(await response.json()), RateLimit.from_headers(
-            response.headers
-        )
+        return AlphaPnLView.model_validate(
+            await response.json()
+        ), RateLimit.from_headers(response.headers)
 
 
 async def get_alpha_self_correlations(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[bool, Optional[float], Optional[AlphaCorrelations], RateLimit]:
+) -> Tuple[bool, Optional[float], Optional[AlphaCorrelationsView], RateLimit]:
     """
     获取指定 alpha 的自相关性数据。
 
@@ -181,13 +181,13 @@ async def get_alpha_self_correlations(
             return (
                 True,
                 None,
-                AlphaCorrelations.model_validate(await response.json()),
+                AlphaCorrelationsView.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
 
 
 async def set_alpha_properties(
-    session: aiohttp.ClientSession, alpha_id: str, properties: AlphaPropertiesBody
+    session: aiohttp.ClientSession, alpha_id: str, properties: AlphaPropertiesPayload
 ) -> Tuple[Dict[str, Any], RateLimit]:
     """
     设置指定 alpha 的属性。
@@ -208,7 +208,7 @@ async def set_alpha_properties(
 
 async def alpha_check_submission(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[bool, float, Optional[AlphaCheckResult], RateLimit]:
+) -> Tuple[bool, float, Optional[AlphaCheckResultView], RateLimit]:
     """
     检查指定 alpha 的提交状态。
 
@@ -237,6 +237,6 @@ async def alpha_check_submission(
             return (
                 True,
                 0.0,
-                AlphaCheckResult.model_validate(await response.json()),
+                AlphaCheckResultView.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )

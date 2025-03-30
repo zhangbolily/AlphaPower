@@ -4,17 +4,16 @@
 这些函数使用 aiohttp 库进行异步 HTTP 请求，并解析响应数据。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urljoin
 
 from aiohttp import ClientSession
-
-from alphapower.client.models import (
-    DataCategoriesParent,
-    DataFieldDetail,
-    DatasetDataFields,
-    DatasetDetail,
-    DataSets,
+from ...client import (
+    DataCategoriesListView,
+    DataFieldListView,
+    DatasetDataFieldsView,
+    DatasetDetailView,
+    DatasetListView,
 )
 
 from .common import (
@@ -27,7 +26,7 @@ from .common import (
 
 async def fetch_dataset_data_fields(
     session: ClientSession, params: Dict[str, Any]
-) -> DatasetDataFields:
+) -> DataFieldListView:
     """
     从 API 获取数据集字段。
 
@@ -41,14 +40,14 @@ async def fetch_dataset_data_fields(
     url = urljoin(BASE_URL, ENDPOINT_DATA_FIELDS)
     response = await session.get(url, params=params)  # 修改为 await
     response.raise_for_status()
-    return DatasetDataFields.from_json(
-        await response.text()
-    )  # 修改为 await response.text()
+    return DataFieldListView.model_validate(
+        await response.json()
+    )  # 修改为 await response.json()
 
 
 async def fetch_data_field_detail(
     session: ClientSession, field_id: str
-) -> DataFieldDetail:
+) -> DatasetDataFieldsView:
     """
     获取特定数据字段的详细信息。
 
@@ -62,14 +61,14 @@ async def fetch_data_field_detail(
     url = urljoin(BASE_URL, f"{ENDPOINT_DATA_FIELDS}/{field_id}")
     response = await session.get(url)  # 修改为 await
     response.raise_for_status()
-    return DataFieldDetail.from_json(
-        await response.text()
-    )  # 修改为 await response.text()
+    return DatasetDataFieldsView.model_validate(
+        await response.json()
+    )  # 修改为 await response.json()
 
 
 async def fetch_dataset_detail(
     session: ClientSession, dataset_id: str
-) -> DatasetDetail:
+) -> DatasetDetailView:
     """
     获取特定数据集的详细信息。
 
@@ -83,14 +82,14 @@ async def fetch_dataset_detail(
     url = urljoin(BASE_URL, f"{ENDPOINT_DATA_SETS}/{dataset_id}")
     response = await session.get(url)  # 修改为 await
     response.raise_for_status()
-    return DatasetDetail.from_json(
-        await response.text()
-    )  # 修改为 await response.text()
+    return DatasetDetailView.model_validate(
+        await response.json()
+    )  # 修改为 await response.json()
 
 
 async def fetch_datasets(
     session: ClientSession, params: Optional[Dict[str, Any]] = None
-) -> DataSets:
+) -> DatasetListView:
     """
     从 API 获取数据集列表。
 
@@ -104,10 +103,12 @@ async def fetch_datasets(
     url = urljoin(BASE_URL, ENDPOINT_DATA_SETS)
     response = await session.get(url, params=params)  # 修改为 await
     response.raise_for_status()
-    return DataSets.from_json(await response.text())  # 修改为 await response.text()
+    return DatasetListView.model_validate(
+        await response.json()
+    )  # 修改为 await response.json()
 
 
-async def fetch_data_categories(session: ClientSession) -> List[DataCategoriesParent]:
+async def fetch_data_categories(session: ClientSession) -> DataCategoriesListView:
     """
     从 API 获取数据类别。
 
@@ -120,6 +121,6 @@ async def fetch_data_categories(session: ClientSession) -> List[DataCategoriesPa
     url = urljoin(BASE_URL, ENDPOINT_DATA_CATEGORIES)
     response = await session.get(url)  # 修改为 await
     response.raise_for_status()
-    return DataCategoriesParent.from_json(
-        await response.text()
-    )  # 修改为 await response.text()
+    return DataCategoriesListView.model_validate(
+        await response.json()
+    )  # 修改为 await response.json()

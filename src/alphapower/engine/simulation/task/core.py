@@ -6,22 +6,22 @@ from typing import Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from alphapower.internal import (
+from alphapower.entity import (
     SimulationTask,
     SimulationTaskStatus,
     SimulationTaskType,
 )
-from alphapower.client.models import SimulationSettings
+from alphapower.client import SimulationSettingsView
 
 
-def get_settings_group_key(settings: SimulationSettings) -> str:
+def get_settings_group_key(settings: SimulationSettingsView) -> str:
     """
     根据 SimulationSettings 生成唯一的设置组键。
     """
-    return f"{settings.region}_{settings.delay}_{settings.language}_{settings.instrumentType}"
+    return f"{settings.region}_{settings.delay}_{settings.language}_{settings.instrument_type}"
 
 
-def get_task_signature(regular: str, settings: SimulationSettings) -> str:
+def get_task_signature(regular: str, settings: SimulationSettingsView) -> str:
     """
     生成任务签名，用于唯一标识任务。
     """
@@ -29,17 +29,17 @@ def get_task_signature(regular: str, settings: SimulationSettings) -> str:
         "region": settings.region or "None",
         "delay": settings.delay or "None",
         "language": settings.language or "None",
-        "instrumentType": settings.instrumentType or "None",
-        "nanHandling": settings.nanHandling or "None",
+        "instrument_type": settings.instrument_type or "None",
+        "nan_handling": settings.nan_handling or "None",
         "universe": settings.universe or "None",
         "truncation": settings.truncation or "None",
-        "unitHandling": settings.unitHandling or "None",
-        "testPeriod": settings.testPeriod or "None",
+        "unit_handling": settings.unit_handling or "None",
+        "test_period": settings.test_period or "None",
         "pasteurization": settings.pasteurization or "None",
         "decay": settings.decay or "None",
         "neutralization": settings.neutralization or "None",
         "visualization": settings.visualization or "None",
-        "maxTrade": settings.maxTrade or "None",
+        "max_trade": settings.max_trade or "None",
     }
     settings_str = json.dumps(settings_dict, sort_keys=True)
     return hashlib.md5(f"{regular}_{settings_str}".encode("utf-8")).hexdigest()
@@ -47,7 +47,7 @@ def get_task_signature(regular: str, settings: SimulationSettings) -> str:
 
 def _create_task(
     regular: str,
-    settings: SimulationSettings,
+    settings: SimulationSettingsView,
     settings_group_key: str,
     signature: str,
     status: SimulationTaskStatus,
@@ -70,7 +70,7 @@ def _create_task(
 async def create_simulation_task(
     session: AsyncSession,
     regular: str,
-    settings: SimulationSettings,
+    settings: SimulationSettingsView,
     priority: int = 0,
 ) -> SimulationTask:
     """
@@ -93,7 +93,7 @@ async def create_simulation_task(
 async def create_simulation_tasks(
     session: AsyncSession,
     regular: List[str],
-    settings: List[SimulationSettings],
+    settings: List[SimulationSettingsView],
     priority: List[int],
 ) -> List[SimulationTask]:
     """

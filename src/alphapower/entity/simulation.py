@@ -1,3 +1,8 @@
+"""
+模拟任务实体类
+用于表示模拟任务的数据库模型，包含任务的各种属性和状态。
+"""
+
 import enum
 from datetime import datetime
 from typing import Dict, Optional
@@ -72,7 +77,7 @@ class SimulationTask(Base):
             任务完成时的时间戳。
     """
 
-    __tablename__ = "simulation_task"
+    __tablename__ = "simulation_tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     type: Mapped[SimulationTaskType] = mapped_column(

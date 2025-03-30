@@ -1,3 +1,3 @@
-__all__ = ["get_db", "close_resources"]
+__all__ = ["get_db_session", "close_resources"]
 
-from .session import close_resources, get_db
+from .session import close_resources, get_db_session

@@ -6,7 +6,7 @@ import asyncio
 from bisect import insort
 from typing import Dict, List, Optional
 
-from alphapower.internal import SimulationTask, SimulationTaskStatus
+from alphapower.entity import SimulationTask, SimulationTaskStatus
 
 from .provider_abc import AbstractTaskProvider
 from .scheduler_abc import AbstractScheduler

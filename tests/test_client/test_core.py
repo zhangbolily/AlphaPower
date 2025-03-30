@@ -1,168 +1,199 @@
+"""
+测试 WorldQuantClient 的核心功能。
+"""
+
 import asyncio
-import unittest
+from typing import AsyncGenerator
 
-from alphapower.client.core import create_client
-from alphapower.config.settings import get_credentials
-from alphapower.internal.raw_api.simulation import (
-    MultiSimulationRequest,
-    MultiSimulationResult,
-    SimulationProgress,
-    SimulationSettings,
-    SingleSimulationRequest,
-    SingleSimulationResult,
+import pytest
+
+from alphapower.client import (
+    MultiSimulationPayload,
+    MultiSimulationResultView,
+    SimulationProgressView,
+    SimulationSettingsView,
+    SingleSimulationPayload,
+    SingleSimulationResultView,
+    WorldQuantClient,
+    create_client,
 )
+from alphapower.config.settings import get_credentials
 
 
-class TestWorldQuantClientSimulations(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
-        # 使用真实的登录信息
-        credentials = get_credentials(1)
-        self.client = create_client(credentials)
-        await self.client.__aenter__()
+@pytest.fixture(name="client")
+async def fixture_client() -> AsyncGenerator[WorldQuantClient, None]:
+    """
+    创建一个异步客户端会话，用于测试。
 
-    async def asyncTearDown(self):
-        await self.client.__aexit__(None, None, None)
+    返回:
+        异步生成器，生成一个 WorldQuantClient 实例。
+    """
+    credentials: dict = get_credentials(1)
+    async with create_client(credentials) as client_session:
+        yield client_session
 
-    async def test_create_single_simulation(self):
-        # 测试创建单次模拟
-        simulation_data = SingleSimulationRequest(
-            type="REGULAR",
-            settings=SimulationSettings(
-                maxTrade="OFF",
-                nanHandling="OFF",
-                instrumentType="EQUITY",
-                delay=1,
-                universe="TOP3000",
-                truncation=0.08,
-                unitHandling="VERIFY",
-                testPeriod="P1Y",
-                pasteurization="ON",
-                region="USA",
-                language="FASTEXPR",
-                decay=6,
-                neutralization="SUBINDUSTRY",
-                visualization=False,
-            ),
-            regular="rank(-returns)",
+
+@pytest.mark.asyncio
+async def test_create_single_simulation(client: WorldQuantClient) -> None:
+    """
+    测试创建单次模拟的功能。
+
+    参数:
+        client: WorldQuantClient 实例，用于与服务交互。
+    """
+    simulation_data: SingleSimulationPayload = SingleSimulationPayload(
+        type="REGULAR",
+        settings=SimulationSettingsView(
+            max_trade="OFF",
+            nan_handling="OFF",
+            instrument_type="EQUITY",
+            delay=1,
+            universe="TOP3000",
+            truncation=0.08,
+            unit_handling="VERIFY",
+            test_period="P1Y",
+            pasteurization="ON",
+            region="USA",
+            language="FASTEXPR",
+            decay=6,
+            neutralization="SUBINDUSTRY",
+            visualization=False,
+        ),
+        regular="rank(-returns)",
+    )
+    success: bool
+    progress_id: str
+    retry_after: float
+    success, progress_id, retry_after = await client.create_single_simulation(
+        simulation_data
+    )
+    assert success
+    assert isinstance(progress_id, str)
+    assert isinstance(retry_after, float)
+
+    await asyncio.sleep(retry_after)
+    while True:
+        finished: bool
+        progress_or_result: SingleSimulationResultView | SimulationProgressView
+        finished, progress_or_result, retry_after = (
+            await client.get_single_simulation_progress(progress_id)
         )
-        success, progress_id, retry_after = await self.client.create_single_simulation(
-            simulation_data
-        )
-        self.assertTrue(success)
-        self.assertIsInstance(progress_id, str)
-        self.assertIsInstance(retry_after, float)
-
-        await asyncio.sleep(retry_after)
-        while True:
-            finished, progress_or_result, retry_after = (
-                await self.client.get_single_simulation_progress(progress_id)
-            )
-            if finished:
-                self.assertIsInstance(progress_or_result, SingleSimulationResult)
-                break
-            else:
-                self.assertIsInstance(progress_or_result, SimulationProgress)
-            await asyncio.sleep(retry_after)
-
-        self.assertIsNotNone(progress_or_result.id)
-        self.assertIsNotNone(progress_or_result.type)
-        self.assertIsNotNone(progress_or_result.status)
-
-        if progress_or_result.status == "FAILED":
-            self.assertIsNotNone(progress_or_result.message)
-            self.assertIsNotNone(progress_or_result.location)
-        elif progress_or_result.status == "COMPLETE":
-            self.assertIsNotNone(progress_or_result.settings)
-            self.assertIsNotNone(progress_or_result.regular)
-            self.assertIsNotNone(progress_or_result.alpha)
+        if finished:
+            assert isinstance(progress_or_result, SingleSimulationResultView)
+            break
         else:
-            self.fail(f"Invalid status {progress_or_result.status}")
-
-    async def test_create_multi_simulation(self):
-        # 测试创建多次模拟
-        simulation_data = MultiSimulationRequest(
-            [
-                SingleSimulationRequest(
-                    type="REGULAR",
-                    settings=SimulationSettings(
-                        maxTrade="OFF",
-                        nanHandling="OFF",
-                        instrumentType="EQUITY",
-                        delay=1,
-                        universe="TOP3000",
-                        truncation=0.08,
-                        unitHandling="VERIFY",
-                        testPeriod="P1Y",
-                        pasteurization="ON",
-                        region="USA",
-                        language="FASTEXPR",
-                        decay=6,
-                        neutralization="SUBINDUSTRY",
-                        visualization=False,
-                    ),
-                    regular="rank(returns)",
-                ),
-                SingleSimulationRequest(
-                    type="REGULAR",
-                    settings=SimulationSettings(
-                        maxTrade="OFF",
-                        nanHandling="OFF",
-                        instrumentType="EQUITY",
-                        delay=1,
-                        universe="TOP1000",
-                        truncation=0.08,
-                        unitHandling="VERIFY",
-                        testPeriod="P1Y",
-                        pasteurization="ON",
-                        region="USA",
-                        language="FASTEXPR",
-                        decay=4,
-                        neutralization="SUBINDUSTRY",
-                        visualization=False,
-                    ),
-                    regular="rank(-returns)",
-                ),
-            ],
-        )
-        success, progress_id, retry_after = await self.client.create_multi_simulation(
-            simulation_data
-        )
-        self.assertTrue(success)
-        self.assertIsInstance(progress_id, str)
-        self.assertIsInstance(retry_after, float)
-
+            assert isinstance(progress_or_result, SimulationProgressView)
         await asyncio.sleep(retry_after)
-        while True:
-            finished, progress_or_result, retry_after = (
-                await self.client.get_multi_simulation_progress(progress_id)
+
+    assert progress_or_result.id is not None
+    assert progress_or_result.type is not None
+    assert progress_or_result.status is not None
+
+    if progress_or_result.status == "FAILED":
+        assert progress_or_result.message is not None
+        assert progress_or_result.location is not None
+    elif progress_or_result.status == "COMPLETE":
+        assert progress_or_result.settings is not None
+        assert progress_or_result.regular is not None
+        assert progress_or_result.alpha is not None
+    else:
+        pytest.fail(f"Invalid status {progress_or_result.status}")
+
+
+@pytest.mark.asyncio
+async def test_create_multi_simulation(client: WorldQuantClient) -> None:
+    """
+    测试创建多次模拟的功能。
+
+    参数:
+        client: WorldQuantClient 实例，用于与服务交互。
+    """
+    simulation_data: MultiSimulationPayload = MultiSimulationPayload(
+        [
+            SingleSimulationPayload(
+                type="REGULAR",
+                settings=SimulationSettingsView(
+                    max_trade="OFF",
+                    nan_handling="OFF",
+                    instrument_type="EQUITY",
+                    delay=1,
+                    universe="TOP3000",
+                    truncation=0.08,
+                    unit_handling="VERIFY",
+                    test_period="P1Y",
+                    pasteurization="ON",
+                    region="USA",
+                    language="FASTEXPR",
+                    decay=6,
+                    neutralization="SUBINDUSTRY",
+                    visualization=False,
+                ),
+                regular="rank(returns)",
+            ),
+            SingleSimulationPayload(
+                type="REGULAR",
+                settings=SimulationSettingsView(
+                    max_trade="OFF",
+                    nan_handling="OFF",
+                    instrument_type="EQUITY",
+                    delay=1,
+                    universe="TOP1000",
+                    truncation=0.08,
+                    unit_handling="VERIFY",
+                    test_period="P1Y",
+                    pasteurization="ON",
+                    region="USA",
+                    language="FASTEXPR",
+                    decay=4,
+                    neutralization="SUBINDUSTRY",
+                    visualization=False,
+                ),
+                regular="rank(-returns)",
+            ),
+        ],
+    )
+    success: bool
+    progress_id: str
+    retry_after: float
+    success, progress_id, retry_after = await client.create_multi_simulation(
+        simulation_data
+    )
+    assert success
+    assert isinstance(progress_id, str)
+    assert isinstance(retry_after, float)
+
+    await asyncio.sleep(retry_after)
+    finished: bool
+    progress_or_result: (
+        MultiSimulationResultView | SimulationProgressView | SingleSimulationResultView
+    )
+    while True:
+        finished, progress_or_result, retry_after = (
+            await client.get_multi_simulation_progress(progress_id)
+        )
+        if finished:
+            assert isinstance(progress_or_result, MultiSimulationResultView)
+            break
+        else:
+            assert isinstance(progress_or_result, SimulationProgressView)
+        await asyncio.sleep(retry_after)
+
+    assert progress_or_result.status is not None
+    assert progress_or_result.type is not None
+    assert len(progress_or_result.children) > 0
+
+    if progress_or_result.status == "COMPLETE":
+        for child_progress_id in progress_or_result.children:
+            finished, progress_or_result = await client.get_multi_simulation_result(
+                child_progress_id
             )
-            if finished:
-                self.assertIsInstance(progress_or_result, MultiSimulationResult)
-                break
-            else:
-                self.assertIsInstance(progress_or_result, SimulationProgress)
-            await asyncio.sleep(retry_after)
-
-        self.assertIsNotNone(progress_or_result.status)
-        self.assertIsNotNone(progress_or_result.type)
-        self.assertIsNot(len(progress_or_result.children), 0)
-
-        if progress_or_result.status == "COMPLETE":
-            for child_progress_id in progress_or_result.children:
-                finished, progress_or_result = (
-                    await self.client.get_multi_simulation_result(child_progress_id)
-                )
-                self.assertIsInstance(progress_or_result, SingleSimulationResult)
-                self.assertIsNotNone(progress_or_result.id)
-                self.assertIsNotNone(progress_or_result.type)
-                self.assertIsNotNone(progress_or_result.status)
-                self.assertEqual(progress_or_result.status, "COMPLETE")
-                self.assertIsNotNone(progress_or_result.settings)
-                self.assertIsNotNone(progress_or_result.regular)
-                self.assertIsNotNone(progress_or_result.alpha)
-        elif progress_or_result.status == "FAILED":
-            pass
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert isinstance(progress_or_result, SingleSimulationResultView)
+            assert progress_or_result.id is not None
+            assert progress_or_result.type is not None
+            assert progress_or_result.status is not None
+            assert progress_or_result.status == "COMPLETE"
+            assert progress_or_result.settings is not None
+            assert progress_or_result.regular is not None
+            assert progress_or_result.alpha is not None
+    elif progress_or_result.status == "FAILED":
+        pass

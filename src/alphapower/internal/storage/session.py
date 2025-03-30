@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from alphapower.config.settings import DATABASES
-from alphapower.internal import AlphaBase, DataBase, SimulationBase
+from alphapower.entity import AlphaBase, DataBase, SimulationBase
 from alphapower.internal.utils import setup_logging
 
 # 配置日志
@@ -41,7 +41,7 @@ lock = Lock()
 
 
 @lru_cache
-def load_module(db_name: str):
+def load_module(db_name: str) -> object:
     """
     动态加载模块并返回模块对象。
 
@@ -90,11 +90,11 @@ async def create_tables_if_needed(db_name: str) -> None:
     engine = engines[db_name]
     async with engine.begin() as conn:
         await conn.run_sync(base_class.metadata.create_all)
-    logger.info(f"数据库 '{db_name}' 的表已初始化。")
+    logger.info("数据库 '%s' 的表已初始化。", db_name)
 
 
 @asynccontextmanager
-async def get_db(db_name: str) -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session(db_name: str) -> AsyncGenerator[AsyncSession, None]:
     """
     获取指定数据库的异步会话。
 
@@ -123,7 +123,7 @@ async def get_db(db_name: str) -> AsyncGenerator[AsyncSession, None]:
             # 确保会话关闭之前没有进行中的事务
             await session.close()
     except Exception as e:
-        logger.exception(f"获取数据库会话时出错: {e}")
+        logger.exception("获取数据库会话时出错: %s", e)
         raise
 
 
@@ -133,4 +133,4 @@ async def close_resources() -> None:
     """
     for db_name, engine in engines.items():
         await engine.dispose()  # 异步释放数据库引擎资源
-        logger.info(f"数据库引擎 '{db_name}' 已释放。")
+        logger.info("数据库引擎 '%s' 已释放。", db_name)

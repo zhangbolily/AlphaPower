@@ -3,12 +3,11 @@
 """
 
 from aiohttp import ClientSession
+from ...client import Operators
+from .common import BASE_URL, ENDPOINT_OPERATORS
 
-from alphapower.client.models import Operators
-from alphapower.client.raw_api.common import BASE_URL, ENDPOINT_OPERATORS
 
-
-async def get_all_operators(session: ClientSession):
+async def get_all_operators(session: ClientSession) -> Operators:
     """
     从 AlphaPower API 获取所有运营商。
 
@@ -24,4 +23,4 @@ async def get_all_operators(session: ClientSession):
     url = f"{BASE_URL}/{ENDPOINT_OPERATORS}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return Operators.from_json(await response.text())
+        return Operators.model_validate(await response.json())

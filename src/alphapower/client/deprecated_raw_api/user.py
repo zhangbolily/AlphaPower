@@ -1,10 +1,14 @@
+"""
+用户认证模块
+"""
+
 from aiohttp import ClientSession
 
-from alphapower.client.models import Authentication
-from alphapower.client.raw_api.common import BASE_URL, ENDPOINT_AUTHENTICATION
+from ...client import AuthenticationView
+from .common import BASE_URL, ENDPOINT_AUTHENTICATION
 
 
-async def authentication(session: ClientSession) -> Authentication:
+async def authentication(session: ClientSession) -> AuthenticationView:
     """
     进行用户认证。
 
@@ -17,4 +21,4 @@ async def authentication(session: ClientSession) -> Authentication:
     url = f"{BASE_URL}/{ENDPOINT_AUTHENTICATION}"
     response = await session.post(url)
     response.raise_for_status()
-    return Authentication.from_json(await response.text())
+    return AuthenticationView.model_validate(await response.json())

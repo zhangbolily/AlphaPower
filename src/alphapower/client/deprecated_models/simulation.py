@@ -6,21 +6,21 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, RootModel
 
-from .base import TableSchema
+from .common import TableSchema
 
 
-class SimulationSettings(BaseModel):
+class SimulationSettingsView(BaseModel):
     """
     表示模拟的设置。
     """
 
-    nan_handling: Optional[str] = Field(None, alias="nanHandling")
-    instrument_type: Optional[str] = Field(None, alias="instrumentType")
+    nan_handling: Optional[str] = Field(None, validation_alias="nanHandling")
+    instrument_type: Optional[str] = Field(None, validation_alias="instrumentType")
     delay: Optional[int] = None
     universe: Optional[str] = None
     truncation: Optional[float] = None
-    unit_handling: Optional[str] = Field(None, alias="unitHandling")
-    test_period: Optional[str] = Field(None, alias="testPeriod")
+    unit_handling: Optional[str] = Field(None, validation_alias="unitHandling")
+    test_period: Optional[str] = Field(None, validation_alias="testPeriod")
     pasteurization: Optional[str] = None
     region: Optional[str] = None
     language: Optional[str] = None
@@ -28,11 +28,11 @@ class SimulationSettings(BaseModel):
     neutralization: Optional[str] = None
     visualization: Optional[bool] = None
     max_trade: Optional[str] = Field(
-        None, alias="maxTrade"
+        None, validation_alias="maxTrade"
     )  # 无权限字段，默认值为 None
 
 
-class SimulationProgress(BaseModel):
+class SimulationProgressView(BaseModel):
     """
     表示模拟的进度。
     """
@@ -40,7 +40,7 @@ class SimulationProgress(BaseModel):
     progress: float
 
 
-class SingleSimulationResult(BaseModel):
+class SingleSimulationResultView(BaseModel):
     """
     表示单次模拟的结果。
     """
@@ -49,8 +49,8 @@ class SingleSimulationResult(BaseModel):
     type: str
     status: str
     message: Optional[str] = None
-    location: Optional["SingleSimulationResult.ErrorLocation"] = None
-    settings: Optional[SimulationSettings] = None
+    location: Optional["SingleSimulationResultView.ErrorLocation"] = None
+    settings: Optional[SimulationSettingsView] = None
     regular: Optional[str] = None
     alpha: Optional[str] = None
     parent: Optional[str] = None
@@ -66,7 +66,7 @@ class SingleSimulationResult(BaseModel):
         property: Optional[str] = None
 
 
-class MultiSimulationResult(BaseModel):
+class MultiSimulationResultView(BaseModel):
     """
     表示多次模拟的结果。
     """
@@ -74,16 +74,16 @@ class MultiSimulationResult(BaseModel):
     children: List[str]
     status: str
     type: str
-    settings: Optional[SimulationSettings] = None
+    settings: Optional[SimulationSettingsView] = None
 
 
-class SingleSimulationRequest(BaseModel):
+class SingleSimulationPayload(BaseModel):
     """
     表示单次模拟的请求。
     """
 
     type: str
-    settings: SimulationSettings
+    settings: SimulationSettingsView
     regular: str
 
     def to_params(self) -> Dict[str, Any]:
@@ -100,12 +100,12 @@ class SingleSimulationRequest(BaseModel):
         }
 
 
-class MultiSimulationRequest(RootModel):
+class MultiSimulationRayload(RootModel):
     """
     表示多次模拟的请求。
     """
 
-    root: List[SingleSimulationRequest]
+    root: List[SingleSimulationPayload]
 
     def to_params(self) -> List[Any]:
         """
@@ -117,17 +117,17 @@ class MultiSimulationRequest(RootModel):
         return [s.to_params() for s in self.root]
 
 
-class SelfSimulationActivities(BaseModel):
+class SelfSimulationActivitiesView(BaseModel):
     """
     表示自模拟活动。
     """
 
-    yesterday: "SelfSimulationActivities.Period"
-    current: "SelfSimulationActivities.Period"
-    previous: "SelfSimulationActivities.Period"
-    ytd: "SelfSimulationActivities.Period"
-    total: "SelfSimulationActivities.Period"
-    records: "SelfSimulationActivities.Records"
+    yesterday: "SelfSimulationActivitiesView.Period"
+    current: "SelfSimulationActivitiesView.Period"
+    previous: "SelfSimulationActivitiesView.Period"
+    ytd: "SelfSimulationActivitiesView.Period"
+    total: "SelfSimulationActivitiesView.Period"
+    records: "SelfSimulationActivitiesView.Records"
     type: str
 
     class Period(BaseModel):
@@ -144,5 +144,5 @@ class SelfSimulationActivities(BaseModel):
         表示模拟活动的记录。
         """
 
-        table_schema: TableSchema = Field(alias="schema")
+        table_schema: TableSchema = Field(validation_alias="schema")
         records: List[Dict[str, Any]]

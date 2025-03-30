@@ -6,13 +6,12 @@ from typing import Any, List, Union
 
 import aiohttp
 
-from alphapower.client.models import (
-    MultiSimulationResult,
-    SelfSimulationActivities,
-    SimulationProgress,
-    SingleSimulationResult,
+from ...client import (
+    MultiSimulationResultView,
+    SelfSimulationActivitiesView,
+    SimulationProgressView,
+    SingleSimulationResultView,
 )
-
 from .common import BASE_URL, ENDPOINT_ACTIVITIES_SIMULATION, ENDPOINT_SIMULATION
 
 DEFAULT_SIMULATION_RESPONSE: tuple[bool, str, float] = (False, "", 0.0)
@@ -80,7 +79,9 @@ async def get_simulation_progress(
     session: aiohttp.ClientSession, progress_id: str, is_multi: bool
 ) -> tuple[
     bool,
-    Union[SingleSimulationResult, MultiSimulationResult, SimulationProgress],
+    Union[
+        SingleSimulationResultView, MultiSimulationResultView, SimulationProgressView
+    ],
     float,
 ]:
     """
@@ -110,17 +111,19 @@ async def get_simulation_progress(
             finished = False
             return (
                 finished,
-                SimulationProgress.model_validate(await response.json()),
+                SimulationProgressView.model_validate(await response.json()),
                 retry_after,
             )
         else:
             # 模拟完成，返回模拟结果
             finished = True
-            result: Union[SingleSimulationResult, MultiSimulationResult]
+            result: Union[SingleSimulationResultView, MultiSimulationResultView]
             if is_multi:
-                result = MultiSimulationResult.model_validate(await response.json())
+                result = MultiSimulationResultView.model_validate(await response.json())
             else:
-                result = SingleSimulationResult.model_validate(await response.json())
+                result = SingleSimulationResultView.model_validate(
+                    await response.json()
+                )
             return (
                 finished,
                 result,
@@ -130,7 +133,7 @@ async def get_simulation_progress(
 
 async def get_self_simulation_activities(
     session: aiohttp.ClientSession, date: str
-) -> SelfSimulationActivities:
+) -> SelfSimulationActivitiesView:
     """
     获取用户的模拟活动。
 
@@ -144,4 +147,4 @@ async def get_self_simulation_activities(
     url: str = f"{BASE_URL}/{ENDPOINT_ACTIVITIES_SIMULATION}"
     async with session.get(url, params={"date": date}) as response:
         response.raise_for_status()
-        return SelfSimulationActivities.model_validate(await response.json())
+        return SelfSimulationActivitiesView.model_validate(await response.json())

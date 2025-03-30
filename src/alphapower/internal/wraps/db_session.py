@@ -2,17 +2,17 @@
 数据库会话管理
 """
 
-from typing import Any, Callable, Coroutine, Never
+from typing import Any, Callable, Coroutine
 
 
-from alphapower.internal.storage import get_db
+from alphapower.internal.storage import get_db_session
 
 
 def with_session(
     db_name: str = "default",
 ) -> Callable[
-    [Callable[..., Coroutine[Any, Any, Never]]],
-    Callable[..., Coroutine[Any, Any, Never]],
+    [Callable[..., Coroutine[Any, Any, None]]],
+    Callable[..., Coroutine[Any, Any, None]],
 ]:
     """
     装饰器，用于在异步函数中注入数据库会话。
@@ -25,10 +25,10 @@ def with_session(
     """
 
     def decorator(
-        func: Callable[..., Coroutine[Any, Any, Never]],
-    ) -> Callable[..., Coroutine[Any, Any, Never]]:
+        func: Callable[..., Coroutine[Any, Any, None]],
+    ) -> Callable[..., Coroutine[Any, Any, None]]:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            async with get_db(db_name) as session:
+            async with get_db_session(db_name) as session:
                 return await func(session, *args, **kwargs)
 
         return wrapper

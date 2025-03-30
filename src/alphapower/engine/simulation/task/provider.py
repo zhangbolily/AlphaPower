@@ -12,7 +12,7 @@ from alphapower.engine.simulation.task.core import (
     get_simulation_tasks_by,
     update_simulation_task_scheduled_info,
 )
-from alphapower.internal import SimulationTask, SimulationTaskStatus
+from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.wraps import Transactional, Propagation
 
 from .provider_abc import AbstractTaskProvider

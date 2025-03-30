@@ -1,4 +1,7 @@
-import asyncio
+"""
+测试调度器的功能。
+"""
+
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,13 +14,13 @@ from alphapower.engine.simulation.task import (
     PriorityScheduler,
     create_simulation_tasks,
 )
-from alphapower.internal import SimulationTask, SimulationTaskStatus
-from alphapower.client.models import SimulationSettings
+from alphapower.entity import SimulationTask, SimulationTaskStatus
+from alphapower.client import SimulationSettingsView
 from alphapower.internal.wraps import with_session
 
 
 @pytest.mark.asyncio
-async def test_add_task():
+async def test_add_task() -> None:
     scheduler = PriorityScheduler()
     task = MagicMock(spec=SimulationTask, settings_group_key="group_1", priority=10)
 
@@ -28,7 +31,7 @@ async def test_add_task():
 
 
 @pytest.mark.asyncio
-async def test_fetch_tasks_from_provider():
+async def test_fetch_tasks_from_provider() -> None:
     task_provider = AsyncMock()
     task_provider.fetch_tasks.return_value = [
         MagicMock(spec=SimulationTask, settings_group_key="group_1", priority=10)
@@ -42,7 +45,7 @@ async def test_fetch_tasks_from_provider():
 
 
 @pytest.mark.asyncio
-async def test_has_tasks():
+async def test_has_tasks() -> None:
     scheduler = PriorityScheduler()
     assert not await scheduler.has_tasks()
 
@@ -53,7 +56,7 @@ async def test_has_tasks():
 
 
 @pytest.mark.asyncio
-async def test_schedule_single_task():
+async def test_schedule_single_task() -> None:
     task1 = MagicMock(
         spec=SimulationTask,
         settings_group_key="group_1",
@@ -76,7 +79,7 @@ async def test_schedule_single_task():
 
 
 @pytest.mark.asyncio
-async def test_schedule_batch_tasks():
+async def test_schedule_batch_tasks() -> None:
     task1 = MagicMock(
         spec=SimulationTask,
         settings_group_key="group_1",
@@ -129,15 +132,18 @@ async def test_schedule_batch_tasks():
 
 @pytest.mark.asyncio
 @with_session("simulation_test")
-async def test_schedule_with_database_task_provider(session: AsyncSession):
+async def test_schedule_with_database_task_provider(session: AsyncSession) -> None:
+    """
+    测试使用数据库任务提供者的调度功能。
+    """
     # 准备测试数据
     regular = ["task1", "task2"]
-    settings: List[SimulationSettings] = [
-        SimulationSettings(
-            region="USA", delay=10, language="FASTEXPRESS", instrumentType="type1"
+    settings: List[SimulationSettingsView] = [
+        SimulationSettingsView.model_construct(
+            region="USA", delay=10, language="FASTEXPRESS", instrument_type="type1"
         ),
-        SimulationSettings(
-            region="CN", delay=20, language="FASTEXPRESS", instrumentType="type2"
+        SimulationSettingsView.model_construct(
+            region="CN", delay=20, language="FASTEXPRESS", instrument_type="type2"
         ),
     ]
     priority = [1, 1]

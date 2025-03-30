@@ -5,7 +5,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from alphapower.internal import SimulationTask
+from alphapower.entity import SimulationTask
 
 from .provider_abc import AbstractTaskProvider
 

@@ -17,17 +17,14 @@ from sqlalchemy.future import select
 from tqdm import tqdm  # 引入进度条库
 
 from alphapower.client import (
-    DataField,
-    DatasetDataFields,
+    DataFieldListView,
+    DataFieldView,
     GetDataFieldsQueryParams,
     WorldQuantClient,
     create_client,
 )
 from alphapower.config.settings import get_credentials
-from alphapower.internal import Data_Category as Data_CategoryEntity
-from alphapower.internal import Data_Subcategory as Data_SubcategoryEntity
-from alphapower.internal import DataField as DataFieldEntity
-from alphapower.internal import DataSet as DataSetEntity
+from alphapower.entity import DataCategory, DataField, Dataset
 from alphapower.internal.utils import setup_logging  # 修复导入
 from alphapower.internal.wraps import with_session
 
@@ -39,29 +36,29 @@ console_logger = setup_logging(f"{__name__}_console", enable_console=True)  # �
 
 
 async def create_datafield(
-    session: AsyncSession, datafield_data: DataField, dataset_id: int, task_id: int
+    session: AsyncSession, datafield_data: DataFieldView, dataset_id: int, task_id: int
 ) -> None:
     """
     异步创建或更新数据字段。
     """
 
-    query = select(DataFieldEntity).filter(
-        DataFieldEntity.field_id == datafield_data.id,
-        DataFieldEntity.region == datafield_data.region,
-        DataFieldEntity.universe == datafield_data.universe,
-        DataFieldEntity.delay == datafield_data.delay,
+    query = select(DataField).filter(
+        DataField.field_id == datafield_data.id,
+        DataField.region == datafield_data.region,
+        DataField.universe == datafield_data.universe,
+        DataField.delay == datafield_data.delay,
     )
     result = await session.execute(query)
     datafield = result.scalars().first()
 
     category = await get_or_create_entity(
         session,
-        Data_CategoryEntity,
+        DataCategory,
         "name",
         datafield_data.category,
     )
 
-    if not isinstance(category, Data_CategoryEntity):
+    if not isinstance(category, DataCategory):
         file_logger.error(
             "[任务 %d] 数据字段 %s 的分类 %s 不存在。",
             task_id,
@@ -72,11 +69,11 @@ async def create_datafield(
 
     subcategory = await get_or_create_entity(
         session,
-        Data_SubcategoryEntity,
+        DataCategory,
         "name",
         datafield_data.subcategory,
     )
-    if not isinstance(subcategory, Data_SubcategoryEntity):
+    if not isinstance(subcategory, DataCategory):
         file_logger.error(
             "[任务 %d] 数据字段 %s 的子分类 %s 不存在。",
             task_id,
@@ -85,7 +82,7 @@ async def create_datafield(
         )
         return
 
-    new_datafield = DataFieldEntity(
+    new_datafield = DataField(
         dataset_id=dataset_id,
         field_id=datafield_data.id,
         description=datafield_data.description,
@@ -96,8 +93,8 @@ async def create_datafield(
         region=datafield_data.region,
         delay=datafield_data.delay,
         coverage=datafield_data.coverage,
-        user_count=datafield_data.userCount,
-        alpha_count=datafield_data.alphaCount,
+        user_count=datafield_data.user_count,
+        alpha_count=datafield_data.alpha_count,
         themes=datafield_data.themes,
     )
 
@@ -123,7 +120,7 @@ async def create_datafield(
 
 async def fetch_datafields(
     client: WorldQuantClient, query_params: GetDataFieldsQueryParams, task_id: int
-) -> Optional[DatasetDataFields]:
+) -> Optional[DataFieldListView]:
     """
     异步获取数据字段。
     """
@@ -144,7 +141,7 @@ async def fetch_datafields(
 async def process_datafields_concurrently(
     session: AsyncSession,
     client: WorldQuantClient,
-    dataset: DataSetEntity,
+    dataset: Dataset,
     instrument_type: Optional[str],
     parallel: int,
     progress_bar: tqdm,
@@ -174,7 +171,7 @@ async def process_datafields_concurrently(
                 region=dataset.region,
                 universe=dataset.universe,
                 delay=dataset.delay,
-                instrumentType=instrument_type,
+                instrument_type=instrument_type,
                 offset=offset,
                 limit=limit,
             )
@@ -230,11 +227,11 @@ async def sync_datafields(
 
     async with client:
         try:
-            datasets: List[DataSetEntity] = []
+            datasets: List[Dataset] = []
 
             if dataset_id:
                 # 根据 dataset_id 查询特定数据集
-                query = select(DataSetEntity).filter_by(dataset_id=dataset_id)
+                query = select(Dataset).filter_by(dataset_id=dataset_id)
                 result = await session.execute(query)
                 datasets = list(result.scalars().all())
                 if not datasets:
@@ -243,7 +240,7 @@ async def sync_datafields(
                 console_logger.info("找到指定数据集 %s，开始同步数据字段。", dataset_id)
             else:
                 # 查询所有数据集
-                query = select(DataSetEntity)
+                query = select(Dataset)
                 result = await session.execute(query)
                 datasets = list(result.scalars().all())
                 console_logger.info("找到 %d 个数据集。", len(datasets))

@@ -1,22 +1,31 @@
+"""
+同步因子数据的模块。
+该模块提供了从 AlphaPower API 同步因子数据到数据库的功能。
+"""
+
 import asyncio
 from datetime import datetime, timedelta
+from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select  # 添加导入
 
+from alphapower.client import SelfAlphaListQueryParams  # 引入客户端
 from alphapower.client import (
-    Alpha,
-    SelfAlphaListQueryParams,  # 引入客户端
+    AlphaView,
+    ClassificationView,
+    CompetitionView,
+    RegularView,
     WorldQuantClient,
     create_client,
 )
 from alphapower.config.settings import get_credentials
-from alphapower.internal import (
-    Alphas,
-    Alphas_Classification,
-    Alphas_Competition,
-    Alphas_Regular,
-    Alphas_Settings,
+from alphapower.entity import (
+    Alpha,
+    AlphaClassification,
+    AlphaCompetition,
+    AlphaRegular,
+    AlphaSettings,
 )
 from alphapower.internal.utils import setup_logging  # 引入公共方法
 from alphapower.internal.wraps import with_session
@@ -31,9 +40,12 @@ file_logger = setup_logging(__name__, enable_console=False)
 alpha_lock = asyncio.Lock()
 
 
-def create_alphas_settings(alpha_data: Alpha) -> Alphas_Settings:
-    return Alphas_Settings(
-        instrument_type=alpha_data.settings.instrumentType,
+def create_alphas_settings(alpha_data: AlphaView) -> AlphaSettings:
+    """
+    创建 AlphaSettings 实例。
+    """
+    return AlphaSettings(
+        instrument_type=alpha_data.settings.instrument_type,
         region=alpha_data.settings.region,
         universe=alpha_data.settings.universe,
         delay=alpha_data.settings.delay,
@@ -41,58 +53,110 @@ def create_alphas_settings(alpha_data: Alpha) -> Alphas_Settings:
         neutralization=alpha_data.settings.neutralization,
         truncation=alpha_data.settings.truncation,
         pasteurization=alpha_data.settings.pasteurization,
-        unit_handling=alpha_data.settings.unitHandling,
-        nan_handling=alpha_data.settings.nanHandling,
+        unit_handling=alpha_data.settings.unit_handling,
+        nan_handling=alpha_data.settings.nan_handling,
         language=alpha_data.settings.language,
         visualization=alpha_data.settings.visualization,
-        test_period=getattr(alpha_data.settings, "testPeriod", None),
+        test_period=getattr(alpha_data.settings, "test_period", None),
     )
 
 
-def create_alphas_regular(regular) -> Alphas_Regular:
-    return Alphas_Regular(
+def create_alphas_regular(regular: RegularView) -> AlphaRegular:
+    """
+    创建 AlphaRegular 实例。
+
+    参数:
+    regular: AlphaView.Regular 对象，包含因子规则的详细信息。
+
+    返回:
+    AlphaRegular 实例。
+    """
+    return AlphaRegular(
         code=regular.code,
         description=getattr(regular, "description", None),
-        operator_count=regular.operatorCount,
+        operator_count=regular.operator_count,
     )
 
 
-async def create_alpha_classifications(session: AsyncSession, classifications_data):
+async def create_alpha_classifications(
+    session: AsyncSession, classifications_data: Optional[List[ClassificationView]]
+) -> List[AlphaClassification]:
+    """
+    创建或获取 AlphaClassification 实例列表。
+
+    参数:
+    session: 数据库会话。
+    classifications_data: 分类数据列表。
+
+    返回:
+    AlphaClassification 实例列表。
+    """
     if classifications_data is None:
         return []
-    return [
+
+    entity_objs = [
         await get_or_create_entity(
-            session, Alphas_Classification, "classification_id", data
+            session, AlphaClassification, "classification_id", data
         )
         for data in classifications_data
     ]
 
+    return entity_objs
 
-async def create_alpha_competitions(session: AsyncSession, competitions_data):
+
+async def create_alpha_competitions(
+    session: AsyncSession, competitions_data: Optional[List[CompetitionView]]
+) -> List[AlphaCompetition]:
+    """
+    创建或获取 AlphaCompetition 实例列表。
+
+    参数:
+    session: 数据库会话。
+    competitions_data: 比赛数据列表。
+
+    返回:
+    AlphaCompetition 实例列表。
+    """
     if competitions_data is None:
         return []
-    return [
-        await get_or_create_entity(session, Alphas_Competition, "competition_id", data)
+
+    entity_objs: List[AlphaCompetition] = [
+        await get_or_create_entity(session, AlphaCompetition, "competition_id", data)
         for data in competitions_data
     ]
 
+    return entity_objs
+
 
 def create_alphas(
-    alpha_data: Alpha,
-    settings: Alphas_Settings,
-    regular: Alphas_Regular,
-    classifications,
-    competitions,
-) -> Alphas:
-    return Alphas(
+    alpha_data: AlphaView,
+    settings: AlphaSettings,
+    regular: AlphaRegular,
+    classifications: List[AlphaClassification],
+    competitions: List[AlphaCompetition],
+) -> Alpha:
+    """
+    创建 Alpha 实例。
+
+    参数:
+    alpha_data: AlphaView 对象，包含因子详细信息。
+    settings: AlphaSettings 实例。
+    regular: AlphaRegular 实例。
+    classifications: AlphaClassification 实例列表。
+    competitions: AlphaCompetition 实例列表。
+
+    返回:
+    Alpha 实例。
+    """
+    return Alpha(
         alpha_id=alpha_data.id,
         type=alpha_data.type,
         author=alpha_data.author,
         settings=settings,
         regular=regular,
-        date_created=alpha_data.dateCreated,
-        date_submitted=getattr(alpha_data, "dateSubmitted", None),
-        date_modified=alpha_data.dateModified,
+        date_created=alpha_data.date_created,
+        date_submitted=getattr(alpha_data, "date_submitted", None),
+        date_modified=alpha_data.date_modified,
         name=getattr(alpha_data, "name", None),
         favorite=alpha_data.favorite,
         hidden=alpha_data.hidden,
@@ -103,19 +167,23 @@ def create_alphas(
         grade=alpha_data.grade,
         stage=alpha_data.stage,
         status=alpha_data.status,
-        in_sample=create_sample(alpha_data.inSample),
-        out_sample=create_sample(alpha_data.outSample),
+        in_sample=create_sample(alpha_data.in_sample),
+        out_sample=create_sample(alpha_data.out_sample),
         train=create_sample(alpha_data.train),
         test=create_sample(alpha_data.test),
         prod=create_sample(alpha_data.prod),
         competitions=competitions,
         themes=",".join(alpha_data.themes) if alpha_data.themes else None,
-        pyramids=",".join(alpha_data.pyramids) if alpha_data.pyramids else None,
+        # TODO: pyramids 字段需要重新设计
+        # pyramids=",".join(alpha_data.pyramids) if alpha_data.pyramids else None,
+        pyramids=None,
         team=",".join(alpha_data.team) if alpha_data.team else None,
     )
 
 
-async def process_alphas_page(session: AsyncSession, alphas_results):
+async def process_alphas_page(
+    session: AsyncSession, alphas_results: List[AlphaView]
+) -> tuple[int, int]:
     """
     异步处理单页 alphas 数据。
     """
@@ -125,7 +193,7 @@ async def process_alphas_page(session: AsyncSession, alphas_results):
     for alpha_data in alphas_results:
         alpha_id = alpha_data.id
 
-        result = await session.execute(select(Alphas).filter_by(alpha_id=alpha_id))
+        result = await session.execute(select(Alpha).filter_by(alpha_id=alpha_id))
         existing_alpha = result.scalar_one_or_none()
 
         settings = create_alphas_settings(alpha_data)
@@ -145,7 +213,7 @@ async def process_alphas_page(session: AsyncSession, alphas_results):
                 await session.merge(alpha)
                 updated_alphas += 1
             else:
-                await session.add(alpha)
+                session.add(alpha)
                 inserted_alphas += 1
 
     # 提交事务
@@ -156,8 +224,8 @@ async def process_alphas_page(session: AsyncSession, alphas_results):
 
 
 async def process_alphas_for_date(
-    client: WorldQuantClient, session, cur_time: datetime, parallel: int
-):
+    client: WorldQuantClient, session: AsyncSession, cur_time: datetime, parallel: int
+) -> tuple[int, int, int]:
     """
     同步处理指定日期的 alphas 数据，支持分片并行处理。
     """
@@ -179,7 +247,10 @@ async def process_alphas_for_date(
 
         if alphas_data_result.count < 10000:
             file_logger.info(
-                f"{start_time} 至 {end_time} 总计 {alphas_data_result.count} 条 alphas 数据。"
+                "%s 至 %s 总计 %d 条 alphas 数据。",
+                start_time,
+                end_time,
+                alphas_data_result.count,
             )
 
             # 分片处理
@@ -220,7 +291,9 @@ async def process_alphas_for_date(
             mid_time = start_time + (end_time - start_time) / 2
             end_time = mid_time
             file_logger.info(
-                f"数据量超过限制，缩小日期范围为 {start_time} 至 {end_time}。"
+                "数据量超过限制，缩小日期范围为 %s 至 %s。",
+                start_time,
+                end_time,
             )
 
     return fetched_alphas, inserted_alphas, updated_alphas
@@ -228,13 +301,13 @@ async def process_alphas_for_date(
 
 async def process_alphas_pages(
     client: WorldQuantClient,
-    session,
+    session: AsyncSession,
     start_time: datetime,
     end_time: datetime,
     start_page: int,
     end_page: int,
     page_size: int,
-):
+) -> tuple[int, int, int]:
     """
     处理指定页范围内的 alphas 数据。
     """
@@ -258,7 +331,11 @@ async def process_alphas_pages(
 
         fetched_alphas += len(alphas_data_result.results)
         file_logger.info(
-            f"为 {start_time} 至 {end_time} 第 {page} 页获取了 {len(alphas_data_result.results)} 个 alphas。"
+            "为 %s 至 %s 第 %d 页获取了 %d 个 alphas。",
+            start_time,
+            end_time,
+            page,
+            len(alphas_data_result.results),
         )
 
         inserted, updated = await process_alphas_page(
@@ -271,7 +348,9 @@ async def process_alphas_pages(
 
 
 @with_session("alphas")
-async def sync_alphas(session, start_time: datetime, end_time: datetime, parallel: int):
+async def sync_alphas(
+    session: AsyncSession, start_time: datetime, end_time: datetime, parallel: int
+) -> None:
     """
     异步同步因子。
 
@@ -306,8 +385,11 @@ async def sync_alphas(session, start_time: datetime, end_time: datetime, paralle
                 updated_alphas += updated
 
             file_logger.info(
-                f"因子同步完成。获取: {fetched_alphas}, 插入: {inserted_alphas}, 更新: {updated_alphas}。"
+                "因子同步完成。获取: %d, 插入: %d, 更新: %d。",
+                fetched_alphas,
+                inserted_alphas,
+                updated_alphas,
             )
         except Exception as e:
-            file_logger.error(f"同步因子时出错: {e}")
+            file_logger.error("同步因子时出错: %s", e)
             await session.rollback()

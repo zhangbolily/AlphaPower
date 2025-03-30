@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from alphapower.internal import SimulationTask
+from alphapower.entity import SimulationTask
 
 
 class AbstractTaskProvider(ABC):
