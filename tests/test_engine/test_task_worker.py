@@ -322,3 +322,152 @@ async def test_multi_simulation_task_cancel(
     mock_consultant_client.create_multi_simulation.assert_called_once()
     mock_consultant_client.delete_simulation.assert_called_once()
     mock_consultant_client.get_multi_simulation_progress.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_worker_init_invalid_client() -> None:
+    """
+    测试 Worker 初始化时传入无效客户端的异常分支。
+    """
+    mock_client = MagicMock(spec=str)
+    with pytest.raises(
+        ValueError, match="Client must be an instance of WorldQuantClient."
+    ):
+        Worker(client=mock_client)
+
+
+@pytest.mark.asyncio
+async def test_worker_init_unauthenticated_client() -> None:
+    """
+    测试 Worker 初始化时传入未认证客户端的异常分支。
+    """
+    mock_client = MagicMock(spec=WorldQuantClient)
+    mock_client.authentication_info = None
+    with pytest.raises(
+        ValueError, match="Client must be authenticated with valid credentials."
+    ):
+        Worker(client=mock_client)
+
+
+@pytest.mark.asyncio
+async def test_worker_init_invalid_user_role() -> None:
+    """
+    测试 Worker 初始化时传入无效用户角色的异常分支。
+    """
+    mock_client = MagicMock(spec=WorldQuantClient)
+    mock_client.authentication_info = MagicMock(
+        spec=AuthenticationView, permissions=["INVALID_ROLE"]
+    )
+    with pytest.raises(
+        ValueError, match="Client must have a valid user role \\(CONSULTANT or USER\\)."
+    ):
+        Worker(client=mock_client)
+
+
+@pytest.mark.asyncio
+async def test_try_cancel_tasks_failure(
+    user_worker: Worker, mock_user_client: MagicMock
+) -> None:
+    """
+    测试 _try_cancel_tasks 方法中任务取消失败的分支。
+    """
+    setattr(user_worker, "_shutdown", True)
+    setattr(user_worker, "_cancel_tasks", True)
+    mock_user_client.delete_simulation.return_value = False
+
+    test_func = getattr(user_worker, "_try_cancel_tasks")
+    result = await test_func(progress_id="invalid_progress_id")
+    assert result is False
+    mock_user_client.delete_simulation.assert_called_once_with(
+        progress_id="invalid_progress_id"
+    )
+
+
+@pytest.mark.asyncio
+async def test_do_work_unknown_user_role(mock_user_client: WorldQuantClient) -> None:
+    """
+    测试 _do_work 方法中未知用户角色的分支。
+    """
+    user_worker: Worker = Worker(client=mock_user_client)
+    task_0: SimulationTask = SimulationTask(
+        id=1,
+        type=SimulationTaskType.REGULAR,
+        status=SimulationTaskStatus.PENDING,
+        settings={},
+        regular="rank(-returns)",
+    )
+
+    mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
+    mock_scheduler.schedule.return_value = [task_0]
+    setattr(user_worker, "_shutdown", False)
+    setattr(user_worker, "_user_role", "UNKNOWN_ROLE")
+    await user_worker.set_scheduler(mock_scheduler)
+
+    async def stop() -> None:
+        """
+        模拟关闭工作者的异步函数。
+        """
+        await asyncio.sleep(1)
+        await user_worker.stop(cancel_tasks=False)
+
+    stop_task: asyncio.Task = asyncio.create_task(stop())
+
+    with pytest.raises(Exception, match="未知用户角色 UNKNOWN_ROLE，无法处理任务"):
+        await user_worker.run()
+    await stop_task
+
+
+@pytest.mark.asyncio
+async def test_multi_completed_task_post_handler(
+    consultant_worker: Worker, mock_consultant_client: MagicMock
+) -> None:
+    """
+    测试 _multi_completed_task_post_handler 方法。
+    """
+    tasks = [
+        SimulationTask(
+            id=1,
+            type=SimulationTaskType.REGULAR,
+            status=SimulationTaskStatus.PENDING,
+            settings={},
+            regular="rank(-returns)",
+        ),
+        SimulationTask(
+            id=2,
+            type=SimulationTaskType.REGULAR,
+            status=SimulationTaskStatus.PENDING,
+            settings={},
+            regular="rank(-returns)",
+        ),
+    ]
+    result = MultiSimulationResultView(
+        children=["child_id_0", "child_id_1"],
+        type=SimulationTaskType.REGULAR.value,
+        status=SimulationTaskStatus.COMPLETE.value,
+    )
+
+    mock_consultant_client.get_multi_simulation_child_result = AsyncMock()
+    mock_consultant_client.get_multi_simulation_child_result.side_effect = [
+        (
+            True,
+            SingleSimulationResultView(
+                id="child_id_0",
+                type=SimulationTaskType.REGULAR.value,
+                status=SimulationTaskStatus.COMPLETE.value,
+            ),
+        ),
+        (False, None),  # 模拟获取子任务结果失败
+    ]
+
+    test_func = getattr(consultant_worker, "_multi_completed_task_post_handler")
+    await test_func(tasks, result)
+
+    assert len(getattr(consultant_worker, "_post_handler_tasks")) == 2
+    await asyncio.gather(*getattr(consultant_worker, "_post_handler_tasks"))
+
+    mock_consultant_client.get_multi_simulation_child_result.assert_any_call(
+        child_progress_id="child_id_0"
+    )
+    mock_consultant_client.get_multi_simulation_child_result.assert_any_call(
+        child_progress_id="child_id_1"
+    )

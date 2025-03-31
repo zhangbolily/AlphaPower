@@ -368,7 +368,7 @@ class Worker(AbstractWorker):
                 await self._handle_multi_simulation_task(tasks)
             else:
                 await logger.aerror(f"未知用户角色 {self._user_role}，无法处理任务")
-                return
+                raise ValueError(f"未知用户角色 {self._user_role}，无法处理任务")
 
     async def set_scheduler(self, scheduler: AbstractScheduler) -> None:
         """
