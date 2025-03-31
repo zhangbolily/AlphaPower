@@ -1,6 +1,7 @@
-import unittest
 import os
-from alphapower.internal.utils.logging import setup_logging
+import unittest
+
+from alphapower.internal.logging import setup_logging
 
 
 class TestLogging(unittest.TestCase):

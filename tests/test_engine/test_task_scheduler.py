@@ -2,6 +2,7 @@
 测试调度器的功能。
 """
 
+import asyncio
 from typing import List
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,6 +18,7 @@ from alphapower.engine.simulation.task import (
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.client import SimulationSettingsView
 from alphapower.internal.wraps import with_session
+from tests.mocks.mock_task_worker import MockWorker
 
 
 @pytest.mark.asyncio
@@ -168,3 +170,35 @@ async def test_schedule_with_database_task_provider(session: AsyncSession) -> No
 
     await session.execute(text(f"DELETE FROM {SimulationTask.__tablename__}"))
     await session.commit()
+
+
+async def test_scheduler_with_mock_task_worker() -> None:
+    """
+    测试调度器与Mock工作者的集成。
+    """
+
+    scheduler = PriorityScheduler()
+    worker = MockWorker(work_time=1, job_slots=2)
+    worker.set_scheduler(scheduler)
+
+    task1 = MagicMock(
+        spec=SimulationTask,
+        settings_group_key="group_1",
+        priority=10,
+        status=SimulationTaskStatus.PENDING,
+    )
+    task2 = MagicMock(
+        spec=SimulationTask,
+        settings_group_key="group_1",
+        priority=20,
+        status=SimulationTaskStatus.PENDING,
+    )
+    scheduler.add_tasks([task1, task2])
+
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.sleep(3)  # 等待工作者开始运行
+    await worker.stop(cancel_tasks=False)  # 停止工作者
+    await worker_task
+
+    assert task1.status == SimulationTaskStatus.COMPLETE
+    assert task2.status == SimulationTaskStatus.COMPLETE

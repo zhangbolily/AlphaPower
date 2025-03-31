@@ -11,8 +11,8 @@ __all__ = [
     "Transactional",
     "with_session",
 ]
+from .logging import setup_logging
 from .storage.session import get_db_session
-from .utils.logging import setup_logging
 from .wraps.db_session import with_session
 from .wraps.exception import exception_handler
 from .wraps.log_time_elapsed import log_time_elapsed

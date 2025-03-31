@@ -1,77 +1,60 @@
 """
-@file: worker.py
-@brief: Mock工作者类
-@details:
-    该模块定义了一个Mock工作者类，用于模拟工作者的行为。
-@note:
-    该模块是 AlphaPower 引擎的一部分
+@file   worker.py
+@brief  工作者类
 """
 
-import asyncio
-from typing import List, Optional
+from typing import Callable, Optional
 
-from alphapower.entity import SimulationTask, SimulationTaskStatus
+from alphapower.client import WorldQuantClient
 
 from .scheduler_abc import AbstractScheduler
 from .worker_abc import AbstractWorker
 
 
-class MockWorker(AbstractWorker):
+class Worker(AbstractWorker):
     """
-    Mock工作者类，用于模拟工作者的行为。
+    工作者类，用于执行任务。
     """
 
-    def __init__(self, work_time: int = 1, job_slots: int = 1):
+    def __init__(self, client: WorldQuantClient) -> None:
         """
-        初始化Mock工作者。
+        初始化工作者实例。
         """
-        self.scheduler: Optional[AbstractScheduler] = None
-        self.tasks: List[SimulationTask] = []
-        self.running: bool = False
-        self.running_lock: asyncio.Lock = asyncio.Lock()
-        self.shutdown: bool = False
-        self.work_time: int = work_time
-        self.job_slots: int = job_slots
+        self._scheduler: Optional[AbstractScheduler] = None
+        self._client = client
+
+    async def _do_work(self) -> None:
+        """
+        执行工作的方法。
+        """
+        async with self._client:
+            if self._scheduler is None:
+                raise ValueError("Scheduler is not set.")
+            # 这里可以添加执行任务的逻辑
+            pass
 
     def set_scheduler(self, scheduler: AbstractScheduler) -> None:
         """
         设置调度器。
+
         :param scheduler: 调度器实例
         """
-        self.scheduler = scheduler
+        self._scheduler = scheduler
 
-    async def run(self):
+    async def run(self) -> None:
         """
         运行工作者，执行任务。
         """
-        self.running = True
+        async with self._client:
+            if self._scheduler is None:
+                raise ValueError("Scheduler is not set.")
 
-        async with self.running_lock:
-            while not self.shutdown:
-                if self.tasks:
-                    raise RuntimeError(
-                        "任务列表不为空，存在已完成任务未清理，无法运行工作者。"
-                    )
-                if self.scheduler is None or not isinstance(
-                    self.scheduler, AbstractScheduler
-                ):
-                    raise RuntimeError("调度器未设置或类型不正确。")
-
-                self.tasks = await self.scheduler.schedule(batch_size=self.job_slots)
-                await asyncio.sleep(self.work_time)  # 模拟异步操作
-                # 模拟任务完成
-                for task in self.tasks:
-                    task.status = SimulationTaskStatus.COMPLETE
-
-    async def stop(self, cancel_tasks=False):
+    async def stop(self, cancel_tasks: bool = False) -> None:
         """
         停止工作者，清理资源。
-        :param cancel_tasks: 是否取消任务
         """
-        self.shutdown = True
 
-        async with self.running_lock:
-            await asyncio.sleep(self.work_time)
-            if cancel_tasks:
-                self.tasks.clear()
-            self.running = False
+    def add_task_complete_callback(self, callback: Callable) -> None:
+        """
+        添加任务完成回调函数。
+        """

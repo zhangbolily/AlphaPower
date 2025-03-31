@@ -68,6 +68,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = ["--rootdir=tests"]
 python_files = ["test_*.py", "*.tests.py", "tests.py"]
+env = ["ENVIRONMENT=test"]
 
 [tool.mypy]
 warn_unused_ignores = true

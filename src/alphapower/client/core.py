@@ -88,16 +88,16 @@ class WorldQuantClient:
         username (str): 用户名。
         password (str): 密码。
         """
-        self._refresh_task: Optional[asyncio.Task] = None
         self.shutdown: bool = False
-
-        """初始化 ClientSession"""
         connector: TCPConnector = TCPConnector(
             limit=pool_connections, limit_per_host=pool_maxsize
         )
         auth: BasicAuth = BasicAuth(username, password)
         self.session: ClientSession = ClientSession(connector=connector, auth=auth)
         self._auth_task: Coroutine = authentication(self.session)
+        self._refresh_task: Optional[asyncio.Task] = None
+        self._usage_count: int = 0
+        self._usage_lock: asyncio.Lock = asyncio.Lock()
 
     async def _refresh_session(self, expiry: float) -> None:
         """
@@ -107,7 +107,7 @@ class WorldQuantClient:
         expiry (int): 会话过期时间（秒）。
         """
         while not self.shutdown:
-            await asyncio.sleep(expiry - 60)  # 提前 60 秒刷新
+            await asyncio.sleep(max(expiry - 60, 0))  # 提前 60 秒刷新
             self._auth_task = authentication(self.session)
             session_info: AuthenticationView = await self._auth_task
             expiry = session_info.token.expiry  # 更新下次刷新时间
@@ -119,19 +119,18 @@ class WorldQuantClient:
         返回:
         WorldQuantClient: 客户端实例。
         """
-        if (
-            not self.session
-            or self.session.closed
-            or not isinstance(self.session, ClientSession)
-        ):
-            raise RuntimeError("客户端会话未初始化或已关闭")
+        async with self._usage_lock:
+            if self._usage_count == 0:
+                if not self.session or self.session.closed:
+                    raise RuntimeError("客户端会话未初始化或已关闭")
 
-        if self._auth_task is None:
-            raise RuntimeError("客户端会话认证方法未提供")
+                if self._auth_task is None:
+                    raise RuntimeError("客户端会话认证方法未提供")
 
-        session_info: AuthenticationView = await self._auth_task
-        expiry: float = session_info.token.expiry
-        self._refresh_task = asyncio.create_task(self._refresh_session(expiry))
+                session_info: AuthenticationView = await self._auth_task
+                expiry: float = session_info.token.expiry
+                self._refresh_task = asyncio.create_task(self._refresh_session(expiry))
+            self._usage_count += 1
         return self
 
     async def __aexit__(
@@ -148,12 +147,15 @@ class WorldQuantClient:
         exc_val (Optional[BaseException]): 异常值。
         exc_tb (Optional[BaseException]): 异常回溯。
         """
-        if self._refresh_task:
-            self._refresh_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._refresh_task
-        if self.session:
-            await self.session.close()
+        async with self._usage_lock:
+            self._usage_count -= 1
+            if self._usage_count == 0:
+                if self._refresh_task:
+                    self._refresh_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await self._refresh_task
+                if self.session:
+                    await self.session.close()
 
     # -------------------------------
     # Simulation-related methods
