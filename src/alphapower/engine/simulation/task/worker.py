@@ -29,7 +29,7 @@ from .worker_abc import AbstractWorker
 logger = setup_logging(__name__)
 
 
-def get_single_simulation_payload(task: SimulationTask) -> SingleSimulationPayload:
+def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPayload:
     """
     获取单个模拟任务的负载数据。
 
@@ -61,13 +61,13 @@ class Worker(AbstractWorker):
         """
         self._client: WorldQuantClient = client
         self._post_handler_lock: asyncio.Lock = asyncio.Lock()
-        self._post_handler_tasks: List[asyncio.Task] = []
-        self._completed_task_callbacks: List[
+        self._post_handler_futures: List[asyncio.Task] = []
+        self._task_complete_callbacks: List[
             Callable[[SimulationTask, SingleSimulationResultView], None]
         ] = []
         self._scheduler: Optional[AbstractScheduler] = None
-        self._shutdown: bool = True
-        self._cancel_tasks: bool = False
+        self._shutdown_flag: bool = False
+        self._is_task_cancel_requested: bool = False
 
         if not isinstance(self._client, WorldQuantClient):
             raise ValueError("Client must be an instance of WorldQuantClient.")
@@ -82,7 +82,7 @@ class Worker(AbstractWorker):
         else:
             raise ValueError("Client must have a valid user role (CONSULTANT or USER).")
 
-    async def _try_cancel_tasks(self, progress_id: str) -> bool:
+    async def _cancel_task_if_possible(self, progress_id: str) -> bool:
         """
         尝试取消任务。
 
@@ -90,9 +90,9 @@ class Worker(AbstractWorker):
         :return: 是否成功取消任务
         """
         logger.debug(
-            f"尝试取消任务，进度 ID: {progress_id}, shutdown: {self._shutdown}, cancel_tasks: {self._cancel_tasks}"
+            f"尝试取消任务，进度 ID: {progress_id}, shutdown: {self._shutdown_flag}, cancel_tasks: {self._is_task_cancel_requested}"
         )
-        if self._shutdown and self._cancel_tasks:
+        if self._shutdown_flag and self._is_task_cancel_requested:
             await logger.aerror(f"工作者已关闭，尝试取消任务，进度 ID: {progress_id}")
             success = await self._client.delete_simulation(progress_id=progress_id)
             if success:
@@ -101,7 +101,7 @@ class Worker(AbstractWorker):
             await logger.aerror(f"任务取消失败，进度 ID: {progress_id}")
         return False
 
-    async def _completed_task_post_handler(
+    async def _handle_task_completion(
         self, task: SimulationTask, result: SingleSimulationResultView
     ) -> None:
         """
@@ -115,18 +115,18 @@ class Worker(AbstractWorker):
         # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
         logger.info(f"任务 {task.id} 完成，结果: {result}")
 
-    async def _handle_single_simulation_task(self, task: SimulationTask) -> None:
+    async def _process_single_simulation_task(self, task: SimulationTask) -> None:
         """
         处理单个模拟任务的方法。
 
         :param task: 模拟任务
         """
         logger.debug(f"开始处理单个模拟任务，任务 ID: {task.id}")
-        if self._shutdown:
+        if self._shutdown_flag:
             await logger.aerror(f"工作者已关闭，无法处理任务 ID: {task.id}")
             return
 
-        payload = get_single_simulation_payload(task)
+        payload = build_single_simulation_payload(task)
 
         async with self._client:
             try:
@@ -154,7 +154,7 @@ class Worker(AbstractWorker):
                     logger.debug(
                         f"检查任务进度，任务 ID: {task.id}, 进度 ID: {progress_id}"
                     )
-                    if await self._try_cancel_tasks(progress_id):
+                    if await self._cancel_task_if_possible(progress_id):
                         await logger.ainfo(
                             f"任务已取消，任务 ID: {task.id}，进度 ID: {progress_id}"
                         )
@@ -172,9 +172,7 @@ class Worker(AbstractWorker):
                         await logger.ainfo(
                             f"单个模拟任务完成，任务 ID: {task.id}，进度 ID: {progress_id}"
                         )
-                        await self._completed_task_post_handler(
-                            task, progress_or_result
-                        )
+                        await self._handle_task_completion(task, progress_or_result)
                         break
 
                     if isinstance(progress_or_result, SimulationProgressView):
@@ -195,7 +193,7 @@ class Worker(AbstractWorker):
                     f"处理单个模拟任务失败，任务 ID: {task.id}，错误: {e}"
                 )
 
-    async def _multi_completed_task_post_handler(
+    async def _handle_multi_task_completion(
         self, tasks: List[SimulationTask], result: MultiSimulationResultView
     ) -> None:
         """
@@ -227,7 +225,7 @@ class Worker(AbstractWorker):
                     await logger.ainfo(
                         f"获取多个模拟任务的子任务结果成功，任务实体 ID {task.id} 子任务 ID {child_id}"
                     )
-                    await self._completed_task_post_handler(task, result)
+                    await self._handle_task_completion(task, result)
                 except Exception as e:
                     # 捕获所有异常并记录错误，不向上继续抛出
                     await logger.aerror(
@@ -235,14 +233,14 @@ class Worker(AbstractWorker):
                     )
 
         async with self._post_handler_lock:
-            self._post_handler_tasks.extend(
+            self._post_handler_futures.extend(
                 [
                     asyncio.create_task(handle_completed_task(task, child_id))
                     for task, child_id in zip(tasks, result.children)
                 ]
             )
 
-    async def _handle_multi_simulation_task(self, tasks: List[SimulationTask]) -> None:
+    async def _process_multi_simulation_task(self, tasks: List[SimulationTask]) -> None:
         """
         处理多个模拟任务的方法。
 
@@ -255,7 +253,7 @@ class Worker(AbstractWorker):
             await logger.aerror("当前用户角色不是顾问，无法处理多个模拟任务")
             return
 
-        if self._shutdown:
+        if self._shutdown_flag:
             await logger.aerror("工作者已关闭，无法处理多个模拟任务")
             return
 
@@ -266,7 +264,7 @@ class Worker(AbstractWorker):
             return
 
         single_simu_payloads: List[SingleSimulationPayload] = [
-            get_single_simulation_payload(task) for task in tasks
+            build_single_simulation_payload(task) for task in tasks
         ]
         payload: MultiSimulationPayload = MultiSimulationPayload(
             root=single_simu_payloads
@@ -300,7 +298,7 @@ class Worker(AbstractWorker):
                     logger.debug(
                         f"检查多个任务进度，任务 ID 列表: {task_ids_str}, 进度 ID: {progress_id}"
                     )
-                    if await self._try_cancel_tasks(progress_id):
+                    if await self._cancel_task_if_possible(progress_id):
                         await logger.ainfo(
                             f"任务已取消，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
                         )
@@ -343,18 +341,18 @@ class Worker(AbstractWorker):
         执行工作的方法。
         """
         logger.debug("开始执行工作循环")
-        while not self._shutdown:
+        while not self._shutdown_flag:
             if self._scheduler is None:
                 await logger.aerror("调度器未设置，无法执行工作")
                 raise Exception("调度器未设置，无法执行工作")
 
-            schedule_task_count: int = (
+            scheduled_task_count: int = (
                 MAX_CONSULTANT_SIMULATION_SLOTS
                 if self._user_role == ROLE_CONSULTANT
                 else 1
             )
             tasks: List[SimulationTask] = await self._scheduler.schedule(
-                batch_size=schedule_task_count
+                batch_size=scheduled_task_count
             )
             if not tasks:
                 logger.debug("调度器未返回任务，等待 5 秒后重试")
@@ -363,9 +361,9 @@ class Worker(AbstractWorker):
                 continue
 
             if self._user_role == ROLE_USER:
-                await self._handle_single_simulation_task(tasks[0])
+                await self._process_single_simulation_task(tasks[0])
             elif self._user_role == ROLE_CONSULTANT:
-                await self._handle_multi_simulation_task(tasks)
+                await self._process_multi_simulation_task(tasks)
             else:
                 await logger.aerror(f"未知用户角色 {self._user_role}，无法处理任务")
                 raise ValueError(f"未知用户角色 {self._user_role}，无法处理任务")
@@ -387,7 +385,7 @@ class Worker(AbstractWorker):
         运行工作者，执行任务。
         """
         logger.debug("启动工作者")
-        self._shutdown = False
+        self._shutdown_flag = False
         await self._do_work()
 
     async def stop(self, cancel_tasks: bool = False) -> None:
@@ -397,9 +395,9 @@ class Worker(AbstractWorker):
         :param cancel_tasks: 是否取消任务
         """
         logger.debug(f"停止工作者，cancel_tasks: {cancel_tasks}")
-        self._shutdown = True
-        self._cancel_tasks = cancel_tasks
-        await asyncio.gather(*self._post_handler_tasks)
+        self._shutdown_flag = True
+        self._is_task_cancel_requested = cancel_tasks
+        await asyncio.gather(*self._post_handler_futures)
         await logger.ainfo("工作者已停止")
 
     async def add_task_complete_callback(
@@ -411,9 +409,9 @@ class Worker(AbstractWorker):
         :param callback: 任务完成时的回调函数
         """
         logger.debug(f"添加任务完成回调函数: {callback}")
-        if not self._shutdown:
+        if not self._shutdown_flag:
             await logger.aerror("工作者未关闭，无法添加任务完成回调函数")
-        self._completed_task_callbacks.append(callback)
+        self._task_complete_callbacks.append(callback)
         await logger.adebug(
-            f"添加任务完成回调函数 {callback}， 当前回调函数数量 {len(self._completed_task_callbacks)}"
+            f"添加任务完成回调函数 {callback}， 当前回调函数数量 {len(self._task_complete_callbacks)}"
         )

@@ -127,7 +127,7 @@ async def test_worker_run_with_scheduler(user_worker: Worker) -> None:
         模拟关闭工作者的异步函数。
         """
         await asyncio.sleep(1)
-        setattr(user_worker, "_shutdown", True)
+        setattr(user_worker, "_shutdown_flag", True)
 
     shutdown_task: asyncio.Task = asyncio.create_task(shutdown())
     await user_worker.run()
@@ -136,19 +136,19 @@ async def test_worker_run_with_scheduler(user_worker: Worker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_single_simulation_task(user_worker: Worker) -> None:
+async def test_process_single_simulation_task(user_worker: Worker) -> None:
     """
     测试处理单个模拟任务的方法。
     """
     task: MagicMock = MagicMock(spec=SimulationTask)
     task.id = 1
-    setattr(user_worker, "_shutdown", True)  # 使用 setattr 方法访问受保护成员
-    m_func: Callable = getattr(user_worker, "_handle_single_simulation_task")
+    setattr(user_worker, "_shutdown_flag", True)  # 使用 setattr 方法访问受保护成员
+    m_func: Callable = getattr(user_worker, "_process_single_simulation_task")
     await m_func(task)  # 假设此方法为私有且无法更改
 
 
 @pytest.mark.asyncio
-async def test_handle_multi_simulation_task(user_worker: Worker) -> None:
+async def test_process_multi_simulation_task(user_worker: Worker) -> None:
     """
     测试处理多个模拟任务的方法。
     """
@@ -158,8 +158,8 @@ async def test_handle_multi_simulation_task(user_worker: Worker) -> None:
     tasks: List[SimulationTask] = [
         SimulationTask() for _ in range(2)
     ]  # 使用 SimulationTask 实例
-    setattr(user_worker, "_shutdown", True)  # 使用 setattr 方法访问受保护成员
-    m_func: Callable = getattr(user_worker, "_handle_multi_simulation_task")
+    setattr(user_worker, "_shutdown_flag", True)  # 使用 setattr 方法访问受保护成员
+    m_func: Callable = getattr(user_worker, "_process_multi_simulation_task")
     await m_func(tasks)  # 假设此方法为私有且无法更改
 
 
@@ -174,9 +174,11 @@ async def test_worker_stop(user_worker: Worker) -> None:
         [asyncio.create_task(asyncio.sleep(1))],
     )  # 使用 setattr 方法访问受保护成员
     await user_worker.stop(cancel_tasks=True)
-    assert getattr(user_worker, "_shutdown") is True  # 使用 getattr 方法访问受保护成员
     assert (
-        getattr(user_worker, "_cancel_tasks") is True
+        getattr(user_worker, "_shutdown_flag") is True
+    )  # 使用 getattr 方法访问受保护成员
+    assert (
+        getattr(user_worker, "_is_task_cancel_requested") is True
     )  # 使用 getattr 方法访问受保护成员
 
 
@@ -365,17 +367,17 @@ async def test_worker_init_invalid_user_role() -> None:
 
 
 @pytest.mark.asyncio
-async def test_try_cancel_tasks_failure(
+async def test_cancel_task_if_possible_failure(
     user_worker: Worker, mock_user_client: MagicMock
 ) -> None:
     """
-    测试 _try_cancel_tasks 方法中任务取消失败的分支。
+    测试 _cancel_task_if_possible 方法中任务取消失败的分支。
     """
-    setattr(user_worker, "_shutdown", True)
-    setattr(user_worker, "_cancel_tasks", True)
+    setattr(user_worker, "_shutdown_flag", True)
+    setattr(user_worker, "_is_task_cancel_requested", True)
     mock_user_client.delete_simulation.return_value = False
 
-    test_func = getattr(user_worker, "_try_cancel_tasks")
+    test_func = getattr(user_worker, "_cancel_task_if_possible")
     result = await test_func(progress_id="invalid_progress_id")
     assert result is False
     mock_user_client.delete_simulation.assert_called_once_with(
@@ -399,7 +401,7 @@ async def test_do_work_unknown_user_role(mock_user_client: WorldQuantClient) -> 
 
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task_0]
-    setattr(user_worker, "_shutdown", False)
+    setattr(user_worker, "_shutdown_flag", False)
     setattr(user_worker, "_user_role", "UNKNOWN_ROLE")
     await user_worker.set_scheduler(mock_scheduler)
 
@@ -418,11 +420,11 @@ async def test_do_work_unknown_user_role(mock_user_client: WorldQuantClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_multi_completed_task_post_handler(
+async def test_handle_multi_task_completion(
     consultant_worker: Worker, mock_consultant_client: MagicMock
 ) -> None:
     """
-    测试 _multi_completed_task_post_handler 方法。
+    测试 _handle_multi_task_completion 方法。
     """
     tasks = [
         SimulationTask(
@@ -459,11 +461,11 @@ async def test_multi_completed_task_post_handler(
         (False, None),  # 模拟获取子任务结果失败
     ]
 
-    test_func = getattr(consultant_worker, "_multi_completed_task_post_handler")
+    test_func = getattr(consultant_worker, "_handle_multi_task_completion")
     await test_func(tasks, result)
 
-    assert len(getattr(consultant_worker, "_post_handler_tasks")) == 2
-    await asyncio.gather(*getattr(consultant_worker, "_post_handler_tasks"))
+    assert len(getattr(consultant_worker, "_post_handler_futures")) == 2
+    await asyncio.gather(*getattr(consultant_worker, "_post_handler_futures"))
 
     mock_consultant_client.get_multi_simulation_child_result.assert_any_call(
         child_progress_id="child_id_0"
