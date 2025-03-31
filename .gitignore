@@ -10,3 +10,4 @@ capture
 db
 demo.py
 logs
+.coverage

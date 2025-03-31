@@ -13,7 +13,7 @@ from alphapower.engine.simulation.task.core import (
     update_simulation_task_scheduled_info,
 )
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.internal.wraps import Transactional, Propagation
+from alphapower.internal.wraps import Propagation, Transactional
 
 from .provider_abc import AbstractTaskProvider
 
@@ -74,7 +74,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
             self.committing_scheduled_task_ids.update(task_ids)
 
         @Transactional(propagation=Propagation.NESTED)
-        async def _func_in_transaction(session: AsyncSession):
+        async def _func_in_transaction(session: AsyncSession) -> None:
             for task_id in task_ids:
                 await update_simulation_task_scheduled_info(
                     session=session,

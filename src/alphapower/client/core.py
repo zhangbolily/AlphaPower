@@ -98,6 +98,7 @@ class WorldQuantClient:
         self._refresh_task: Optional[asyncio.Task] = None
         self._usage_count: int = 0
         self._usage_lock: asyncio.Lock = asyncio.Lock()
+        self.authentication_info: Optional[AuthenticationView] = None
 
     async def _refresh_session(self, expiry: float) -> None:
         """
@@ -110,6 +111,7 @@ class WorldQuantClient:
             await asyncio.sleep(max(expiry - 60, 0))  # 提前 60 秒刷新
             self._auth_task = authentication(self.session)
             session_info: AuthenticationView = await self._auth_task
+            self.authentication_info = session_info
             expiry = session_info.token.expiry  # 更新下次刷新时间
 
     async def __aenter__(self) -> "WorldQuantClient":
@@ -162,37 +164,37 @@ class WorldQuantClient:
     # -------------------------------
     @exception_handler
     async def create_single_simulation(
-        self, simulation_data: SingleSimulationPayload
+        self, payload: SingleSimulationPayload
     ) -> tuple[bool, str, float]:
         """
         创建单次模拟。
 
         参数:
-        simulation_data (SingleSimulationPayload): 模拟数据。
+        payload (SingleSimulationPayload): 模拟数据。
 
         返回:
         tuple: 包含成功状态、进度 ID 和重试时间的元组。
         """
         success, progress_id, retry_after = await create_single_simulation(
-            self.session, simulation_data.to_params()
+            self.session, payload.to_params()
         )
         return success, progress_id, retry_after
 
     @exception_handler
     async def create_multi_simulation(
-        self, simulation_data: MultiSimulationPayload
+        self, payload: MultiSimulationPayload
     ) -> tuple[bool, str, float]:
         """
         创建多次模拟。
 
         参数:
-        simulation_data (MultiSimulationRayload): 模拟数据。
+        payload (MultiSimulationPayload): 模拟数据。
 
         返回:
         tuple: 包含成功状态、进度 ID 和重试时间的元组。
         """
         success, progress_id, retry_after = await create_multi_simulation(
-            self.session, simulation_data.to_params()
+            self.session, payload.to_params()
         )
         return success, progress_id, retry_after
 
@@ -257,7 +259,7 @@ class WorldQuantClient:
         return finished, progress_or_result, retry_after
 
     @exception_handler
-    async def get_multi_simulation_result(
+    async def get_multi_simulation_child_result(
         self, child_progress_id: str
     ) -> tuple[bool, SingleSimulationResultView]:
         """

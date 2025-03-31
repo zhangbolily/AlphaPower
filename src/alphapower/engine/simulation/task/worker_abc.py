@@ -19,7 +19,7 @@ class AbstractWorker(ABC):
     """
 
     @abstractmethod
-    def set_scheduler(self, scheduler: AbstractScheduler) -> None:
+    async def set_scheduler(self, scheduler: AbstractScheduler) -> None:
         """
         设置调度器。
 
@@ -39,7 +39,7 @@ class AbstractWorker(ABC):
         """
 
     @abstractmethod
-    def add_task_complete_callback(self, callback: Callable) -> None:
+    async def add_task_complete_callback(self, callback: Callable) -> None:
         """
         添加任务完成回调函数。
         TODO: 回调函数的入参类型需要确定一下

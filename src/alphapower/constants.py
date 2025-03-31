@@ -32,6 +32,25 @@ ENDPOINT_DATA_SETS = "data-sets"
 ENDPOINT_DATA_FIELDS = "data-fields"
 ENDPOINT_OPERATORS = "operators"
 
+"""
+用户身份相关
+"""
+ROLE_CONSULTANT: Final[str] = "CONSULTANT"
+ROLE_USER: Final[str] = "USER"
+
+"""
+模拟回测相关
+"""
+MAX_CONSULTANT_SIMULATION_SLOTS: Final[int] = 10
+MAX_USER_SIMULATION_SLOTS: Final[int] = 3
+MAX_SIMULATION_SLOTS: Callable[[str], int] = lambda role: (
+    MAX_CONSULTANT_SIMULATION_SLOTS
+    if role == ROLE_CONSULTANT
+    else MAX_USER_SIMULATION_SLOTS
+)
+MAX_SIMULATION_JOBS_PER_SLOT: Callable[[str], int] = lambda role: (
+    10 if role == ROLE_CONSULTANT else 1
+)
 
 # HTTP 错误代码映射关系
 HttpCodeMessage: Final[Dict] = {

@@ -13,7 +13,7 @@ from alphapower.config.settings import LOG_DIR, LOG_LEVEL
 
 def setup_logging(
     module_name: str, enable_console: bool = True
-) -> structlog.BoundLogger:
+) -> structlog.stdlib.BoundLogger:
     """
     配置日志记录器，支持控制台和文件输出。
 

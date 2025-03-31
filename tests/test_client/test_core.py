@@ -184,7 +184,7 @@ async def test_create_multi_simulation(client: WorldQuantClient) -> None:
 
     if progress_or_result.status == "COMPLETE":
         for child_progress_id in progress_or_result.children:
-            finished, progress_or_result = await client.get_multi_simulation_result(
+            finished, progress_or_result = await client.get_multi_simulation_child_result(
                 child_progress_id
             )
             assert isinstance(progress_or_result, SingleSimulationResultView)

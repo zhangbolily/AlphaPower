@@ -54,6 +54,12 @@ skip_gitignore = true
 
 [tool.pylint]
 jobs = 0
+disable = [
+    "R0902", # too-many-instance-attributes
+    "R0903", # too-few-public-methods
+    "W0718", # unnecessary-comprehension
+    "W0719", # broad-exception-raised
+]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"

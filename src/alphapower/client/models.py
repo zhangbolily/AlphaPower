@@ -853,6 +853,11 @@ class SelfSimulationActivitiesView(BaseModel):
 class AuthenticationView(BaseModel):
     """
     表示身份验证视图的主类，包含用户信息、令牌和权限。
+
+    属性:
+        user: 用户信息
+        token: 令牌信息
+        permissions: 权限列表
     """
 
     user: "AuthenticationView.User"
