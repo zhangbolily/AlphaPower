@@ -1,6 +1,31 @@
 """
-测试 Worker 类的功能。
-该测试文件使用 pytest 框架和 unittest.mock 库来创建模拟对象和异步测试。
+测试模块: test_task_worker
+
+此模块包含针对 Worker 类的单元测试和集成测试，主要用于验证其在不同场景下的行为和功能。
+测试使用了 pytest 框架和 unittest.mock 库，支持异步测试和模拟对象的创建。
+
+模块功能:
+- 测试 Worker 类的初始化逻辑，包括无效客户端、未认证客户端和无效用户角色的处理。
+- 验证 Worker 在不同用户角色 (USER 和 CONSULTANT) 下的任务处理逻辑。
+- 测试 Worker 的调度器功能，包括任务调度和任务取消。
+- 模拟多任务处理场景，验证部分任务失败时的处理逻辑。
+- 测试 Worker 的关闭逻辑，确保任务正确取消或完成。
+
+使用的库:
+- pytest: 用于编写和运行测试。
+- unittest.mock: 用于创建模拟对象和异步方法。
+- asyncio: 用于处理异步操作。
+- alphapower.client: 包含 Worker 类依赖的客户端和视图模型。
+- alphapower.constants: 定义了用户角色常量。
+- alphapower.engine.simulation.task.scheduler: 提供任务调度器接口。
+- alphapower.engine.simulation.task.worker: 被测试的 Worker 类。
+- alphapower.entity: 定义了任务和任务状态的实体类。
+
+测试范围:
+- Worker 类的初始化和运行逻辑。
+- 单任务和多任务的处理与取消。
+- 调度器的设置和任务调度。
+- 异常处理和错误场景的覆盖。
 """
 
 import asyncio
@@ -101,10 +126,20 @@ def fixture_consultant_worker(mock_consultant_client: MagicMock) -> Worker:
     return Worker(client=mock_consultant_client)
 
 
-@pytest.mark.asyncio
-async def test_worker_run_with_no_scheduler(user_worker: Worker) -> None:
+async def simulate_worker_shutdown(
+    worker: Worker, delay: float, cancel_tasks: bool
+) -> None:
     """
-    测试在未设置调度器的情况下运行工作者。
+    通用辅助函数：模拟关闭工作者的异步函数。
+    """
+    await asyncio.sleep(delay)
+    await worker.stop(cancel_tasks=cancel_tasks)
+
+
+@pytest.mark.asyncio
+async def test_run_without_scheduler_raises_exception(user_worker: Worker) -> None:
+    """
+    测试 Worker 在未设置调度器时运行会抛出异常。
     """
     setattr(user_worker, "_scheduler", None)  # 使用 setattr 方法访问受保护成员
     with pytest.raises(Exception, match="调度器未设置，无法执行工作"):
@@ -112,9 +147,9 @@ async def test_worker_run_with_no_scheduler(user_worker: Worker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_run_with_scheduler(user_worker: Worker) -> None:
+async def test_run_with_scheduler_executes_tasks(user_worker: Worker) -> None:
     """
-    测试在设置调度器的情况下运行工作者。
+    测试 Worker 在设置调度器时能够正常运行并执行任务。
     """
     mock_scheduler: AsyncMock = AsyncMock()
     mock_scheduler.schedule.return_value = []
@@ -122,23 +157,20 @@ async def test_worker_run_with_scheduler(user_worker: Worker) -> None:
         user_worker, "_scheduler", mock_scheduler
     )  # 使用 setattr 方法访问受保护成员
 
-    async def shutdown() -> None:
-        """
-        模拟关闭工作者的异步函数。
-        """
-        await asyncio.sleep(1)
-        setattr(user_worker, "_shutdown_flag", True)
-
-    shutdown_task: asyncio.Task = asyncio.create_task(shutdown())
+    shutdown_task: asyncio.Task = asyncio.create_task(
+        simulate_worker_shutdown(user_worker, 1, False)
+    )
     await user_worker.run()
     await shutdown_task
     mock_scheduler.schedule.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_process_single_simulation_task(user_worker: Worker) -> None:
+async def test_process_single_simulation_task_executes_correctly(
+    user_worker: Worker,
+) -> None:
     """
-    测试处理单个模拟任务的方法。
+    测试 Worker 处理单个模拟任务的逻辑是否正确。
     """
     task: MagicMock = MagicMock(spec=SimulationTask)
     task.id = 1
@@ -148,9 +180,11 @@ async def test_process_single_simulation_task(user_worker: Worker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_multi_simulation_task(user_worker: Worker) -> None:
+async def test_process_multi_simulation_task_executes_correctly(
+    user_worker: Worker,
+) -> None:
     """
-    测试处理多个模拟任务的方法。
+    测试 Worker 处理多个模拟任务的逻辑是否正确。
     """
     setattr(
         user_worker, "_user_role", ROLE_CONSULTANT
@@ -164,9 +198,9 @@ async def test_process_multi_simulation_task(user_worker: Worker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_stop(user_worker: Worker) -> None:
+async def test_stop_worker_cancels_tasks(user_worker: Worker) -> None:
     """
-    测试停止工作者的方法。
+    测试 Worker 停止时是否正确取消任务。
     """
     setattr(
         user_worker,
@@ -183,9 +217,9 @@ async def test_worker_stop(user_worker: Worker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_single_simulation_task(user_worker: Worker) -> None:
+async def test_handle_single_simulation_task(user_worker: Worker) -> None:
     """
-    测试单个模拟任务的处理。
+    测试 Worker 能否正确处理单个模拟任务。
     """
     task0: SimulationTask = SimulationTask(
         id=1,
@@ -199,23 +233,18 @@ async def test_single_simulation_task(user_worker: Worker) -> None:
 
     await user_worker.set_scheduler(mock_scheduler)
 
-    async def stop() -> None:
-        """
-        模拟关闭工作者的异步函数。
-        """
-        await asyncio.sleep(2)
-        await user_worker.stop(cancel_tasks=False)
-
-    stop_task: asyncio.Task = asyncio.create_task(stop())
+    stop_task: asyncio.Task = asyncio.create_task(
+        simulate_worker_shutdown(user_worker, 2, False)
+    )
     await user_worker.run()
     await stop_task
     mock_scheduler.schedule.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_multi_simulation_task(consultant_worker: Worker) -> None:
+async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
     """
-    测试多个模拟任务的处理。
+    测试 Worker 能否正确处理多个模拟任务。
     """
     task0: SimulationTask = SimulationTask(
         id=1,
@@ -236,25 +265,20 @@ async def test_multi_simulation_task(consultant_worker: Worker) -> None:
 
     await consultant_worker.set_scheduler(mock_scheduler)
 
-    async def stop() -> None:
-        """
-        模拟关闭工作者的异步函数。
-        """
-        await asyncio.sleep(2)
-        await consultant_worker.stop(cancel_tasks=False)
-
-    stop_task: asyncio.Task = asyncio.create_task(stop())
+    stop_task: asyncio.Task = asyncio.create_task(
+        simulate_worker_shutdown(consultant_worker, 2, False)
+    )
     await consultant_worker.run()
     await stop_task
     mock_scheduler.schedule.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_single_simulation_task_cancel(
+async def test_cancel_single_simulation_task(
     user_worker: Worker, mock_user_client: MagicMock
 ) -> None:
     """
-    测试取消单个模拟任务的处理。
+    测试 Worker 能否正确取消单个模拟任务。
     """
     task0: SimulationTask = SimulationTask(
         id=1,
@@ -268,14 +292,9 @@ async def test_single_simulation_task_cancel(
 
     await user_worker.set_scheduler(mock_scheduler)
 
-    async def stop() -> None:
-        """
-        模拟关闭工作者的异步函数。
-        """
-        await asyncio.sleep(1)
-        await user_worker.stop(cancel_tasks=True)
-
-    stop_task: asyncio.Task = asyncio.create_task(stop())
+    stop_task: asyncio.Task = asyncio.create_task(
+        simulate_worker_shutdown(user_worker, 1, True)
+    )
     await user_worker.run()
     await stop_task
     mock_scheduler.schedule.assert_called_once()
@@ -285,11 +304,11 @@ async def test_single_simulation_task_cancel(
 
 
 @pytest.mark.asyncio
-async def test_multi_simulation_task_cancel(
+async def test_cancel_multi_simulation_tasks(
     consultant_worker: Worker, mock_consultant_client: MagicMock
 ) -> None:
     """
-    测试取消多个模拟任务的处理。
+    测试 Worker 能否正确取消多个模拟任务。
     """
     task0: SimulationTask = SimulationTask(
         id=1,
@@ -310,14 +329,9 @@ async def test_multi_simulation_task_cancel(
 
     await consultant_worker.set_scheduler(mock_scheduler)
 
-    async def stop() -> None:
-        """
-        模拟关闭工作者的异步函数。
-        """
-        await asyncio.sleep(1)
-        await consultant_worker.stop(cancel_tasks=True)
-
-    stop_task: asyncio.Task = asyncio.create_task(stop())
+    stop_task: asyncio.Task = asyncio.create_task(
+        simulate_worker_shutdown(consultant_worker, 1, True)
+    )
     await consultant_worker.run()
     await stop_task
     mock_scheduler.schedule.assert_called_once()
@@ -327,9 +341,9 @@ async def test_multi_simulation_task_cancel(
 
 
 @pytest.mark.asyncio
-async def test_worker_init_invalid_client() -> None:
+async def test_worker_initialization_with_invalid_client_raises_error() -> None:
     """
-    测试 Worker 初始化时传入无效客户端的异常分支。
+    测试 Worker 初始化时传入无效客户端会抛出异常。
     """
     mock_client = MagicMock(spec=str)
     with pytest.raises(
@@ -339,9 +353,9 @@ async def test_worker_init_invalid_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_init_unauthenticated_client() -> None:
+async def test_worker_initialization_with_unauthenticated_client_raises_error() -> None:
     """
-    测试 Worker 初始化时传入未认证客户端的异常分支。
+    测试 Worker 初始化时传入未认证客户端会抛出异常。
     """
     mock_client = MagicMock(spec=WorldQuantClient)
     mock_client.authentication_info = None
@@ -352,9 +366,9 @@ async def test_worker_init_unauthenticated_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_init_invalid_user_role() -> None:
+async def test_worker_initialization_with_invalid_user_role_raises_error() -> None:
     """
-    测试 Worker 初始化时传入无效用户角色的异常分支。
+    测试 Worker 初始化时传入无效用户角色会抛出异常。
     """
     mock_client = MagicMock(spec=WorldQuantClient)
     mock_client.authentication_info = MagicMock(
@@ -367,11 +381,11 @@ async def test_worker_init_invalid_user_role() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cancel_task_if_possible_failure(
+async def test_cancel_task_failure_handling(
     user_worker: Worker, mock_user_client: MagicMock
 ) -> None:
     """
-    测试 _cancel_task_if_possible 方法中任务取消失败的分支。
+    测试 Worker 在任务取消失败时的处理逻辑。
     """
     setattr(user_worker, "_shutdown_flag", True)
     setattr(user_worker, "_is_task_cancel_requested", True)
@@ -386,9 +400,11 @@ async def test_cancel_task_if_possible_failure(
 
 
 @pytest.mark.asyncio
-async def test_do_work_unknown_user_role(mock_user_client: WorldQuantClient) -> None:
+async def test_do_work_with_unknown_user_role_raises_error(
+    mock_user_client: WorldQuantClient,
+) -> None:
     """
-    测试 _do_work 方法中未知用户角色的分支。
+    测试 Worker 在处理未知用户角色时会抛出异常。
     """
     user_worker: Worker = Worker(client=mock_user_client)
     task_0: SimulationTask = SimulationTask(
@@ -405,14 +421,9 @@ async def test_do_work_unknown_user_role(mock_user_client: WorldQuantClient) -> 
     setattr(user_worker, "_user_role", "UNKNOWN_ROLE")
     await user_worker.set_scheduler(mock_scheduler)
 
-    async def stop() -> None:
-        """
-        模拟关闭工作者的异步函数。
-        """
-        await asyncio.sleep(1)
-        await user_worker.stop(cancel_tasks=False)
-
-    stop_task: asyncio.Task = asyncio.create_task(stop())
+    stop_task: asyncio.Task = asyncio.create_task(
+        simulate_worker_shutdown(user_worker, 1, False)
+    )
 
     with pytest.raises(Exception, match="未知用户角色 UNKNOWN_ROLE，无法处理任务"):
         await user_worker.run()
@@ -420,11 +431,11 @@ async def test_do_work_unknown_user_role(mock_user_client: WorldQuantClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_handle_multi_task_completion(
+async def test_handle_multi_task_completion_with_partial_failures(
     consultant_worker: Worker, mock_consultant_client: MagicMock
 ) -> None:
     """
-    测试 _handle_multi_task_completion 方法。
+    测试 Worker 在处理多个任务完成时，部分任务失败的情况。
     """
     tasks = [
         SimulationTask(
