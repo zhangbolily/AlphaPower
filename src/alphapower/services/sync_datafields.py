@@ -24,7 +24,7 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
-from alphapower.entity import DataCategory, DataField, Dataset
+from alphapower.entity import Category, DataField, Dataset
 from alphapower.internal.utils import setup_logging  # 修复导入
 from alphapower.internal.wraps import with_session
 
@@ -53,12 +53,12 @@ async def create_datafield(
 
     category = await get_or_create_entity(
         session,
-        DataCategory,
+        Category,
         "name",
         datafield_data.category,
     )
 
-    if not isinstance(category, DataCategory):
+    if not isinstance(category, Category):
         file_logger.error(
             "[任务 %d] 数据字段 %s 的分类 %s 不存在。",
             task_id,
@@ -69,11 +69,11 @@ async def create_datafield(
 
     subcategory = await get_or_create_entity(
         session,
-        DataCategory,
+        Category,
         "name",
         datafield_data.subcategory,
     )
-    if not isinstance(subcategory, DataCategory):
+    if not isinstance(subcategory, Category):
         file_logger.error(
             "[任务 %d] 数据字段 %s 的子分类 %s 不存在。",
             task_id,

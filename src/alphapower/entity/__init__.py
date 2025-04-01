@@ -1,20 +1,26 @@
-"""
-This module contains the entity classes for the AlphaPower project.
+"""实体模块，包含 AlphaPower 项目的所有数据模型类。
+
+这个模块包含的实体类被组织成三个主要类别：
+1. alphas - 用于 Alpha 策略及相关分类的实体
+2. data - 用于数据集、研究论文和统计数据的实体
+3. simulation - 用于模拟任务和状态管理的实体
+
+所有实体类在导入时会自动注册到对应的数据库。
 """
 
 __all__ = [
     "Alpha",
     "AlphaBase",
-    "AlphaClassification",
-    "AlphaCompetition",
-    "AlphaRegular",
+    "Classification",
+    "Competition",
+    "Regular",
     "alphas_classifications",
     "alphas_competitions",
-    "AlphaSample",
-    "AlphaSampleCheck",
-    "AlphaSettings",
+    "Sample",
+    "SampleCheck",
+    "Setting",
     "DataBase",
-    "DataCategory",
+    "Category",
     "DataField",
     "dataset_research_papers",
     "Dataset",
@@ -26,32 +32,66 @@ __all__ = [
     "StatsData",
 ]
 
+# 数据库常量和会话管理工具
+from alphapower.constants import DB_ALPHAS, DB_DATA, DB_SIMULATION, ENV_DEV, ENV_TEST
+from alphapower.internal.db_session import sync_register_db
+from alphapower.settings import settings
+
+# Alpha 策略相关实体
 from .alphas import (
     Alpha,
-    AlphaClassification,
-    AlphaCompetition,
-    AlphaRegular,
-    AlphaSample,
-    AlphaSampleCheck,
-    AlphaSettings,
 )
 from .alphas import Base as AlphaBase
 from .alphas import (
+    Classification,
+    Competition,
+    Regular,
+    Sample,
+    SampleCheck,
+    Setting,
     alphas_classifications,
     alphas_competitions,
 )
+
+# 数据相关实体
 from .data import Base as DataBase
 from .data import (
-    DataCategory,
+    Category,
     DataField,
     Dataset,
     ResearchPaper,
     StatsData,
     dataset_research_papers,
 )
+
+# 模拟相关实体
 from .simulation import Base as SimulationBase
 from .simulation import (
     SimulationTask,
     SimulationTaskStatus,
     SimulationTaskType,
 )
+
+
+def register_all_entities() -> None:
+    """
+    将所有实体注册到对应的数据库
+
+    此函数集中管理所有实体的注册逻辑，便于维护和扩展
+    """
+    entity_mappings = [
+        (AlphaBase, DB_ALPHAS),
+        (DataBase, DB_DATA),
+        (SimulationBase, DB_SIMULATION),
+    ]
+
+    force_recreate_db: bool = (
+        True if settings.environment in [ENV_DEV, ENV_TEST] else False
+    )
+
+    for base, db_name in entity_mappings:
+        sync_register_db(base, db_name, settings.databases[db_name], force_recreate_db)
+
+
+# 在模块导入时自动注册所有实体
+register_all_entities()

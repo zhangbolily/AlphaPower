@@ -2,14 +2,14 @@
 通用方法，用于获取或创建数据库实体。
 """
 
-from typing import Optional, Type, TypeVar, Protocol
+from typing import Optional, Protocol, Type, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from alphapower.client import AlphaSampleView as AlphaSampleModel
-from alphapower.entity import AlphaSample as AlphasSampleEntity
-from alphapower.entity import DataCategory
+from alphapower.entity import Category
+from alphapower.entity import Sample as AlphasSampleEntity
 
 
 class HasIdAndName(Protocol):
@@ -52,7 +52,7 @@ async def get_or_create_entity(
 
 async def get_or_create_category(
     session: AsyncSession, category_name: str
-) -> DataCategory:
+) -> Category:
     """
     获取或创建数据分类。
 
@@ -63,17 +63,17 @@ async def get_or_create_category(
     返回:
     数据分类对象。
     """
-    result = await session.execute(select(DataCategory).filter_by(name=category_name))
-    category: Optional[DataCategory] = result.scalars().first()
+    result = await session.execute(select(Category).filter_by(name=category_name))
+    category: Optional[Category] = result.scalars().first()
     if category is None:
-        category = DataCategory(name=category_name)
+        category = Category(name=category_name)
         session.add(category)
     return category
 
 
 async def get_or_create_subcategory(
     session: AsyncSession, subcategory_name: str
-) -> DataCategory:
+) -> Category:
     """
     获取或创建数据子分类。
 
@@ -85,11 +85,11 @@ async def get_or_create_subcategory(
     数据子分类对象。
     """
     result = await session.execute(
-        select(DataCategory).filter_by(name=subcategory_name)
+        select(Category).filter_by(name=subcategory_name)
     )
-    subcategory: Optional[DataCategory] = result.scalars().first()
+    subcategory: Optional[Category] = result.scalars().first()
     if subcategory is None:
-        subcategory = DataCategory(name=subcategory_name)
+        subcategory = Category(name=subcategory_name)
         session.add(subcategory)
     return subcategory
 

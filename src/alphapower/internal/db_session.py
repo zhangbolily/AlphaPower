@@ -108,6 +108,27 @@ async def register_db(
             await logger.ainfo(f"数据库 {name} 已注册并创建表结构。")
 
 
+def sync_register_db(
+    base: type[DeclarativeBase],
+    name: str,
+    config: DatabaseConfig,
+    force_recreate: bool = False,
+) -> None:
+    """
+    同步注册数据库引擎和会话工厂，并创建表结构。
+
+    此函数是线程安全的，使用锁保护全局字典的修改。
+
+    Args:
+        base: SQLAlchemy 基类，用于定义模型，必须是 DeclarativeBase 或其子类。
+        config: 数据库配置对象，包含数据库连接信息。
+
+    Returns:
+        None
+    """
+    asyncio.run(register_db(base, name, config, force_recreate))
+
+
 @asynccontextmanager
 async def get_db_session(db_name: str) -> AsyncGenerator[AsyncSession, None]:
     """

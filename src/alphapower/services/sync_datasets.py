@@ -20,7 +20,7 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
-from alphapower.entity import DataCategory, Dataset, ResearchPaper, StatsData
+from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
 from alphapower.internal.utils import setup_logging
 from alphapower.internal.wraps import log_time_elapsed, with_session  # 引入公共方法
 
@@ -110,11 +110,11 @@ async def process_dataset(
     existing_dataset: Optional[Dataset] = query_result.scalar_one_or_none()
 
     # 获取或创建数据集的分类和子分类
-    category: DataCategory = await get_or_create_entity(
-        session, DataCategory, "category_id", dataset.category
+    category: Category = await get_or_create_entity(
+        session, Category, "category_id", dataset.category
     )
-    subcategory: DataCategory = await get_or_create_entity(
-        session, DataCategory, "subcategory_id", dataset.subcategory
+    subcategory: Category = await get_or_create_entity(
+        session, Category, "subcategory_id", dataset.subcategory
     )
 
     # 创建新的数据集对象

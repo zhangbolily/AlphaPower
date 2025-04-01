@@ -23,9 +23,9 @@ from alphapower.config.settings import get_credentials
 from alphapower.entity import (
     Alpha,
     AlphaClassification,
-    AlphaCompetition,
-    AlphaRegular,
-    AlphaSettings,
+    Competition,
+    Regular,
+    Setting,
 )
 from alphapower.internal.utils import setup_logging  # 引入公共方法
 from alphapower.internal.wraps import with_session
@@ -40,11 +40,11 @@ file_logger = setup_logging(__name__, enable_console=False)
 alpha_lock = asyncio.Lock()
 
 
-def create_alphas_settings(alpha_data: AlphaView) -> AlphaSettings:
+def create_alphas_settings(alpha_data: AlphaView) -> Setting:
     """
     创建 AlphaSettings 实例。
     """
-    return AlphaSettings(
+    return Setting(
         instrument_type=alpha_data.settings.instrument_type,
         region=alpha_data.settings.region,
         universe=alpha_data.settings.universe,
@@ -61,7 +61,7 @@ def create_alphas_settings(alpha_data: AlphaView) -> AlphaSettings:
     )
 
 
-def create_alphas_regular(regular: RegularView) -> AlphaRegular:
+def create_alphas_regular(regular: RegularView) -> Regular:
     """
     创建 AlphaRegular 实例。
 
@@ -71,7 +71,7 @@ def create_alphas_regular(regular: RegularView) -> AlphaRegular:
     返回:
     AlphaRegular 实例。
     """
-    return AlphaRegular(
+    return Regular(
         code=regular.code,
         description=getattr(regular, "description", None),
         operator_count=regular.operator_count,
@@ -106,7 +106,7 @@ async def create_alpha_classifications(
 
 async def create_alpha_competitions(
     session: AsyncSession, competitions_data: Optional[List[CompetitionView]]
-) -> List[AlphaCompetition]:
+) -> List[Competition]:
     """
     创建或获取 AlphaCompetition 实例列表。
 
@@ -120,8 +120,8 @@ async def create_alpha_competitions(
     if competitions_data is None:
         return []
 
-    entity_objs: List[AlphaCompetition] = [
-        await get_or_create_entity(session, AlphaCompetition, "competition_id", data)
+    entity_objs: List[Competition] = [
+        await get_or_create_entity(session, Competition, "competition_id", data)
         for data in competitions_data
     ]
 
@@ -130,10 +130,10 @@ async def create_alpha_competitions(
 
 def create_alphas(
     alpha_data: AlphaView,
-    settings: AlphaSettings,
-    regular: AlphaRegular,
+    settings: Setting,
+    regular: Regular,
     classifications: List[AlphaClassification],
-    competitions: List[AlphaCompetition],
+    competitions: List[Competition],
 ) -> Alpha:
     """
     创建 Alpha 实例。

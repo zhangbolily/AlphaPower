@@ -73,6 +73,3 @@ class AppConfig(BaseSettings):
 
 # 加载配置
 settings = AppConfig()
-
-# Ensure backward compatibility if 'enviroment' was used elsewhere
-settings.enviroment = settings.environment
