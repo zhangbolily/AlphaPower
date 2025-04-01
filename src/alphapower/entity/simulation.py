@@ -57,6 +57,7 @@ class SimulationTaskStatus(enum.Enum):
         CANCELLED: 任务被用户或系统取消。
     """
 
+    DEFAULT = "DEFAULT"
     PENDING = "PENDING"
     NOT_SCHEDULABLE = "NOT_SCHEDULABLE"
     SCHEDULED = "SCHEDULED"
@@ -122,7 +123,7 @@ class SimulationTask(Base):
     parent_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     child_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[SimulationTaskStatus] = mapped_column(
-        Enum(SimulationTaskStatus), nullable=False
+        Enum(SimulationTaskStatus), nullable=False, default=SimulationTaskStatus.DEFAULT
     )
     alpha_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

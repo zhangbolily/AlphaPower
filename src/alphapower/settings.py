@@ -6,10 +6,10 @@
 import os
 from typing import Dict
 
-from pydantic import Field
+from pydantic import AnyUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .constants import DB_ALPHAS, DB_DATA, DB_SIMULATION
+from .constants import DB_ALPHAS, DB_DATA, DB_SIMULATION, ENV_PROD
 
 
 class DatabaseConfig(BaseSettings):
@@ -17,9 +17,9 @@ class DatabaseConfig(BaseSettings):
     数据库配置类，用于定义数据库的 URL、描述和基类。
     """
 
-    url: str
-    description: str
-    base_class: str
+    alias: str
+    dsn: AnyUrl = Field(default_factory=lambda url: AnyUrl(url=url))
+    description: str = Field(default="")
 
 
 class CredentialsConfig(BaseSettings):
@@ -38,24 +38,26 @@ class AppConfig(BaseSettings):
 
     databases: Dict[str, DatabaseConfig] = {
         DB_ALPHAS: DatabaseConfig(
-            url="sqlite+aiosqlite:///db/alphas.db",
-            description="用户回测因子的信息",
-            base_class="AlphaBase",
+            dsn=AnyUrl(url="sqlite+aiosqlite:///db/alphas.db"),
+            description="Alpha 数据库",
+            alias=DB_ALPHAS,
         ),
         DB_DATA: DatabaseConfig(
-            url="sqlite+aiosqlite:///db/data.db",
-            description="数据集和数据字段的信息",
-            base_class="DataBase",
+            dsn=AnyUrl(url="sqlite+aiosqlite:///db/data.db"),
+            description="数据集数据库",
+            alias=DB_DATA,
         ),
         DB_SIMULATION: DatabaseConfig(
-            url="sqlite+aiosqlite:///db/simulation.db",
-            description="用户回测任务的信息",
-            base_class="SimulationBase",
+            dsn=AnyUrl(url="sqlite+aiosqlite:///db/simulation.db"),
+            description="模拟回测任务数据库",
+            alias=DB_SIMULATION,
         ),
     }
 
     log_level: str = Field(default="INFO")
     log_dir: str = Field(default="./logs")
+    sql_echo: bool = Field(default=False)
+    environment: str = Field(default=ENV_PROD)
 
     credentials: Dict[str, CredentialsConfig] = {
         "0": CredentialsConfig(),
@@ -71,3 +73,6 @@ class AppConfig(BaseSettings):
 
 # 加载配置
 settings = AppConfig()
+
+# Ensure backward compatibility if 'enviroment' was used elsewhere
+settings.enviroment = settings.environment

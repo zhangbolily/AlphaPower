@@ -10,6 +10,7 @@ Typical usage example:
 """
 
 import asyncio
+from datetime import datetime
 from typing import Callable, List, Optional
 
 from alphapower.client import (
@@ -26,7 +27,7 @@ from alphapower.constants import (
     ROLE_CONSULTANT,
     ROLE_USER,
 )
-from alphapower.entity import SimulationTask
+from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.logging import setup_logging
 
 from .scheduler_abc import AbstractScheduler
@@ -155,6 +156,21 @@ class Worker(AbstractWorker):
         # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
         # 3. 确认任务是否已成功完成，并更新相关统计信息
         logger.info(f"任务 {task.id} 完成，结果: {result}")
+
+        task.result = result.model_dump(mode="python")  # 保存原始结果，用户后续评估分析
+        task.child_progress_id = result.id
+        try:
+            task.status = SimulationTaskStatus(result.status)
+        except ValueError:
+            await logger.aerror(
+                f"未知任务状态，任务 ID: {task.id}，状态: {result.status}"
+            )
+        task.completed_at = datetime.now()
+        if task.status == SimulationTaskStatus.COMPLETE:
+            task.alpha_id = result.alpha
+
+        # TODO: 从连接池获取数据库连接并更新任务状态
+        # 因为这里数据更新是个很低频的操作，每次都提交事务即可
 
         # 这里可以添加对_task_complete_callbacks中注册回调函数的调用
 
@@ -357,6 +373,12 @@ class Worker(AbstractWorker):
                     f"创建多个模拟任务成功，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
                 )
 
+                for task in tasks:
+                    task.status = SimulationTaskStatus.RUNNING
+                    task.parent_progress_id = progress_id
+
+                # TODO: 这里获取数据库连接池并更新任务状态
+
                 await asyncio.sleep(retry_after)
 
                 prev_progress: float = 0.0
@@ -439,6 +461,12 @@ class Worker(AbstractWorker):
                 await logger.ainfo("没有可执行的任务")
                 await asyncio.sleep(5)
                 continue
+
+            for task in tasks:
+                task.scheduled_at = datetime.now()
+                task.status = SimulationTaskStatus.SCHEDULED
+
+            # TODO: 这里获取数据库连接池并更新任务状态
 
             # 根据用户角色执行不同的任务处理逻辑
             if self._user_role == ROLE_USER:

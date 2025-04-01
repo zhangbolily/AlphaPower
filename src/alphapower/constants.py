@@ -4,6 +4,10 @@ Constants for the AlphaPower package.
 
 from typing import Callable, Dict, Final, Tuple
 
+ENV_PROD: Final[str] = "prod"
+ENV_DEV: Final[str] = "dev"
+ENV_TEST: Final[str] = "test"
+
 DB_ALPHAS: Final[str] = "alphas"
 DB_DATA: Final[str] = "data"
 DB_SIMULATION: Final[str] = "simulation"
