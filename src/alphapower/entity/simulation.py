@@ -1,6 +1,25 @@
-"""
-模拟任务实体类
-用于表示模拟任务的数据库模型，包含任务的各种属性和状态。
+# -*- coding: utf-8 -*-
+"""模拟任务实体类模块。
+
+此模块定义了与模拟任务相关的数据库模型，包括任务的各种属性和状态。
+这些模型用于在数据库中表示和跟踪模拟任务的生命周期。
+
+Example:
+    创建一个新的模拟任务：
+
+    ```python
+    task = SimulationTask(
+        type=SimulationTaskType.REGULAR,
+        settings={"param1": "value1"},
+        settings_group_key="group1",
+        regular="regular_value",
+        status=SimulationTaskStatus.PENDING,
+        signature="unique_signature"
+    )
+    ```
+
+Attributes:
+    Base (DeclarativeBase): 基础数据库模型类，支持异步操作。
 """
 
 import enum
@@ -13,11 +32,33 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    pass
+    """基础数据库模型类。
+
+    为所有实体模型提供异步操作支持的基础类。
+    继承此类的模型可以使用异步方法与数据库交互。
+    """
 
 
 class SimulationTaskStatus(enum.Enum):
+    """模拟任务的状态枚举。
+
+    定义了模拟任务在其生命周期中可能处于的不同状态。
+    这些状态反映了任务从创建到完成的整个过程。
+
+    Attributes:
+        PENDING: 任务已创建但尚未计划执行。
+        NOT_SCHEDULABLE:
+            任务无法调度，可以根据任务执行结果反馈信息，\n
+            并由调度提示去干预阻止任务调度。
+        SCHEDULED: 任务已被计划在特定时间执行。
+        RUNNING: 任务当前正在执行中。
+        COMPLETE: 任务已成功完成。
+        ERROR: 任务执行过程中遇到错误。
+        CANCELLED: 任务被用户或系统取消。
+    """
+
     PENDING = "PENDING"
+    NOT_SCHEDULABLE = "NOT_SCHEDULABLE"
     SCHEDULED = "SCHEDULED"
     RUNNING = "RUNNING"
     COMPLETE = "COMPLETE"
@@ -26,55 +67,47 @@ class SimulationTaskStatus(enum.Enum):
 
 
 class SimulationTaskType(enum.Enum):
+    """模拟任务的类型枚举。
+
+    定义了系统支持的不同类型的模拟任务。
+    每种类型可能具有特定的处理逻辑和行为。
+
+    Attributes:
+        REGULAR: 标准因子模拟回测任务类型。
+        SUPER: 超级因子模拟回测任务类型。
+    """
+
     REGULAR = "REGULAR"
+    SUPER = "SUPER"
 
 
 class SimulationTask(Base):
-    """
-    SimulationTask 表示用于管理模拟任务的数据库实体。
+    """模拟任务的数据库实体模型。
 
-    属性:
-        id (int):
-            主键，模拟任务的自增标识符。
-        type (SimulationTaskType):
-            枚举，表示模拟任务的类型。
-        settings (dict):
-            JSON 字段，包含任务的配置设置。
-        settings_group_key (str):
-            用于任务分组相关设置的键，REGION、DELAY、LANGUAGE 和 INSTRUMENT TYPE
-            在一个分组中必须相同，已索引以加快查询速度。
-        regular (str):
-            模拟任务中特定用途的字符串字段。
-        parent_progress_id (str, optional):
-            父进度的标识符（如果适用）。
-        child_progress_id (str, optional):
-            子进度的标识符（如果适用）。
-        status (SimulationTaskStatus):
-            枚举，表示任务的当前状态。
-        alpha_id (str, optional):
-            关联 alpha 的标识符（如果有）。
-        priority (int):
-            任务的优先级，默认为 0。
-        result (dict, optional):
-            JSON 字段，包含模拟任务的结果。
-        signature (str):
-            模拟任务的唯一签名。
-        created_at (datetime):
-            任务创建时的时间戳。
-        scheduled_at (datetime, optional):
-            任务计划运行时的时间戳。
-        updated_at (datetime):
-            任务最后更新时的时间戳。
-        deleted_at (datetime, optional):
-            任务被删除时的时间戳（如果适用）。
-        description (str, optional):
-            模拟任务的描述。
-        tags (str, optional):
-            与模拟任务关联的标签。
-        dependencies (dict, optional):
-            JSON 字段，包含任务依赖关系。
-        completed_at (datetime, optional):
-            任务完成时的时间戳。
+    该模型表示系统中的一个模拟计算任务，记录任务的完整生命周期和相关属性。
+    模型定义了任务的状态、配置、优先级以及时间戳等信息，用于追踪和管理模拟过程。
+
+    Attributes:
+        id (int): 主键，模拟任务的自增标识符。
+        type (SimulationTaskType): 任务类型枚举，表示模拟任务的类别。
+        settings (dict): JSON 字段，包含任务的配置参数和设置。
+        settings_group_key (str): 任务分组键，用于相关任务的分组查询，已建立索引。
+        regular (str): 模拟任务中特定用途的字符串字段。
+        parent_progress_id (str, optional): 父级进度的标识符，用于多级任务结构。
+        child_progress_id (str, optional): 子级进度的标识符，用于多级任务结构。
+        status (SimulationTaskStatus): 表示任务当前状态的枚举值。
+        alpha_id (str, optional): 关联 alpha 组件的标识符（如适用）。
+        priority (int): 任务的执行优先级，值越高优先级越高，默认为 0。
+        result (dict, optional): JSON 字段，存储任务执行结果。
+        signature (str): 任务的唯一签名，用于标识和去重。
+        created_at (datetime): 任务创建时间。
+        scheduled_at (datetime, optional): 任务计划执行的时间。
+        updated_at (datetime): 任务上次更新的时间。
+        deleted_at (datetime, optional): 任务软删除的时间（如适用）。
+        description (str, optional): 任务的描述文本。
+        tags (str, optional): 与任务关联的标签，用于分类和筛选。
+        dependencies (dict, optional): JSON 字段，描述任务的依赖关系。
+        completed_at (datetime, optional): 任务完成的时间。
     """
 
     __tablename__ = "simulation_tasks"
@@ -96,11 +129,11 @@ class SimulationTask(Base):
     result: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
     signature: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, insert_default=func.now()
+        DateTime, nullable=False, insert_default=func.now
     )
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, onupdate=func.now(), insert_default=func.now()
+        DateTime, nullable=False, onupdate=func.now, insert_default=func.now
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
