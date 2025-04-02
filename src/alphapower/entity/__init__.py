@@ -30,6 +30,7 @@ __all__ = [
     "SimulationTaskStatus",
     "SimulationTaskType",
     "StatsData",
+    "Pyramid",
 ]
 
 # 数据库常量和会话管理工具
@@ -59,6 +60,7 @@ from .data import (
     Category,
     DataField,
     Dataset,
+    Pyramid,
     ResearchPaper,
     StatsData,
     dataset_research_papers,
