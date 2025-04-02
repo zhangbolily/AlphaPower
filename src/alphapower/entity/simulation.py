@@ -130,11 +130,11 @@ class SimulationTask(Base):
     result: Mapped[Optional[Dict]] = mapped_column(JSON, nullable=True)
     signature: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, insert_default=func.now
+        DateTime, nullable=False, insert_default=func.now()
     )
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, onupdate=func.now, insert_default=func.now
+        DateTime, nullable=False, onupdate=func.now(), insert_default=func.now()
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)

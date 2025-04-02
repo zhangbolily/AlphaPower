@@ -2,6 +2,7 @@
 Constants for the AlphaPower package.
 """
 
+from enum import Enum
 from typing import Callable, Dict, Final, Tuple
 
 ENV_PROD: Final[str] = "prod"
@@ -144,3 +145,16 @@ SUBINDUSTRY: Final[str] = "SUBINDUSTRY"
 SECTOR: Final[str] = "SECTOR"
 
 NEUTRALIZATION: Final[list] = [NONE, MARKET, INDUSTRY, SUBINDUSTRY, SECTOR]
+
+
+class Regoin(Enum):
+    """
+    地区枚举
+    """
+
+    DEFAULT = "DEFAULT"
+    USA = "USA"
+    GLOBAL = "GLB"
+    EUROPE = "EUR"
+    ASIA = "ASI"
+    CHINA = "CHN"
