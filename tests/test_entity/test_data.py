@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_DATA, Regoin
+from alphapower.constants import DB_DATA, Region
 
 # 导入会自动注册 DB_DATA 测试数据库
 from alphapower.entity.data import (
@@ -533,7 +533,7 @@ class TestPyramid:
         pyramid: Pyramid = Pyramid(
             delay=10,
             multiplier=2.5,
-            region=Regoin.CHINA,
+            region=Region.CHINA,
             category=category,
         )
         db_session.add(pyramid)
@@ -549,7 +549,7 @@ class TestPyramid:
         assert retrieved_pyramid.id is not None
         assert retrieved_pyramid.delay == 10
         assert retrieved_pyramid.multiplier == 2.5
-        assert retrieved_pyramid.region == Regoin.CHINA
+        assert retrieved_pyramid.region == Region.CHINA
         assert retrieved_pyramid.category.category_id == "CAT005"
         assert retrieved_pyramid.category.name == "金字塔测试分类"
 

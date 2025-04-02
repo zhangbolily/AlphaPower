@@ -11,7 +11,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Delete, Select, Update
 
-from alphapower.constants import Regoin  # 添加枚举类型导入
+from alphapower.constants import Region  # 添加枚举类型导入
 from alphapower.entity.alphas import (
     Alpha,
     Classification,
@@ -550,7 +550,7 @@ class DatasetDAL(EntityDAL[Dataset]):
         return await self.find_one_by(session=session, dataset_id=dataset_id)
 
     async def find_by_region(
-        self, region: Regoin, session: Optional[AsyncSession] = None
+        self, region: Region, session: Optional[AsyncSession] = None
     ) -> List[Dataset]:
         """
         查询特定区域的所有数据集。
@@ -711,7 +711,7 @@ class PyramidDAL(EntityDAL[Pyramid]):
         super().__init__(Pyramid, session)
 
     async def find_by_region(
-        self, region: Regoin, session: Optional[AsyncSession] = None
+        self, region: Region, session: Optional[AsyncSession] = None
     ) -> List[Pyramid]:
         """
         查询特定区域的所有金字塔。

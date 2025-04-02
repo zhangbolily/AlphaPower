@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
 
-from alphapower.constants import Regoin
+from alphapower.constants import Region
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -85,7 +85,7 @@ class Setting(Base):
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
     instrument_type = mapped_column(String)  # 使用的金融工具类型
     region = mapped_column(
-        Enum(Regoin), nullable=False, default=Regoin.DEFAULT
+        Enum(Region), nullable=False, default=Region.DEFAULT
     )  # Alpha 应用的市场区域
     universe = mapped_column(String)  # Alpha 选用的股票范围
     delay = mapped_column(Integer)  # 信号延迟时间（单位：天）

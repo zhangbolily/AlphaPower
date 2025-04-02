@@ -22,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
 
-from alphapower.constants import Regoin
+from alphapower.constants import Region
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -83,7 +83,7 @@ class Pyramid(Base):
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
     delay = mapped_column(Integer)  # 延迟 天
     multiplier = mapped_column(Float)  # 金字塔乘数
-    region = mapped_column(Enum(Regoin), nullable=False, default=Regoin.DEFAULT)  # 区域
+    region = mapped_column(Enum(Region), nullable=False, default=Region.DEFAULT)  # 区域
     category_id = mapped_column(
         Integer, ForeignKey("categories.id"), nullable=False
     )  # 分类ID
@@ -162,7 +162,7 @@ class Dataset(Base):
     name = mapped_column(String)  # 数据集名称
     description = mapped_column(String)  # 数据集描述
     region = mapped_column(
-        Enum(Regoin), nullable=False, default=Regoin.DEFAULT
+        Enum(Region), nullable=False, default=Region.DEFAULT
     )  # 数据集所属区域
     delay = mapped_column(Integer)  # 数据延迟(小时)
     universe = mapped_column(String)  # 数据集的覆盖范围
@@ -251,7 +251,7 @@ class DataField(Base):
     )
 
     region = mapped_column(
-        Enum(Regoin), nullable=False, default=Regoin.DEFAULT
+        Enum(Region), nullable=False, default=Region.DEFAULT
     )  # 字段所属区域
     delay = mapped_column(Integer)  # 字段延迟
     universe = mapped_column(String)  # 字段范围
@@ -294,7 +294,7 @@ class StatsData(Base):
     data_field_id = mapped_column(Integer, ForeignKey("data_fields.id"))  # 数据字段 ID
     data_field = relationship("DataField", back_populates="stats_data")  # 数据字段关系
     region = mapped_column(
-        Enum(Regoin), nullable=False, default=Regoin.DEFAULT
+        Enum(Region), nullable=False, default=Region.DEFAULT
     )  # 统计数据所属区域
     delay = mapped_column(Integer)  # 统计数据延迟
     universe = mapped_column(String)  # 统计数据范围

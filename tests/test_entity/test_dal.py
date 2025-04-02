@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import Result, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_ALPHAS, DB_DATA, DB_SIMULATION, Regoin
+from alphapower.constants import DB_ALPHAS, DB_DATA, DB_SIMULATION, Region
 from alphapower.entity import (
     Alpha,
     Category,
@@ -140,7 +140,7 @@ class TestBaseDAL:
         """
         # 创建测试数据
         setting: Setting = Setting(
-            instrument_type="stock", region=Regoin.CHINA, universe="ALL", delay=1
+            instrument_type="stock", region=Region.CHINA, universe="ALL", delay=1
         )
         dal.session.add(setting)
         await dal.session.flush()
@@ -152,7 +152,7 @@ class TestBaseDAL:
         assert retrieved_setting is not None
         assert retrieved_setting.id == setting.id
         assert retrieved_setting.instrument_type == "stock"
-        assert retrieved_setting.region == Regoin.CHINA
+        assert retrieved_setting.region == Region.CHINA
 
         # 测试获取不存在的 ID
         non_existent = await dal.get_by_id(-1)
@@ -199,7 +199,7 @@ class TestBaseDAL:
         # 创建实体
         setting = await setting_dal.create_entity(
             instrument_type="future",
-            region=Regoin.USA,
+            region=Region.USA,
             universe="ES",
             delay=2,
             decay=7,
@@ -208,7 +208,7 @@ class TestBaseDAL:
         # 验证创建结果
         assert setting.id is not None
         assert setting.instrument_type == "future"
-        assert setting.region == Regoin.USA
+        assert setting.region == Region.USA
         assert setting.universe == "ES"
         assert setting.delay == 2
         assert setting.decay == 7
@@ -237,7 +237,7 @@ class TestBaseDAL:
         # 创建测试数据
         setting: Setting = Setting(
             instrument_type="stock",
-            region=Regoin.CHINA,
+            region=Region.CHINA,
             universe="CSI300",
             delay=1,
             decay=5,
@@ -258,7 +258,7 @@ class TestBaseDAL:
         assert updated_setting.id == setting.id
         assert updated_setting.universe == "CSI500"
         assert updated_setting.delay == 2
-        assert updated_setting.region == Regoin.CHINA  # 未修改字段保持不变
+        assert updated_setting.region == Region.CHINA  # 未修改字段保持不变
 
         # 通过新查询验证更新是否成功
         result: Result = await alphas_session.execute(
@@ -318,31 +318,31 @@ class TestBaseDAL:
 
         # 创建测试数据
         setting1 = Setting(
-            instrument_type="stock", region=Regoin.CHINA, universe="CSI300", delay=1
+            instrument_type="stock", region=Region.CHINA, universe="CSI300", delay=1
         )
         setting2 = Setting(
-            instrument_type="stock", region=Regoin.USA, universe="SP500", delay=1
+            instrument_type="stock", region=Region.USA, universe="SP500", delay=1
         )
         setting3 = Setting(
-            instrument_type="future", region=Regoin.CHINA, universe="IF", delay=2
+            instrument_type="future", region=Region.CHINA, universe="IF", delay=2
         )
         alphas_session.add_all([setting1, setting2, setting3])
         await alphas_session.flush()
 
         # 测试单一过滤条件
-        results1 = await setting_dal.find_by(region=Regoin.CHINA)
+        results1 = await setting_dal.find_by(region=Region.CHINA)
         assert len(results1) >= 2
-        assert all(s.region == Regoin.CHINA for s in results1)
+        assert all(s.region == Region.CHINA for s in results1)
 
         # 测试多个过滤条件
-        results2 = await setting_dal.find_by(instrument_type="stock", region=Regoin.USA)
+        results2 = await setting_dal.find_by(instrument_type="stock", region=Region.USA)
         assert len(results2) >= 1
         assert all(
-            s.instrument_type == "stock" and s.region == Regoin.USA for s in results2
+            s.instrument_type == "stock" and s.region == Region.USA for s in results2
         )
 
         # 测试没有匹配的过滤条件
-        results3 = await setting_dal.find_by(region=Regoin.EUROPE)
+        results3 = await setting_dal.find_by(region=Region.EUROPE)
         assert len(results3) == 0
 
     async def test_find_one_by(self, alphas_session: AsyncSession) -> None:
@@ -1105,7 +1105,7 @@ class TestDatasetDAL:
             dataset_id="TEST_DATASET_ID",
             name="测试数据集",
             description="数据集描述",
-            region=Regoin.CHINA,
+            region=Region.CHINA,
             field_count=10,
             delay=0,
             universe="ALL",
@@ -1140,7 +1140,7 @@ class TestDatasetDAL:
                 dataset_id=f"REGION_TEST_{i}",
                 name=f"区域测试_{i}",
                 description=f"区域测试描述_{i}",
-                region=Regoin.ASIA,
+                region=Region.ASIA,
                 field_count=i * 5,
                 delay=0,
                 universe="ALL",
@@ -1155,11 +1155,11 @@ class TestDatasetDAL:
         await data_session.flush()
 
         # 使用特定方法查询
-        results = await dataset_dal.find_by_region(Regoin.ASIA)
+        results = await dataset_dal.find_by_region(Region.ASIA)
 
         # 验证查询结果
         assert len(results) >= 3
-        assert all(d.region == Regoin.ASIA for d in results)
+        assert all(d.region == Region.ASIA for d in results)
 
     async def test_find_high_value_datasets(self, data_session: AsyncSession) -> None:
         """测试高价值数据集查询方法。
@@ -1176,7 +1176,7 @@ class TestDatasetDAL:
                 dataset_id=f"VALUE_TEST_{i}",
                 name=f"价值测试_{i}",
                 description=f"价值测试描述_{i}",
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 value_score=i * 20,  # 20, 40, 60
                 delay=0,
                 universe="ALL",
@@ -1213,7 +1213,7 @@ class TestDatasetDAL:
                 name=f"字段测试_{i}",
                 description=f"字段测试描述_{i}",
                 field_count=i * 10,  # 10, 20, 30
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 delay=0,
                 universe="ALL",
                 coverage=0.8,
@@ -1254,7 +1254,7 @@ class TestDatasetDAL:
             dataset_id="CAT_DS_TEST",
             name="分类关联数据集",
             description="测试数据集-分类关联",
-            region=Regoin.GLOBAL,
+            region=Region.GLOBAL,
             field_count=10,
             delay=0,
             universe="ALL",
@@ -1403,7 +1403,7 @@ class TestDataFieldDAL:
         datafield = DataField(
             field_id="TEST_FIELD_ID",
             description="字段描述",
-            region=Regoin.GLOBAL,
+            region=Region.GLOBAL,
             delay=0,
             universe="ALL",
             type="numeric",
@@ -1438,7 +1438,7 @@ class TestDataFieldDAL:
                 description=f"数据集字段描述_{i}",
                 dataset_id=dataset_id,
                 type="numeric",
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 delay=0,
                 universe="ALL",
                 coverage=0.8,
@@ -1474,7 +1474,7 @@ class TestDataFieldDAL:
                     field_id=f"{ft.upper()}_FIELD_{i}",
                     description=f"{ft}字段描述_{i}",
                     type=ft,
-                    region=Regoin.GLOBAL,
+                    region=Region.GLOBAL,
                     delay=0,
                     universe="ALL",
                     coverage=0.8,
@@ -1508,7 +1508,7 @@ class TestDataFieldDAL:
                 field_id=f"COVERAGE_FIELD_{i}",
                 description=f"覆盖率字段描述_{i}",
                 coverage=i * 0.2,  # 0.2, 0.4, 0.6, 0.8
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 delay=0,
                 universe="ALL",
                 type="numeric",
@@ -1545,7 +1545,7 @@ class TestStatsDataDAL:
         stats = [
             StatsData(
                 data_set_id=dataset_id,
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 delay=0,
                 universe="ALL",
                 coverage=0.8,
@@ -1580,7 +1580,7 @@ class TestStatsDataDAL:
         stats = [
             StatsData(
                 data_field_id=field_id,
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 delay=0,
                 universe="ALL",
                 coverage=0.8,
@@ -1649,7 +1649,7 @@ class TestPyramidDAL:
         pyramid_dal = PyramidDAL(data_session)
 
         # 创建测试数据
-        regions = [Regoin.CHINA, Regoin.USA, Regoin.EUROPE]
+        regions = [Region.CHINA, Region.USA, Region.EUROPE]
         for region in regions:
             pyramids = [
                 Pyramid(
@@ -1664,11 +1664,11 @@ class TestPyramidDAL:
         await data_session.flush()
 
         # 使用特定方法查询
-        results = await pyramid_dal.find_by_region(Regoin.CHINA)
+        results = await pyramid_dal.find_by_region(Region.CHINA)
 
         # 验证查询结果
         assert len(results) >= 2
-        assert all(p.region == Regoin.CHINA for p in results)
+        assert all(p.region == Region.CHINA for p in results)
 
     async def test_find_by_category(self, data_session: AsyncSession) -> None:
         """测试通过分类ID查询金字塔的方法。
@@ -1685,7 +1685,7 @@ class TestPyramidDAL:
             Pyramid(
                 delay=i,
                 multiplier=i * 1.5,
-                region=Regoin.GLOBAL,
+                region=Region.GLOBAL,
                 category_id=category_id,
             )
             for i in range(1, 4)
