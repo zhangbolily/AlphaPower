@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from alphapower.client import SimulationSettingsView
+from alphapower.constants import DB_SIMULATION
 from alphapower.engine.simulation.task import (
     DatabaseTaskProvider,
     PriorityScheduler,
     create_simulation_tasks,
 )
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.client import SimulationSettingsView
-from alphapower.internal.wraps import with_session
+from alphapower.internal.db_session import get_db_session
 from tests.mocks.mock_task_worker import MockWorker
 
 
@@ -133,43 +133,43 @@ async def test_schedule_batch_tasks() -> None:
 
 
 @pytest.mark.asyncio
-@with_session("simulation_test")
-async def test_schedule_with_database_task_provider(session: AsyncSession) -> None:
+async def test_schedule_with_database_task_provider() -> None:
     """
     测试使用数据库任务提供者的调度功能。
     """
-    # 准备测试数据
-    regular = ["task1", "task2"]
-    settings: List[SimulationSettingsView] = [
-        SimulationSettingsView.model_construct(
-            region="USA", delay=10, language="FASTEXPRESS", instrument_type="type1"
-        ),
-        SimulationSettingsView.model_construct(
-            region="CN", delay=20, language="FASTEXPRESS", instrument_type="type2"
-        ),
-    ]
-    priority = [1, 1]
+    async with get_db_session(DB_SIMULATION) as session:
+        # 准备测试数据
+        regular = ["task1", "task2"]
+        settings: List[SimulationSettingsView] = [
+            SimulationSettingsView.model_construct(
+                region="USA", delay=10, language="FASTEXPRESS", instrument_type="type1"
+            ),
+            SimulationSettingsView.model_construct(
+                region="CN", delay=20, language="FASTEXPRESS", instrument_type="type2"
+            ),
+        ]
+        priority = [1, 1]
 
-    # 向数据库插入测试数据
-    await create_simulation_tasks(session, regular, settings, priority)
-    await session.commit()
+        # 向数据库插入测试数据
+        await create_simulation_tasks(session, regular, settings, priority)
+        await session.commit()
 
-    # 初始化 DatabaseTaskProvider
-    provider = DatabaseTaskProvider(session=session)
-    scheduler = PriorityScheduler(task_provider=provider, task_fetch_size=10)
+        # 初始化 DatabaseTaskProvider
+        provider = DatabaseTaskProvider(session=session)
+        scheduler = PriorityScheduler(task_provider=provider, task_fetch_size=10)
 
-    # 调用 schedule 方法
-    scheduled_tasks = await scheduler.schedule(batch_size=2)
-    # 验证返回值
-    await scheduler.wait_for_post_async_tasks()
+        # 调用 schedule 方法
+        scheduled_tasks = await scheduler.schedule(batch_size=2)
+        # 验证返回值
+        await scheduler.wait_for_post_async_tasks()
 
-    # 验证任务状态和其他属性
-    for _, task in enumerate(scheduled_tasks):
-        assert task.status == SimulationTaskStatus.SCHEDULED
-        assert task.priority == 1
+        # 验证任务状态和其他属性
+        for _, task in enumerate(scheduled_tasks):
+            assert task.status == SimulationTaskStatus.SCHEDULED
+            assert task.priority == 1
 
-    await session.execute(text(f"DELETE FROM {SimulationTask.__tablename__}"))
-    await session.commit()
+        await session.execute(text(f"DELETE FROM {SimulationTask.__tablename__}"))
+        await session.commit()
 
 
 async def test_scheduler_with_mock_task_worker() -> None:

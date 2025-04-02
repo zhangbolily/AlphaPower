@@ -20,15 +20,16 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
+from alphapower.constants import DB_ALPHAS
 from alphapower.entity import (
     Alpha,
-    AlphaClassification,
+    Classification,
     Competition,
     Regular,
     Setting,
 )
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.utils import setup_logging  # 引入公共方法
-from alphapower.internal.wraps import with_session
 
 from .utils import create_sample, get_or_create_entity
 
@@ -80,24 +81,22 @@ def create_alphas_regular(regular: RegularView) -> Regular:
 
 async def create_alpha_classifications(
     session: AsyncSession, classifications_data: Optional[List[ClassificationView]]
-) -> List[AlphaClassification]:
+) -> List[Classification]:
     """
-    创建或获取 AlphaClassification 实例列表。
+    创建或获取 Classification 实例列表。
 
     参数:
     session: 数据库会话。
     classifications_data: 分类数据列表。
 
     返回:
-    AlphaClassification 实例列表。
+    Classification 实例列表。
     """
     if classifications_data is None:
         return []
 
     entity_objs = [
-        await get_or_create_entity(
-            session, AlphaClassification, "classification_id", data
-        )
+        await get_or_create_entity(session, Classification, "classification_id", data)
         for data in classifications_data
     ]
 
@@ -132,7 +131,7 @@ def create_alphas(
     alpha_data: AlphaView,
     settings: Setting,
     regular: Regular,
-    classifications: List[AlphaClassification],
+    classifications: List[Classification],
     competitions: List[Competition],
 ) -> Alpha:
     """
@@ -142,7 +141,7 @@ def create_alphas(
     alpha_data: AlphaView 对象，包含因子详细信息。
     settings: AlphaSettings 实例。
     regular: AlphaRegular 实例。
-    classifications: AlphaClassification 实例列表。
+    classifications: Classification 实例列表。
     competitions: AlphaCompetition 实例列表。
 
     返回:
@@ -347,10 +346,7 @@ async def process_alphas_pages(
     return fetched_alphas, inserted_alphas, updated_alphas
 
 
-@with_session("alphas")
-async def sync_alphas(
-    session: AsyncSession, start_time: datetime, end_time: datetime, parallel: int
-) -> None:
+async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -> None:
     """
     异步同步因子。
 
@@ -372,24 +368,25 @@ async def sync_alphas(
     updated_alphas = 0
 
     async with client:
-        try:
-            for cur_time in (
-                start_time + timedelta(days=i)
-                for i in range((end_time - start_time).days + 1)
-            ):
-                fetched, inserted, updated = await process_alphas_for_date(
-                    client, session, cur_time, parallel
-                )
-                fetched_alphas += fetched
-                inserted_alphas += inserted
-                updated_alphas += updated
+        async with get_db_session(DB_ALPHAS) as session:
+            try:
+                for cur_time in (
+                    start_time + timedelta(days=i)
+                    for i in range((end_time - start_time).days + 1)
+                ):
+                    fetched, inserted, updated = await process_alphas_for_date(
+                        client, session, cur_time, parallel
+                    )
+                    fetched_alphas += fetched
+                    inserted_alphas += inserted
+                    updated_alphas += updated
 
-            file_logger.info(
-                "因子同步完成。获取: %d, 插入: %d, 更新: %d。",
-                fetched_alphas,
-                inserted_alphas,
-                updated_alphas,
-            )
-        except Exception as e:
-            file_logger.error("同步因子时出错: %s", e)
-            await session.rollback()
+                file_logger.info(
+                    "因子同步完成。获取: %d, 插入: %d, 更新: %d。",
+                    fetched_alphas,
+                    inserted_alphas,
+                    updated_alphas,
+                )
+            except Exception as e:
+                file_logger.error("同步因子时出错: %s", e)
+                await session.rollback()

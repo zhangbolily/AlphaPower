@@ -24,9 +24,10 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
+from alphapower.constants import DB_DATA
 from alphapower.entity import Category, DataField, Dataset
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.utils import setup_logging  # 修复导入
-from alphapower.internal.wraps import with_session
 
 from .utils import get_or_create_entity
 
@@ -206,9 +207,7 @@ async def process_datafields_concurrently(
     await asyncio.gather(*tasks)
 
 
-@with_session("data")
 async def sync_datafields(
-    session: AsyncSession,
     instrument_type: Optional[str] = None,
     dataset_id: Optional[str] = None,  # 新增参数 dataset_id
     parallel: int = 5,
@@ -226,61 +225,69 @@ async def sync_datafields(
     client: WorldQuantClient = create_client(credentials)
 
     async with client:
-        try:
-            datasets: List[Dataset] = []
+        async with get_db_session(DB_DATA) as session:
+            try:
+                datasets: List[Dataset] = []
 
-            if dataset_id:
-                # 根据 dataset_id 查询特定数据集
-                query = select(Dataset).filter_by(dataset_id=dataset_id)
-                result = await session.execute(query)
-                datasets = list(result.scalars().all())
-                if not datasets:
-                    console_logger.error("未找到指定的数据集: %s", dataset_id)
-                    return
-                console_logger.info("找到指定数据集 %s，开始同步数据字段。", dataset_id)
-            else:
-                # 查询所有数据集
-                query = select(Dataset)
-                result = await session.execute(query)
-                datasets = list(result.scalars().all())
-                console_logger.info("找到 %d 个数据集。", len(datasets))
+                if dataset_id:
+                    # 根据 dataset_id 查询特定数据集
+                    query = select(Dataset).filter_by(dataset_id=dataset_id)
+                    result = await session.execute(query)
+                    datasets = list(result.scalars().all())
+                    if not datasets:
+                        console_logger.error("未找到指定的数据集: %s", dataset_id)
+                        return
+                    console_logger.info(
+                        "找到指定数据集 %s，开始同步数据字段。", dataset_id
+                    )
+                else:
+                    # 查询所有数据集
+                    query = select(Dataset)
+                    result = await session.execute(query)
+                    datasets = list(result.scalars().all())
+                    console_logger.info("找到 %d 个数据集。", len(datasets))
 
-            # 初始化进度条
-            total_fields: int = sum(dataset.field_count for dataset in datasets)
-            progress_bar: tqdm = tqdm(
-                total=total_fields, desc="同步数据字段", unit="个", dynamic_ncols=True
-            )
-
-            lock: Lock = Lock()  # 创建异步互斥锁
-            sync_start_time: float = time.time()  # 开始计时
-
-            for dataset in datasets:
-                file_logger.info(
-                    "正在处理数据集 %s %s %s %s...",
-                    dataset.dataset_id,
-                    dataset.universe,
-                    dataset.region,
-                    dataset.delay,
-                )
-                await process_datafields_concurrently(
-                    session,
-                    client,
-                    dataset,
-                    instrument_type,
-                    parallel,
-                    progress_bar,
-                    lock,
+                # 初始化进度条
+                total_fields: int = sum(dataset.field_count for dataset in datasets)
+                progress_bar: tqdm = tqdm(
+                    total=total_fields,
+                    desc="同步数据字段",
+                    unit="个",
+                    dynamic_ncols=True,
                 )
 
-            await session.commit()  # 提交数据库事务
-            sync_elapsed_time: float = time.time() - sync_start_time  # 计算同步任务耗时
-            progress_bar.close()  # 关闭进度条
+                lock: Lock = Lock()  # 创建异步互斥锁
+                sync_start_time: float = time.time()  # 开始计时
 
-            console_logger.info("数据字段同步成功。")
-            console_logger.info("同步任务总耗时: %.2f 秒", sync_elapsed_time)
-        except SQLAlchemyError as e:  # Catch specific SQL errors
-            console_logger.error("同步数据字段时数据库出错: %s", e)
-            await session.rollback()  # 回滚事务
-        finally:
-            if progress_bar:
-                progress_bar.close()  # 确保异常时关闭进度条
+                for dataset in datasets:
+                    file_logger.info(
+                        "正在处理数据集 %s %s %s %s...",
+                        dataset.dataset_id,
+                        dataset.universe,
+                        dataset.region,
+                        dataset.delay,
+                    )
+                    await process_datafields_concurrently(
+                        session,
+                        client,
+                        dataset,
+                        instrument_type,
+                        parallel,
+                        progress_bar,
+                        lock,
+                    )
+
+                await session.commit()  # 提交数据库事务
+                sync_elapsed_time: float = (
+                    time.time() - sync_start_time
+                )  # 计算同步任务耗时
+                progress_bar.close()  # 关闭进度条
+
+                console_logger.info("数据字段同步成功。")
+                console_logger.info("同步任务总耗时: %.2f 秒", sync_elapsed_time)
+            except SQLAlchemyError as e:  # Catch specific SQL errors
+                console_logger.error("同步数据字段时数据库出错: %s", e)
+                await session.rollback()  # 回滚事务
+            finally:
+                if progress_bar:
+                    progress_bar.close()  # 确保异常时关闭进度条

@@ -227,6 +227,8 @@ async def test_handle_single_simulation_task(user_worker: Worker) -> None:
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0]
@@ -252,6 +254,8 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
     task1: SimulationTask = SimulationTask(
         id=2,
@@ -259,6 +263,8 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0, task1]
@@ -286,6 +292,8 @@ async def test_cancel_single_simulation_task(
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0]
@@ -316,6 +324,8 @@ async def test_cancel_multi_simulation_tasks(
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
     task1: SimulationTask = SimulationTask(
         id=2,
@@ -323,6 +333,8 @@ async def test_cancel_multi_simulation_tasks(
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0, task1]
@@ -391,8 +403,18 @@ async def test_cancel_task_failure_handling(
     setattr(user_worker, "_is_task_cancel_requested", True)
     mock_user_client.delete_simulation.return_value = False
 
+    task = SimulationTask(
+        id=1,
+        type=SimulationTaskType.REGULAR,
+        status=SimulationTaskStatus.PENDING,
+        settings={},
+        regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
+    )
+
     test_func = getattr(user_worker, "_cancel_task_if_possible")
-    result = await test_func(progress_id="invalid_progress_id")
+    result = await test_func(progress_id="invalid_progress_id", tasks=[task])
     assert result is False
     mock_user_client.delete_simulation.assert_called_once_with(
         progress_id="invalid_progress_id"
@@ -413,6 +435,8 @@ async def test_do_work_with_unknown_user_role_raises_error(
         status=SimulationTaskStatus.PENDING,
         settings={},
         regular="rank(-returns)",
+        settings_group_key="test_group",
+        signature="test_signature",
     )
 
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)

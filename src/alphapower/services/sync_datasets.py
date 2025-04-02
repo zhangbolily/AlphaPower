@@ -20,9 +20,11 @@ from alphapower.client import (
     create_client,
 )
 from alphapower.config.settings import get_credentials
+from alphapower.constants import DB_DATA
 from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.utils import setup_logging
-from alphapower.internal.wraps import log_time_elapsed, with_session  # 引入公共方法
+from alphapower.internal.wraps import log_time_elapsed  # 引入公共方法
 
 from .utils import get_or_create_entity  # 引入公共方法
 
@@ -253,9 +255,7 @@ async def process_datasets_concurrently(
     return await asyncio.gather(*tasks)
 
 
-@with_session("data")
 async def sync_datasets(
-    session: AsyncSession,
     region: Optional[str] = None,
     universe: Optional[str] = None,
     delay: Optional[int] = None,
@@ -277,58 +277,62 @@ async def sync_datasets(
     )  # 创建客户端实例
 
     async with client:
-        try:
-            offset: int = 0
-            limit: int = 50  # 每次查询的最大数据量限制
-            total_count: int = 0
-            sync_start_time: float = 0.0
-            query_params_list: List[DataSetsQueryParams] = []
-            lock: Lock = Lock()  # 创建异步互斥锁
+        async with get_db_session(DB_DATA) as session:
+            try:
+                offset: int = 0
+                limit: int = 50  # 每次查询的最大数据量限制
+                total_count: int = 0
+                sync_start_time: float = 0.0
+                query_params_list: List[DataSetsQueryParams] = []
+                lock: Lock = Lock()  # 创建异步互斥锁
 
-            console_logger.info("=== 数据集同步任务开始 ===")
-            console_logger.info(
-                "过滤参数 - 地区: %s, 股票池: %s, delay: %s", region, universe, delay
-            )
-            console_logger.info("正在获取数据集总数...")
-
-            # 获取数据集总数
-            count_query_params = DataSetsQueryParams(
-                limit=1, offset=0, region=region, universe=universe, delay=delay
-            )
-            datasets_response = await client.get_datasets(count_query_params)
-            total_count = datasets_response.count  # 数据集总数
-            console_logger.info("总计 %d 个数据集需要同步。", total_count)
-
-            # 初始化进度条
-            progress_bar = tqdm(
-                total=total_count, desc="同步数据集", unit="个", dynamic_ncols=True
-            )  # dynamic_ncols=True 确保进度条在同一行刷新
-
-            # 构建查询参数列表
-            while offset < total_count:
-                query_params = DataSetsQueryParams(
-                    limit=limit,
-                    offset=offset,
-                    region=region,
-                    universe=universe,
-                    delay=delay,
+                console_logger.info("=== 数据集同步任务开始 ===")
+                console_logger.info(
+                    "过滤参数 - 地区: %s, 股票池: %s, delay: %s",
+                    region,
+                    universe,
+                    delay,
                 )
-                query_params_list.append(query_params)
-                offset += limit
+                console_logger.info("正在获取数据集总数...")
 
-            # 并发处理数据集
-            sync_start_time = time.time()  # 开始计时
-            await process_datasets_concurrently(
-                session, client, query_params_list, parallel, progress_bar, lock
-            )
-            await session.commit()  # 提交数据库事务
-        except Exception as e:
-            logger.error("同步数据集时出错: %s", e)
-            await session.rollback()  # 回滚事务
-            raise  # 重新抛出异常
-        finally:
-            progress_bar.close()  # 确保进度条关闭
-            sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
-            console_logger.info("同步任务总耗时: %.2f 秒", sync_elapsed_time)
-            console_logger.info("成功同步 %d 个数据集。", total_count)
-            logger.info("资源已释放。")
+                # 获取数据集总数
+                count_query_params = DataSetsQueryParams(
+                    limit=1, offset=0, region=region, universe=universe, delay=delay
+                )
+                datasets_response = await client.get_datasets(count_query_params)
+                total_count = datasets_response.count  # 数据集总数
+                console_logger.info("总计 %d 个数据集需要同步。", total_count)
+
+                # 初始化进度条
+                progress_bar = tqdm(
+                    total=total_count, desc="同步数据集", unit="个", dynamic_ncols=True
+                )  # dynamic_ncols=True 确保进度条在同一行刷新
+
+                # 构建查询参数列表
+                while offset < total_count:
+                    query_params = DataSetsQueryParams(
+                        limit=limit,
+                        offset=offset,
+                        region=region,
+                        universe=universe,
+                        delay=delay,
+                    )
+                    query_params_list.append(query_params)
+                    offset += limit
+
+                # 并发处理数据集
+                sync_start_time = time.time()  # 开始计时
+                await process_datasets_concurrently(
+                    session, client, query_params_list, parallel, progress_bar, lock
+                )
+                await session.commit()  # 提交数据库事务
+            except Exception as e:
+                logger.error("同步数据集时出错: %s", e)
+                await session.rollback()  # 回滚事务
+                raise  # 重新抛出异常
+            finally:
+                progress_bar.close()  # 确保进度条关闭
+                sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
+                console_logger.info("同步任务总耗时: %.2f 秒", sync_elapsed_time)
+                console_logger.info("成功同步 %d 个数据集。", total_count)
+                logger.info("资源已释放。")

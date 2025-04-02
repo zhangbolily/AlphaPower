@@ -1,18 +1,28 @@
+from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import text  # 添加导入
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from alphapower.client import SimulationSettingsView
+from alphapower.constants import DB_SIMULATION
 from alphapower.engine.simulation.task.core import create_simulation_tasks
 from alphapower.engine.simulation.task.provider import DatabaseTaskProvider
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.client import SimulationSettingsView
-from alphapower.internal.wraps import with_session
+from alphapower.internal.db_session import get_db_session
+
+
+@pytest.fixture(name="session")
+async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Fixture for creating a database session.
+    """
+    async with get_db_session(DB_SIMULATION) as session:
+        yield session
 
 
 @pytest.mark.asyncio  # 确保每个异步测试函数都使用了 pytest.mark.asyncio
-@with_session("simulation_test")
 async def test_fetch_tasks(session: AsyncSession) -> None:
     """
     测试从数据库中获取任务的功能。
@@ -59,7 +69,6 @@ async def test_fetch_tasks(session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-@with_session("simulation_test")
 async def test_fetch_tasks_no_results(session: AsyncSession) -> None:
     """
     测试从数据库中获取任务的功能，当没有符合条件的任务时。
@@ -75,7 +84,6 @@ async def test_fetch_tasks_no_results(session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-@with_session("simulation_test")
 async def test_fetch_tasks_invalid_priority(session: AsyncSession) -> None:
     """
     测试从数据库中获取任务的功能，当使用不存在的优先级时。

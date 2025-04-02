@@ -11,7 +11,7 @@ Typical usage example:
 
 import asyncio
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Awaitable, Callable, List, Optional, Union
 
 from alphapower.client import (
     MultiSimulationPayload,
@@ -23,11 +23,13 @@ from alphapower.client import (
     WorldQuantClient,
 )
 from alphapower.constants import (
+    DB_SIMULATION,
     MAX_CONSULTANT_SIMULATION_SLOTS,
     ROLE_CONSULTANT,
     ROLE_USER,
 )
 from alphapower.entity import SimulationTask, SimulationTaskStatus
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import setup_logging
 
 from .scheduler_abc import AbstractScheduler
@@ -90,7 +92,10 @@ class Worker(AbstractWorker):
         self._post_handler_lock: asyncio.Lock = asyncio.Lock()
         self._post_handler_futures: List[asyncio.Task] = []
         self._task_complete_callbacks: List[
-            Callable[[SimulationTask, SingleSimulationResultView], None]
+            Union[
+                Callable[[SimulationTask, SingleSimulationResultView], None],
+                Callable[[SimulationTask, SingleSimulationResultView], Awaitable[None]],
+            ]
         ] = []
         self._scheduler: Optional[AbstractScheduler] = None
         self._shutdown_flag: bool = False
@@ -109,7 +114,9 @@ class Worker(AbstractWorker):
         else:
             raise ValueError("Client must have a valid user role (CONSULTANT or USER).")
 
-    async def _cancel_task_if_possible(self, progress_id: str) -> bool:
+    async def _cancel_task_if_possible(
+        self, progress_id: str, tasks: List[SimulationTask]
+    ) -> bool:
         """尝试取消任务。
 
         当工作者关闭且请求取消任务时，尝试取消正在执行的任务。
@@ -131,6 +138,13 @@ class Worker(AbstractWorker):
             success = await self._client.delete_simulation(progress_id=progress_id)
             if success:
                 await logger.ainfo(f"任务取消成功，进度 ID: {progress_id}")
+
+                async with get_db_session(DB_SIMULATION) as session:
+                    for task in tasks:
+                        task.status = SimulationTaskStatus.CANCELLED
+                        await session.merge(task)
+                    await session.commit()
+
                 return True
             await logger.aerror(f"任务取消失败，进度 ID: {progress_id}")
         return False
@@ -151,7 +165,6 @@ class Worker(AbstractWorker):
             * 为失败的任务记录错误信息并通知其他服务
             * 调用注册的回调函数通知任务完成
         """
-        # TODO: 这里可以添加完成任务后的处理逻辑
         # 1. 更新任务状态和必要的字段
         # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
         # 3. 确认任务是否已成功完成，并更新相关统计信息
@@ -169,10 +182,26 @@ class Worker(AbstractWorker):
         if task.status == SimulationTaskStatus.COMPLETE:
             task.alpha_id = result.alpha
 
-        # TODO: 从连接池获取数据库连接并更新任务状态
-        # 因为这里数据更新是个很低频的操作，每次都提交事务即可
+        async with get_db_session(DB_SIMULATION) as session:
+            await session.merge(task)
+            await session.commit()
+            await logger.ainfo(
+                f"更新任务状态成功，任务 ID: {task.id}，状态: {task.status}"
+            )
+            # 因为这里数据更新是个很低频的操作，每次都提交事务即可
 
-        # 这里可以添加对_task_complete_callbacks中注册回调函数的调用
+        for callback in self._task_complete_callbacks:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    # 如果是异步函数，使用 await 调用
+                    await callback(task, result)
+                else:
+                    # 如果是同步函数，直接调用
+                    callback(task, result)
+            except Exception as e:
+                await logger.aerror(
+                    f"调用任务完成回调函数失败，任务 ID: {task.id}，错误: {e}"
+                )
 
     async def _process_single_simulation_task(self, task: SimulationTask) -> None:
         """处理单个模拟任务。
@@ -224,7 +253,7 @@ class Worker(AbstractWorker):
                     logger.debug(
                         f"检查任务进度，任务 ID: {task.id}, 进度 ID: {progress_id}"
                     )
-                    if await self._cancel_task_if_possible(progress_id):
+                    if await self._cancel_task_if_possible(progress_id, tasks=[task]):
                         await logger.ainfo(
                             f"任务已取消，任务 ID: {task.id}，进度 ID: {progress_id}"
                         )
@@ -377,7 +406,14 @@ class Worker(AbstractWorker):
                     task.status = SimulationTaskStatus.RUNNING
                     task.parent_progress_id = progress_id
 
-                # TODO: 这里获取数据库连接池并更新任务状态
+                async with get_db_session(DB_SIMULATION) as session:
+                    for task in tasks:
+                        await session.merge(task)
+                    await session.commit()
+                    await logger.ainfo(
+                        f"更新多个模拟任务状态成功，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
+                        + f"，状态: {SimulationTaskStatus.RUNNING}"
+                    )
 
                 await asyncio.sleep(retry_after)
 
@@ -386,7 +422,7 @@ class Worker(AbstractWorker):
                     logger.debug(
                         f"检查多个任务进度，任务 ID 列表: {task_ids_str}, 进度 ID: {progress_id}"
                     )
-                    if await self._cancel_task_if_possible(progress_id):
+                    if await self._cancel_task_if_possible(progress_id, tasks=tasks):
                         await logger.ainfo(
                             f"任务已取消，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
                         )
@@ -466,7 +502,13 @@ class Worker(AbstractWorker):
                 task.scheduled_at = datetime.now()
                 task.status = SimulationTaskStatus.SCHEDULED
 
-            # TODO: 这里获取数据库连接池并更新任务状态
+            async with get_db_session(DB_SIMULATION) as session:
+                for task in tasks:
+                    await session.merge(task)
+                await session.commit()
+                await logger.ainfo(
+                    f"调度器返回任务，任务 ID 列表: {[task.id for task in tasks]}"
+                )
 
             # 根据用户角色执行不同的任务处理逻辑
             if self._user_role == ROLE_USER:
@@ -513,14 +555,19 @@ class Worker(AbstractWorker):
         await logger.ainfo("工作者已停止")
 
     async def add_task_complete_callback(
-        self, callback: Callable[[SimulationTask, SingleSimulationResultView], None]
+        self,
+        callback: Union[
+            Callable[[SimulationTask, SingleSimulationResultView], None],
+            Callable[[SimulationTask, SingleSimulationResultView], Awaitable[None]],
+        ],
     ) -> None:
         """添加任务完成回调函数。
 
-        注册一个将在任务完成时调用的回调函数。
+        注册一个将在任务完成时调用的回调函数。支持同步和异步回调函数。
 
         Args:
-            callback: 任务完成时的回调函数，接收任务和结果作为参数
+            callback: 任务完成时的回调函数，接收任务和结果作为参数。
+                     可以是同步函数或异步函数
 
         Raises:
             RuntimeError: 当工作者未关闭时无法添加回调
