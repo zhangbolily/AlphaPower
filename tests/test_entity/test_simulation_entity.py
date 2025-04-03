@@ -14,7 +14,7 @@ import datetime
 from typing import AsyncGenerator, Optional
 
 import pytest
-from sqlalchemy import Result, select
+from sqlalchemy import Result, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
@@ -24,6 +24,7 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Switch,
     Truncation,
     UnitHandling,
@@ -52,6 +53,13 @@ async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
         # 注意：在生产环境测试中可能需要更复杂的数据清理策略
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改
+
+
+@pytest.fixture(autouse=True)
+async def clean_data(session: AsyncSession) -> AsyncGenerator[None, None]:
+    """在每个测试开始前清理数据。"""
+    await session.execute(delete(SimulationTask))
+    yield
 
 
 class TestBase:
@@ -108,7 +116,6 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings_group_key="test_group",
             regular="test_regular",
             status=SimulationTaskStatus.PENDING,
             alpha_id="ALPHA123",
@@ -126,7 +133,7 @@ class TestSimulationTask:
             truncation=0.5,
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=True,
             test_period="2020-01-01/2021-01-01",
             max_trade=Switch.OFF,
@@ -143,7 +150,11 @@ class TestSimulationTask:
         # 验证查询结果包含所有原始字段
         assert db_task is not None
         assert db_task.type == SimulationTaskType.REGULAR
-        assert db_task.settings_group_key == "test_group"
+        expected_key = (
+            f"{Region.CHINA.value}_{Delay.ONE.value}_"
+            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+        )
+        assert db_task.settings_group_key == expected_key
         assert db_task.regular == "test_regular"
         assert db_task.status == SimulationTaskStatus.PENDING
         assert db_task.alpha_id == "ALPHA123"
@@ -152,7 +163,7 @@ class TestSimulationTask:
         assert db_task.created_at is not None
         assert db_task.updated_at is not None
         assert db_task.description == "测试模拟任务"
-        assert db_task.tags == ["test", "simulation", "unit"]
+        assert set(db_task.tags) == {"test", "simulation", "unit"}
         assert db_task.parent_progress_id is None
         assert db_task.child_progress_id is None
         assert db_task.result is None
@@ -171,7 +182,7 @@ class TestSimulationTask:
         assert db_task.truncation == 0.5
         assert db_task.pasteurization == Switch.ON
         assert db_task.unit_handling == UnitHandling.VERIFY
-        assert db_task.language == "python"
+        assert db_task.language == RegularLanguage.PYTHON
         assert db_task.visualization is True
         assert db_task.test_period == "2020-01-01/2021-01-01"
         assert db_task.max_trade == Switch.OFF
@@ -188,19 +199,19 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings_group_key="update_group",
             regular="regular_value",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_2",
             # 设置参数
             instrument_type=InstrumentType.EQUITY,
             region=Region.USA,
-            universe=Universe.TOP500,
+            universe=Universe.TOP1000,
             delay=Delay.ZERO,
             neutralization=Neutralization.NONE,
             pasteurization=Switch.OFF,
-            unit_handling=UnitHandling.DEFAULT,
-            max_trade=Switch.DEFAULT,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+            language=RegularLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -219,8 +230,9 @@ class TestSimulationTask:
         db_task.result = {"status": "in_progress", "percentage": 50}
         db_task.scheduled_at = datetime.datetime.now()
         # 更新枚举字段
+        db_task.delay = Delay.ONE
+        db_task.universe = Universe.TOP3000
         db_task.region = Region.GLOBAL
-        db_task.universe = Universe.TOP1000
         db_task.neutralization = Neutralization.INDUSTRY
         db_task.visualization = True
 
@@ -241,7 +253,7 @@ class TestSimulationTask:
         assert updated_task.scheduled_at is not None
         # 验证更新后的枚举字段
         assert updated_task.region == Region.GLOBAL
-        assert updated_task.universe == Universe.TOP1000
+        assert updated_task.universe == Universe.TOP3000
         assert updated_task.neutralization == Neutralization.INDUSTRY
         assert updated_task.visualization is True
 
@@ -256,7 +268,6 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.SUPER,
-            settings_group_key="lifecycle_group",
             regular="lifecycle_regular",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_3",
@@ -269,6 +280,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.ON,
+            language=RegularLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -313,7 +325,6 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings_group_key="error_group",
             regular="error_regular",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_4",
@@ -323,9 +334,10 @@ class TestSimulationTask:
             universe=Universe.TOP20,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
-            pasteurization=Switch.DEFAULT,
-            unit_handling=UnitHandling.DEFAULT,
-            max_trade=Switch.DEFAULT,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+            language=RegularLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -360,49 +372,58 @@ class TestSimulationTask:
         Args:
             session: 数据库会话对象。
         """
-        # 创建多个具有相同分组键的任务
-        group_key = "group_query_test"
-        tasks = []
+        # 使用相同的region、delay、language和instrument_type创建任务，以生成相同的settings_group_key
+        group_region = Region.CHINA
+        group_delay = Delay.ONE
+        group_language = RegularLanguage.PYTHON
+        group_instrument = InstrumentType.EQUITY
 
+        tasks = []
         for i in range(3):
             task = SimulationTask(
                 type=SimulationTaskType.REGULAR,
-                settings_group_key=group_key,
                 regular=f"regular_{i}",
                 status=SimulationTaskStatus.PENDING,
                 signature=f"group_signature_{i}",
-                # 设置参数
-                instrument_type=InstrumentType.EQUITY,
-                region=Region.CHINA,
+                # 设置参数以生成相同的settings_group_key
+                region=group_region,
+                delay=group_delay,
+                language=group_language,
+                instrument_type=group_instrument,
                 universe=Universe.TOP2000U,
-                delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
-                pasteurization=Switch.DEFAULT,
-                unit_handling=UnitHandling.DEFAULT,
-                max_trade=Switch.DEFAULT,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
             )
             tasks.append(task)
 
         # 额外创建一个不同分组的任务
         different_task = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings_group_key="different_group",
             regular="different_regular",
             status=SimulationTaskStatus.PENDING,
             signature="different_signature",
-            # 设置参数
+            # 设置不同的参数以生成不同的settings_group_key
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
-            universe=Universe.TOP2000U,
-            delay=Delay.ONE,
+            region=Region.USA,  # 不同的区域
+            universe=Universe.TOP3000,  # 适合USA的universe
+            delay=Delay.ZERO,
             neutralization=Neutralization.MARKET,
-            pasteurization=Switch.DEFAULT,
-            unit_handling=UnitHandling.DEFAULT,
-            max_trade=Switch.DEFAULT,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+            language=RegularLanguage.PYTHON,
         )
 
         session.add_all(tasks + [different_task])
         await session.flush()
+
+        # 获取预期的 settings_group_key
+        group_key = (
+            f"{group_region.value}_{group_delay.value}_"
+            + f"{group_language.value}_{group_instrument.value}"
+        )
 
         # 查询特定分组的任务
         result: Result = await session.execute(
@@ -426,7 +447,6 @@ class TestSimulationTask:
         # 测试有效参数值
         valid_task = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings_group_key="validation_test",
             regular="valid_params",
             signature="validation_signature",
             decay=10,  # 有效的 decay 值
@@ -434,12 +454,13 @@ class TestSimulationTask:
             # 设置必需的枚举参数
             instrument_type=InstrumentType.EQUITY,
             region=Region.USA,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ZERO,
             neutralization=Neutralization.NONE,
-            pasteurization=Switch.OFF,
-            unit_handling=UnitHandling.DEFAULT,
-            max_trade=Switch.DEFAULT,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+            language=RegularLanguage.PYTHON,
         )
         session.add(valid_task)
         await session.flush()
@@ -459,19 +480,19 @@ class TestSimulationTask:
         ):
             SimulationTask(
                 type=SimulationTaskType.REGULAR,
-                settings_group_key="invalid_decay",
                 regular="invalid_params",
                 signature="invalid_decay_signature",
                 decay=513,  # 超出有效范围
                 # 设置必需的枚举参数
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.USA,
-                universe=Universe.TOP500,
+                universe=Universe.TOP1000,
                 delay=Delay.ZERO,
                 neutralization=Neutralization.NONE,
-                pasteurization=Switch.OFF,
-                unit_handling=UnitHandling.DEFAULT,
-                max_trade=Switch.DEFAULT,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
             )
 
         # 测试无效的 truncation 值（应该触发验证异常）
@@ -481,19 +502,19 @@ class TestSimulationTask:
         ):
             SimulationTask(
                 type=SimulationTaskType.REGULAR,
-                settings_group_key="invalid_truncation",
                 regular="invalid_params",
                 signature="invalid_truncation_signature",
                 truncation=1.5,  # 超出有效范围
                 # 设置必需的枚举参数
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.USA,
-                universe=Universe.TOP500,
+                universe=Universe.TOP2000,
                 delay=Delay.ZERO,
                 neutralization=Neutralization.NONE,
-                pasteurization=Switch.OFF,
-                unit_handling=UnitHandling.DEFAULT,
-                max_trade=Switch.DEFAULT,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
             )
 
     async def test_tag_methods(self, session: AsyncSession) -> None:
@@ -507,19 +528,19 @@ class TestSimulationTask:
         # 创建带有初始标签的任务
         task = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings_group_key="tag_test",
             regular="tag_methods",
             signature="tag_signature",
             tags=["initial", "tags"],
             # 设置必需的枚举参数
             instrument_type=InstrumentType.EQUITY,
             region=Region.USA,
-            universe=Universe.TOP500,
+            universe=Universe.TOP1000,
             delay=Delay.ZERO,
             neutralization=Neutralization.NONE,
-            pasteurization=Switch.OFF,
-            unit_handling=UnitHandling.DEFAULT,
-            max_trade=Switch.DEFAULT,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+            language=RegularLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -554,7 +575,7 @@ class TestSimulationTask:
         final_task = result.scalars().one()
         assert "initial" not in final_task.tags
         assert len(final_task.tags) == 2
-        assert final_task.tags == ["tags", "new_tag"]
+        assert set(final_task.tags) == {"tags", "new_tag"}
 
         # 测试设置全新的标签列表
         final_task.tags = ["completely", "new", "list"]  # type: ignore[method-assign]
@@ -564,5 +585,320 @@ class TestSimulationTask:
             select(SimulationTask).where(SimulationTask.id == task.id)
         )
         reset_task = result.scalars().one()
-        assert reset_task.tags == ["completely", "new", "list"]
+        assert set(reset_task.tags) == {"completely", "new", "list"}
         assert len(reset_task.tags) == 3
+
+        # 测试空标签处理
+        reset_task.add_tag("")
+        reset_task.add_tag("   ")
+        await session.flush()
+
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        empty_tag_task = result.scalars().one()
+        assert set(empty_tag_task.tags) == {"completely", "new", "list"}
+
+        # 测试移除不存在的标签
+        empty_tag_task.remove_tag("nonexistent")
+        await session.flush()
+        assert set(empty_tag_task.tags) == {"completely", "new", "list"}
+
+        # 测试设置 None 到标签
+        empty_tag_task.tags = None  # type: ignore[method-assign]
+        await session.flush()
+
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        none_tag_task = result.scalars().one()
+        assert none_tag_task.tags is None
+
+    async def test_settings_group_key_generation(self, session: AsyncSession) -> None:
+        """测试 settings_group_key 的自动生成逻辑。
+
+        验证 settings_group_key 是否根据 region、delay、language 和 instrument_type 正确生成。
+
+        Args:
+            session: 数据库会话对象。
+        """
+        # 创建基本任务
+        task = SimulationTask(
+            type=SimulationTaskType.REGULAR,
+            regular="test_settings_key",
+            signature="settings_key_signature",
+            # 设置参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.CHINA,
+            universe=Universe.TOP2000U,
+            delay=Delay.ONE,
+            neutralization=Neutralization.MARKET,
+            language=RegularLanguage.PYTHON,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+        )
+        session.add(task)
+        await session.flush()
+
+        # 验证初始 settings_group_key
+        expected_key = (
+            f"{Region.CHINA.value}_{Delay.ONE.value}_"
+            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+        )
+        assert task.settings_group_key == expected_key
+
+        # 修改各个影响字段并验证 settings_group_key 是否更新
+        task.universe = Universe.TOP3000
+        task.region = Region.USA
+        await session.flush()
+        expected_key = (
+            f"{Region.USA.value}_{Delay.ONE.value}_"
+            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+        )
+        assert task.settings_group_key == expected_key
+
+        task.delay = Delay.ZERO
+        await session.flush()
+        expected_key = (
+            f"{Region.USA.value}_{Delay.ZERO.value}_"
+            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+        )
+        assert task.settings_group_key == expected_key
+
+        task.language = RegularLanguage.EXPRESSION
+        await session.flush()
+        expected_key = (
+            f"{Region.USA.value}_{Delay.ZERO.value}_"
+            + f"{RegularLanguage.EXPRESSION.value}_{InstrumentType.EQUITY.value}"
+        )
+        assert task.settings_group_key == expected_key
+
+        task.instrument_type = InstrumentType.EQUITY
+        await session.flush()
+        expected_key = (
+            f"{Region.USA.value}_{Delay.ZERO.value}_"
+            + f"{RegularLanguage.EXPRESSION.value}_{InstrumentType.EQUITY.value}"
+        )
+        assert task.settings_group_key == expected_key
+
+    async def test_field_validators(self) -> None:
+        """测试各个字段的验证器功能。
+
+        验证所有字段验证方法是否正确工作，包括值域验证和值的合法性检查。
+
+        Args:
+            session: 数据库会话对象。
+        """
+        # 测试各个枚举字段的 DEFAULT 值验证
+        with pytest.raises(ValueError, match="region 不能使用 DEFAULT 值"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="validator_test",
+                signature="validator_signature",
+                region=Region.DEFAULT,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.TOP500,
+                delay=Delay.ONE,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        with pytest.raises(ValueError, match="instrument_type 不能使用 DEFAULT 值"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="validator_test",
+                signature="validator_signature",
+                region=Region.USA,
+                instrument_type=InstrumentType.DEFAULT,
+                universe=Universe.TOP3000,
+                delay=Delay.ONE,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        with pytest.raises(ValueError, match="universe 不能使用 DEFAULT 值"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="validator_test",
+                signature="validator_signature",
+                region=Region.USA,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.DEFAULT,
+                delay=Delay.ONE,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        with pytest.raises(ValueError, match="delay 不能使用 DEFAULT 值"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="validator_test",
+                signature="validator_signature",
+                region=Region.USA,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.TOP3000,
+                delay=Delay.DEFAULT,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        with pytest.raises(ValueError, match="neutralization 不能使用 DEFAULT 值"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="validator_test",
+                signature="validator_signature",
+                region=Region.USA,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.TOP3000,
+                delay=Delay.ONE,
+                neutralization=Neutralization.DEFAULT,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+    async def test_field_relationship_validation(self) -> None:
+        """测试字段间关系的验证逻辑。
+
+        验证字段间的关系约束是否正确实施，如 region 和 instrument_type 的兼容性等。
+
+        Args:
+            session: 数据库会话对象。
+        """
+        # 测试区域和证券类型兼容性验证
+        with pytest.raises(ValueError, match="区域.*不支持证券类型"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="relationship_test",
+                signature="relationship_signature",
+                region=Region.TAIWAN,
+                instrument_type=InstrumentType.CRYPTO,
+                universe=Universe.TOP500,
+                delay=Delay.ONE,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        # 测试选股范围与区域、证券类型兼容性验证
+        with pytest.raises(ValueError, match="选股范围.*对证券类型.*和区域.*无效"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="universe_test",
+                signature="universe_signature",
+                region=Region.USA,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.TOP20,
+                delay=Delay.ONE,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        # 测试延迟设置与区域兼容性验证
+        with pytest.raises(ValueError, match="延迟设置.*对区域.*无效"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="delay_test",
+                signature="delay_signature",
+                region=Region.GLOBAL,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.TOP3000,
+                delay=Delay.ZERO,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+        # 测试中性化策略与区域和证券类型兼容性验证
+        with pytest.raises(ValueError, match="中性化策略.*对证券类型.*和区域.*无效"):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                regular="neutralization_test",
+                signature="neutralization_signature",
+                region=Region.USA,
+                instrument_type=InstrumentType.EQUITY,
+                universe=Universe.TOP3000,
+                delay=Delay.ONE,
+                neutralization=Neutralization.COUNTRY,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                max_trade=Switch.OFF,
+                language=RegularLanguage.PYTHON,
+            )
+
+    async def test_event_listeners(self, session: AsyncSession) -> None:
+        """测试 SQLAlchemy 事件监听器的功能。
+
+        验证对象更新前后的自动事件处理，包括 settings_group_key 自动更新和关系验证。
+
+        Args:
+            session: 数据库会话对象。
+        """
+        # 创建基本任务
+        task = SimulationTask(
+            type=SimulationTaskType.REGULAR,
+            regular="event_listener_test",
+            signature="listener_signature",
+            # 设置参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.USA,
+            universe=Universe.TOP3000,
+            delay=Delay.ZERO,
+            neutralization=Neutralization.MARKET,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.OFF,
+            language=RegularLanguage.PYTHON,
+        )
+        session.add(task)
+        await session.flush()
+
+        original_key = task.settings_group_key
+
+        # 修改影响 settings_group_key 的字段，验证监听器是否触发更新
+        task.universe = Universe.TOP2000U
+        task.region = Region.CHINA
+        await session.flush()
+
+        # 重新查询验证自动更新
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        updated_task = result.scalars().one()
+
+        assert updated_task.settings_group_key != original_key
+        assert Region.CHINA.value in updated_task.settings_group_key
+
+        # 测试多字段同时变更
+        task.delay = Delay.ONE
+        task.language = RegularLanguage.EXPRESSION
+        await session.flush()
+
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        multi_updated_task = result.scalars().one()
+
+        assert str(Delay.ONE.value) in multi_updated_task.settings_group_key
+        assert RegularLanguage.EXPRESSION.value in multi_updated_task.settings_group_key

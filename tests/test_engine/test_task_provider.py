@@ -1,3 +1,14 @@
+"""测试DatabaseTaskProvider类的功能模块。
+
+本模块包含对DatabaseTaskProvider类的单元测试，重点测试其fetch_tasks方法在各种情况下的行为：
+- 从数据库正常获取任务
+- 当数据库中没有符合条件的任务时的行为
+- 使用不存在的优先级获取任务的情况
+- fetch_tasks方法抛出异常时的错误处理
+
+这些测试使用pytest异步测试框架和模拟(mock)来隔离测试环境。
+"""
+
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -36,6 +47,11 @@ async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
 async def test_fetch_tasks(session: AsyncSession) -> None:
     """
     测试从数据库中获取任务的功能。
+
+    该测试验证fetch_tasks方法能够正确地从数据库中获取任务，并检查返回的任务属性是否符合预期。
+
+    Args:
+        session: 异步数据库会话对象
     """
     # 准备测试数据
     regular = ["task1", "task2"]
@@ -106,6 +122,11 @@ async def test_fetch_tasks(session: AsyncSession) -> None:
 async def test_fetch_tasks_no_results(session: AsyncSession) -> None:
     """
     测试从数据库中获取任务的功能，当没有符合条件的任务时。
+
+    该测试验证当数据库中没有符合条件的任务时，fetch_tasks方法应当返回空列表。
+
+    Args:
+        session: 异步数据库会话对象
     """
     # 初始化 DatabaseTaskProvider
     provider = DatabaseTaskProvider(session=session)
@@ -119,10 +140,13 @@ async def test_fetch_tasks_no_results(session: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_tasks_invalid_priority(session: AsyncSession) -> None:
+    """测试使用不存在的优先级获取任务的情况。
+
+    该测试验证当请求的优先级在数据库中不存在时，fetch_tasks方法应当返回空列表。
+
+    Args:
+        session: 异步数据库会话对象
     """
-    测试从数据库中获取任务的功能，当使用不存在的优先级时。
-    """
-    # 准备测试数据
     regular = ["task1"]
     settings = [
         SimulationSettingsView.model_construct(
@@ -166,9 +190,18 @@ async def test_fetch_tasks_invalid_priority(session: AsyncSession) -> None:
     "alphapower.engine.simulation.task.provider.DatabaseTaskProvider.fetch_tasks",
     side_effect=Exception("Database error"),
 )
-async def test_fetch_tasks_exception(mock_fetch_tasks: AsyncMock) -> None:
-    """
-    测试从数据库中获取任务的功能，当发生异常时。
+async def test_fetch_tasks_exception(
+    mock_fetch_tasks: AsyncMock,  # pylint: disable=W0613
+) -> None:
+    """测试DatabaseTaskProvider.fetch_tasks方法抛出异常的情况。
+
+    该测试模拟fetch_tasks方法抛出异常的场景，验证异常是否能够正确传播。
+
+    Args:
+        mock_fetch_tasks: 模拟的fetch_tasks方法，配置为抛出Exception异常
+
+    Raises:
+        Exception: 期望抛出包含"Database error"信息的异常
     """
     # 模拟异常情况
     provider = DatabaseTaskProvider(session=AsyncMock())

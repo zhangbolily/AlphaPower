@@ -24,12 +24,23 @@ Attributes:
 
 import enum
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Integer, String, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Enum,
+    Float,
+    Integer,
+    String,
+    event,
+    func,
+)
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
+from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, validates
 
 from alphapower.constants import (
     Decay,
@@ -42,6 +53,11 @@ from alphapower.constants import (
     Truncation,
     UnitHandling,
     Universe,
+    get_delay_for_region,
+    get_neutralization_for_instrument_region,
+    get_regions_for_instrument_type,
+    get_universe_for_instrument_region,
+    is_region_supported_for_instrument_type,
 )
 
 
@@ -220,22 +236,68 @@ class SimulationTask(Base):
             **kwargs: 包含所有模型属性的关键字参数。
         """
         # 处理 tags 属性 (如果存在)
-        tags = kwargs.pop("tags", None)
+        tags: Optional[List[str]] = kwargs.pop("tags", None)
+        self._initializing = True
 
         # 调用父类的 __init__ 处理其他属性
         super().__init__(**kwargs)
 
         # 手动设置 _tags 属性
         if tags is not None:
-            # 过滤空标签，并使用逗号连接
+            # 过滤空标签，确保唯一性，并使用逗号连接
             self._tags = ",".join(
-                filter(
-                    None,
-                    [tag.strip() if isinstance(tag, str) else str(tag) for tag in tags],
+                sorted(
+                    set(
+                        filter(
+                            None,
+                            [
+                                tag.strip() if isinstance(tag, str) else str(tag)
+                                for tag in tags
+                            ],
+                        )
+                    )
                 )
             )
 
+        self._initializing = False
+
+        # 生成 settings_group_key
+        self._update_settings_group_key()
+
+        # 验证字段间的关系约束
+        self.validate_field_relationships()
+
+    def _update_settings_group_key(self) -> None:
+        """根据 region、delay、language 和 instrument_type 生成并更新 settings_group_key"""
+        self.settings_group_key = (
+            f"{self.region.value}_{self.delay.value}_"
+            + f"{self.language.value}_{self.instrument_type.value}"
+        )
+
     # 验证器部分
+    @validates("region")
+    def validate_region(self, key: str, value: Region) -> Region:
+        """验证区域值的合法性"""
+        if value == Region.DEFAULT:
+            raise ValueError(f"{key} 不能使用 DEFAULT 值")
+        return value
+
+    @validates("instrument_type")
+    def validate_instrument_type(
+        self, key: str, value: InstrumentType
+    ) -> InstrumentType:
+        """验证证券类型的合法性"""
+        if value == InstrumentType.DEFAULT:
+            raise ValueError(f"{key} 不能使用 DEFAULT 值")
+        return value
+
+    @validates("universe")
+    def validate_universe(self, key: str, value: Universe) -> Universe:
+        """验证选股范围的合法性"""
+        if value == Universe.DEFAULT:
+            raise ValueError(f"{key} 不能使用 DEFAULT 值")
+        return value
+
     @validates("decay")
     def validate_decay(self, key: str, value: int) -> int:
         """验证 decay 字段的值是否在有效范围内"""
@@ -254,27 +316,103 @@ class SimulationTask(Base):
             )
         return value
 
+    @validates("delay")
+    def validate_delay(self, key: str, value: Delay) -> Delay:
+        """验证延迟值的合法性"""
+        if value == Delay.DEFAULT:
+            raise ValueError(f"{key} 不能使用 DEFAULT 值")
+        return value
+
+    @validates("neutralization")
+    def validate_neutralization(
+        self, key: str, value: Neutralization
+    ) -> Neutralization:
+        """验证中性化策略的合法性"""
+        if value == Neutralization.DEFAULT:
+            raise ValueError(f"{key} 不能使用 DEFAULT 值")
+        return value
+
+    def validate_field_relationships(self) -> None:
+        """验证字段间的关系是否符合业务规则"""
+        # 跳过对默认值的验证
+        if (
+            self.region == Region.DEFAULT
+            or self.instrument_type == InstrumentType.DEFAULT
+            or self.universe == Universe.DEFAULT
+            or self.delay == Delay.DEFAULT
+            or self.neutralization == Neutralization.DEFAULT
+        ):
+            return
+
+        # 验证 region 和 instrument_type 的兼容性
+        if not is_region_supported_for_instrument_type(
+            self.region, self.instrument_type
+        ):
+            supported_regions: List[Region] = get_regions_for_instrument_type(
+                self.instrument_type
+            )
+            raise ValueError(
+                f"区域 {self.region.value} 不支持证券类型 {self.instrument_type.value}。"
+                f"支持的区域有: {[r.value for r in supported_regions]}"
+            )
+
+        # 验证 universe 是否与 region 和 instrument_type 兼容
+        valid_universes: List[Universe] = get_universe_for_instrument_region(
+            self.instrument_type, self.region
+        )
+        if valid_universes and self.universe not in valid_universes:
+            raise ValueError(
+                f"选股范围 {self.universe.value} 对证券类型 {self.instrument_type.value} "
+                f"和区域 {self.region.value} 无效。"
+                f"有效选项: {[u.value for u in valid_universes]}"
+            )
+
+        # 验证 delay 是否与 region 兼容
+        valid_delays: List[Delay] = get_delay_for_region(self.region)
+        if valid_delays and self.delay not in valid_delays:
+            raise ValueError(
+                f"延迟设置 {self.delay.value} 对区域 {self.region.value} 无效。"
+                f"有效选项: {[d.value for d in valid_delays]}"
+            )
+
+        # 验证 neutralization 是否与 region 和 instrument_type 兼容
+        valid_neutralizations: List[Neutralization] = (
+            get_neutralization_for_instrument_region(self.instrument_type, self.region)
+        )
+        if valid_neutralizations and self.neutralization not in valid_neutralizations:
+            raise ValueError(
+                f"中性化策略 {self.neutralization.value} 对证券类型 {self.instrument_type.value} "
+                f"和区域 {self.region.value} 无效。"
+                f"有效选项: {[n.value for n in valid_neutralizations]}"
+            )
+
     @hybrid_property
     def tags(self) -> Optional[List[str]]:
-        """获取标签列表"""
+        """获取标签列表，确保标签唯一性"""
         if self._tags is None:
             return None
-        return [tag.strip() for tag in self._tags.split(",") if tag.strip()]
+        return sorted(
+            set([tag.strip() for tag in self._tags.split(",") if tag.strip()])
+        )
 
     @tags.setter  # type: ignore[no-redef]
     def tags(self, value: Optional[List[str]]) -> None:
-        """设置标签列表"""
+        """设置标签列表，确保标签唯一性"""
         if value is None:
             self._tags = None
         else:
-            # 过滤空标签，并使用逗号连接
+            # 过滤空标签，确保唯一性，并使用逗号连接
             self._tags = ",".join(
-                filter(
-                    None,
-                    [
-                        tag.strip() if isinstance(tag, str) else str(tag)
-                        for tag in value
-                    ],
+                sorted(
+                    set(
+                        filter(
+                            None,
+                            [
+                                tag.strip() if isinstance(tag, str) else str(tag)
+                                for tag in value
+                            ],
+                        )
+                    )
                 )
             )
 
@@ -283,7 +421,7 @@ class SimulationTask(Base):
         if not tag or not tag.strip():
             return
 
-        current_tags = self.tags or []
+        current_tags: List[str] = self.tags or []
         if tag.strip() not in current_tags:
             current_tags.append(tag.strip())
             self.tags = current_tags  # type: ignore[method-assign]
@@ -293,7 +431,78 @@ class SimulationTask(Base):
         if not tag or not tag.strip() or not self.tags:
             return
 
-        current_tags = self.tags
+        current_tags: List[str] = cast(List[str], self.tags)
         if tag.strip() in current_tags:
             current_tags.remove(tag.strip())
             self.tags = current_tags  # type: ignore[method-assign]
+
+
+# SQLAlchemy 事件监听器定义
+# ==========================
+
+
+# 更新后验证字段关系的监听器
+@event.listens_for(SimulationTask, "after_update")
+def validate_after_update(
+    mapper: Mapper,  # pylint: disable=unused-argument
+    connection: Connection,  # pylint: disable=unused-argument
+    target: SimulationTask,
+) -> None:
+    """在对象更新后验证字段关系
+    通过 SQLAlchemy 事件监听器，确保在对象更新后重新验证字段关系。
+    这确保了在对象属性变更后，字段间的关系仍然符合业务规则。
+
+    Args:
+        mapper: SQLAlchemy映射器对象
+        connection: 数据库连接对象
+        target: 更新后的SimulationTask实例
+    """
+    target.validate_field_relationships()
+
+
+# 更新对象前更新settings_group_key的监听器
+@event.listens_for(SimulationTask, "before_update")
+def update_settings_group_key_before_update(
+    mapper: Mapper,  # pylint: disable=unused-argument
+    connection: Connection,  # pylint: disable=unused-argument
+    target: SimulationTask,
+) -> None:
+    """在更新对象前更新 settings_group_key
+
+    当 region、delay、language 或 instrument_type 发生变化时，
+    自动更新 settings_group_key 字段。
+
+    Args:
+        mapper: SQLAlchemy映射器对象
+        connection: 数据库连接对象
+        target: 更新前的SimulationTask实例
+    """
+    target._update_settings_group_key()  # pylint: disable=W0212
+
+
+# 为关键字段添加属性变更监听器
+# 对每个影响settings_group_key的字段添加监听器
+for attr_name in ["region", "delay", "language", "instrument_type"]:
+    attr: Optional[Mapped[Any]] = getattr(SimulationTask, attr_name, None)
+
+    @event.listens_for(attr, "set")  # pylint: disable=W0640
+    def receive_set(
+        target: SimulationTask,
+        value: Any,  # pylint: disable=unused-argument
+        oldvalue: Any,  # pylint: disable=unused-argument
+        initiator: Any,  # pylint: disable=unused-argument
+    ) -> None:
+        """监听属性变更，更新 settings_group_key
+
+        当任何关键字段值变化时，更新 settings_group_key。
+
+        Args:
+            target: 目标SimulationTask实例
+            value: 新值
+            oldvalue: 旧值
+            initiator: 触发事件的属性
+        """
+        if target._initializing:  # pylint: disable=W0212
+            return
+        # 仅在对象初始化完成后更新 settings_group_key
+        target._update_settings_group_key()  # pylint: disable=W0212
