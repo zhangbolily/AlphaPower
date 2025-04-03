@@ -269,10 +269,12 @@ class SimulationTask(Base):
 
     def _update_settings_group_key(self) -> None:
         """根据 region、delay、language 和 instrument_type 生成并更新 settings_group_key"""
-        self.settings_group_key = (
-            f"{self.region.value}_{self.delay.value}_"
-            + f"{self.language.value}_{self.instrument_type.value}"
-        )
+        if self.region and self.delay and self.language and self.instrument_type:
+            # 存在 None 的情况，都视为初始化未完成的实例，不要执行自动更新操作
+            self.settings_group_key = (
+                f"{self.region.value}_{self.delay.value}_"
+                + f"{self.language.value}_{self.instrument_type.value}"
+            )
 
     # 验证器部分
     @validates("region")
@@ -502,6 +504,9 @@ for attr_name in ["region", "delay", "language", "instrument_type"]:
             oldvalue: 旧值
             initiator: 触发事件的属性
         """
+        if "_initializing" not in target.__dict__:
+            # merge 等方式进入可能会导致 _initializing 属性丢失
+            target._initializing = False  # pylint: disable=W0212
         if target._initializing:  # pylint: disable=W0212
             return
         # 仅在对象初始化完成后更新 settings_group_key

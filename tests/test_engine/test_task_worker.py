@@ -29,20 +29,23 @@
 """
 
 import asyncio
-from typing import Callable, List
+from typing import AsyncGenerator, Callable, List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.client import (
     AuthenticationView,
     MultiSimulationResultView,
+    SimulationSettingsView,
     SingleSimulationResultView,
     WorldQuantClient,
 )
 from alphapower.constants import (
     ROLE_CONSULTANT,
     ROLE_USER,
+    Database,
     Delay,
     InstrumentType,
     Neutralization,
@@ -52,9 +55,27 @@ from alphapower.constants import (
     UnitHandling,
     Universe,
 )
+from alphapower.engine.simulation.task.core import create_simulation_task
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker import Worker
 from alphapower.entity import SimulationTask, SimulationTaskStatus, SimulationTaskType
+from alphapower.internal.db_session import get_db_session
+
+
+@pytest.fixture(name="session")
+async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
+    """创建数据库会话用于测试。
+
+    创建与真实数据库的连接会话，用于测试实体类的数据库操作。
+    测试完成后会自动清理会话。
+
+    Yields:
+        AsyncSession: SQLAlchemy 异步会话对象。
+    """
+    async with get_db_session(Database.SIMULATION.value) as session:
+        yield session
+        # 注意：在生产环境测试中可能需要更复杂的数据清理策略
+        # 当前会话在上下文管理器结束时会自动回滚未提交的更改
 
 
 @pytest.fixture(name="mock_user_client")
@@ -201,7 +222,24 @@ async def test_process_multi_simulation_task_executes_correctly(
         user_worker, "_user_role", ROLE_CONSULTANT
     )  # 使用 setattr 方法访问受保护成员
     tasks: List[SimulationTask] = [
-        SimulationTask() for _ in range(2)
+        SimulationTask(
+            type=SimulationTaskType.REGULAR,
+            status=SimulationTaskStatus.PENDING,
+            regular="rank(-returns)",
+            settings_group_key="test_group",
+            signature="test_signature",
+            region=Region.USA,
+            delay=Delay.ONE,  # 修正：从 Delay.D1 修改为 Delay.ONE
+            instrument_type=InstrumentType.EQUITY,
+            universe=Universe.TOP500,  # 修正：从 Universe.ALL 修改为 Universe.TOP500
+            neutralization=Neutralization.INDUSTRY,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,  # 修正：从 UnitHandling.RAW 修改为 UnitHandling.VERIFY
+            max_trade=Switch.OFF,
+            language=RegularLanguage.FASTEXPR,  # 修正：从 "FASTEXPRESSION" 修改为 "python"
+            visualization=False,
+        )
+        for _ in range(2)
     ]  # 使用 SimulationTask 实例
     setattr(user_worker, "_shutdown_flag", True)  # 使用 setattr 方法访问受保护成员
     m_func: Callable = getattr(user_worker, "_process_multi_simulation_task")
@@ -228,28 +266,31 @@ async def test_stop_worker_cancels_tasks(user_worker: Worker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_single_simulation_task(user_worker: Worker) -> None:
+async def test_handle_single_simulation_task(
+    user_worker: Worker, session: AsyncSession
+) -> None:
     """
     测试 Worker 能否正确处理单个模拟任务。
     """
-    task0: SimulationTask = SimulationTask(
-        id=1,
-        type=SimulationTaskType.REGULAR,
-        status=SimulationTaskStatus.PENDING,
-        regular="rank(-returns)",
-        settings_group_key="test_group",
-        signature="test_signature",
-        region=Region.USA,
-        delay=Delay.ONE,  # 修正：从 Delay.D1 修改为 Delay.ONE
-        instrument_type=InstrumentType.EQUITY,
-        universe=Universe.TOP500,  # 修正：从 Universe.ALL 修改为 Universe.TOP500
-        neutralization=Neutralization.INDUSTRY,
-        pasteurization=Switch.ON,
-        unit_handling=UnitHandling.VERIFY,  # 修正：从 UnitHandling.RAW 修改为 UnitHandling.VERIFY
-        max_trade=Switch.OFF,
-        language=RegularLanguage.FASTEXPR,  # 修正：从 "FASTEXPRESSION" 修改为 "python"
+    settings: SimulationSettingsView = SimulationSettingsView.model_construct(
+        region=Region.USA.value,
+        delay=Delay.ONE.value,
+        language=RegularLanguage.FASTEXPR.value,
+        instrument_type=InstrumentType.EQUITY.value,
+        universe=Universe.TOP1000.value,
+        neutralization=Neutralization.INDUSTRY.value,
+        pasteurization=Switch.ON.value,
+        unit_handling=UnitHandling.VERIFY.value,
+        max_trade=Switch.OFF.value,
+        decay=10,
+        truncation=0.5,
         visualization=False,
+        test_period="2020-01-01:2021-01-01",
     )
+    task0: SimulationTask = await create_simulation_task(
+        session, "regular_1", settings, priority=10
+    )
+    await session.close_all()
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0]
 

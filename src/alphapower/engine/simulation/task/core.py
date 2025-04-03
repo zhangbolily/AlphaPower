@@ -27,6 +27,7 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -133,6 +134,11 @@ def _create_task(
         else Neutralization.DEFAULT
     )
     max_trade = Switch[settings.max_trade] if settings.max_trade else Switch.DEFAULT
+    language = (
+        RegularLanguage[settings.language]
+        if settings.language
+        else RegularLanguage.DEFAULT
+    )
 
     return SimulationTask(
         type=SimulationTaskType.REGULAR,
@@ -143,7 +149,7 @@ def _create_task(
         priority=priority,
         region=region,
         delay=delay,
-        language=settings.language,
+        language=language,
         instrument_type=instrument_type,
         universe=universe,
         truncation=settings.truncation,
@@ -176,12 +182,11 @@ async def create_simulation_task(
     Returns:
         一个新创建的SimulationTask实例。
     """
-    settings_group_key = get_settings_group_key(settings)
     signature = get_task_signature(regular, settings)
     task = _create_task(
         regular=regular,
         settings=settings,
-        settings_group_key=settings_group_key,
+        settings_group_key="",
         signature=signature,
         status=SimulationTaskStatus.PENDING,
         priority=priority,

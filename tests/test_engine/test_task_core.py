@@ -14,6 +14,7 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -40,7 +41,7 @@ async def test_create_simulation_task() -> None:
     settings: SimulationSettingsView = SimulationSettingsView.model_construct(
         region=Region.USA.value,
         delay=Delay.ONE.value,
-        language="FASTEXPRESSION",
+        language=RegularLanguage.FASTEXPR.value,
         instrument_type=InstrumentType.EQUITY.value,
         universe=Universe.TOP1000.value,
         neutralization=Neutralization.INDUSTRY.value,
@@ -57,7 +58,7 @@ async def test_create_simulation_task() -> None:
     )
 
     assert task.type == SimulationTaskType.REGULAR
-    assert task.settings_group_key == "USA_1_FASTEXPRESSION_EQUITY"
+    assert task.settings_group_key == "USA_1_FASTEXPR_EQUITY"
     assert task.regular == "regular_1"
     assert task.status == SimulationTaskStatus.PENDING
     assert task.priority == 10
@@ -74,9 +75,9 @@ async def test_create_simulation_tasks() -> None:
         SimulationSettingsView.model_construct(
             region=Region.USA.name,
             delay=Delay.ONE.value,
-            language="FASTEXPRESSION",
+            language=RegularLanguage.FASTEXPR.value,
             instrument_type=InstrumentType.EQUITY.value,
-            universe=Universe.TOP1000.value,
+            universe=Universe.TOP3000.value,
             neutralization=Neutralization.INDUSTRY.value,
             pasteurization=Switch.ON.value,
             unit_handling=UnitHandling.VERIFY.value,
@@ -89,9 +90,9 @@ async def test_create_simulation_tasks() -> None:
         SimulationSettingsView.model_construct(
             region=Region.EUROPE.name,
             delay=Delay.ZERO.value,
-            language="FASTEXPRESSION",
+            language=RegularLanguage.FASTEXPR.value,
             instrument_type=InstrumentType.EQUITY.value,
-            universe=Universe.TOP1000.value,
+            universe=Universe.TOP1200.value,
             neutralization=Neutralization.INDUSTRY.value,
             pasteurization=Switch.ON.value,
             unit_handling=UnitHandling.VERIFY.value,
@@ -110,8 +111,8 @@ async def test_create_simulation_tasks() -> None:
     )
 
     assert len(tasks) == 2
-    assert tasks[0].settings_group_key == "USA_1_FASTEXPRESSION_EQUITY"
-    assert tasks[1].settings_group_key == "EUROPE_0_FASTEXPRESSION_EQUITY"
+    assert tasks[0].settings_group_key == "USA_1_FASTEXPR_EQUITY"
+    assert tasks[1].settings_group_key == "EUR_0_FASTEXPR_EQUITY"
     session.add_all.assert_called_once_with(tasks)
 
 
