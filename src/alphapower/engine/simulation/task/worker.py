@@ -50,12 +50,28 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         SingleSimulationPayload: 格式化后的单个模拟任务负载数据
     """
     # 详细记录构建负载数据过程，便于调试
+    setting = SimulationSettingsView.model_construct(
+        region=task.region.value,
+        delay=task.delay.value,
+        language=task.language.value,
+        instrument_type=task.instrument_type.value,
+        universe=task.universe.value,
+        neutralization=task.neutralization.value,
+        pasteurization=task.pasteurization.value,
+        unit_handling=task.unit_handling.value,
+        max_trade=task.max_trade.value,
+        decay=task.decay,
+        truncation=task.truncation,
+        visualization=task.visualization,
+        test_period=task.test_period,
+    )
+
     logger.debug(
-        f"生成单个模拟任务负载数据，任务 ID: {task.id}, 类型: {task.type}, 设置: {task.settings}"
+        f"生成单个模拟任务负载数据，任务 ID: {task.id}, 类型: {task.type}, 设置: {setting}"
     )
     payload: SingleSimulationPayload = SingleSimulationPayload(
         type=task.type.value,
-        settings=SimulationSettingsView.model_validate(task.settings),
+        settings=setting,
         regular=task.regular,
     )
     logger.debug(f"生成的负载数据: {payload}")

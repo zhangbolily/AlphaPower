@@ -37,6 +37,7 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Switch,
     Truncation,
     UnitHandling,
@@ -180,7 +181,9 @@ class SimulationTask(Base):
     _tags: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="tags")
     parent_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     child_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    language: Mapped[str] = mapped_column(String, nullable=False, default="python")
+    language: Mapped[RegularLanguage] = mapped_column(
+        Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
+    )
     test_period: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 数值类型字段

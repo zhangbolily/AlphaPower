@@ -48,7 +48,7 @@ class PriorityScheduler(AbstractScheduler):
                 self.settings_group_map[group_key] = []
             self.settings_group_map[group_key].append(task)
 
-    def __del__(self):
+    def __del__(self) -> None:
         """
         析构函数，用于清理后续异步任务。
         """

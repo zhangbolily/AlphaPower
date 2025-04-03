@@ -22,6 +22,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from alphapower.client import SimulationSettingsView
+from alphapower.constants import (
+    Delay,
+    InstrumentType,
+    Neutralization,
+    Region,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 from alphapower.entity import (
     SimulationTask,
     SimulationTaskStatus,
@@ -57,18 +66,23 @@ def get_task_signature(regular: str, settings: SimulationSettingsView) -> str:
     """
     settings_dict = {
         "region": settings.region or "None",
-        "delay": settings.delay or "None",
+        "delay": str(settings.delay) if settings.delay is not None else "None",
         "language": settings.language or "None",
         "instrument_type": settings.instrument_type or "None",
-        "nan_handling": settings.nan_handling or "None",
         "universe": settings.universe or "None",
-        "truncation": settings.truncation or "None",
+        "truncation": (
+            str(settings.truncation) if settings.truncation is not None else "None"
+        ),
         "unit_handling": settings.unit_handling or "None",
         "test_period": settings.test_period or "None",
         "pasteurization": settings.pasteurization or "None",
-        "decay": settings.decay or "None",
+        "decay": str(settings.decay) if settings.decay is not None else "None",
         "neutralization": settings.neutralization or "None",
-        "visualization": settings.visualization or "None",
+        "visualization": (
+            str(settings.visualization)
+            if settings.visualization is not None
+            else "False"
+        ),
         "max_trade": settings.max_trade or "None",
     }
     settings_str = json.dumps(settings_dict, sort_keys=True)
@@ -96,14 +110,52 @@ def _create_task(
     Returns:
         一个新创建的SimulationTask实例。
     """
+    # 转换枚举字段
+    region = Region[settings.region] if settings.region else Region.DEFAULT
+    delay = Delay(settings.delay) if settings.delay is not None else Delay.DEFAULT
+    instrument_type = (
+        InstrumentType[settings.instrument_type]
+        if settings.instrument_type
+        else InstrumentType.DEFAULT
+    )
+    universe = Universe[settings.universe] if settings.universe else Universe.DEFAULT
+    unit_handling = (
+        UnitHandling[settings.unit_handling]
+        if settings.unit_handling
+        else UnitHandling.DEFAULT
+    )
+    pasteurization = (
+        Switch[settings.pasteurization] if settings.pasteurization else Switch.DEFAULT
+    )
+    neutralization = (
+        Neutralization[settings.neutralization]
+        if settings.neutralization
+        else Neutralization.DEFAULT
+    )
+    max_trade = Switch[settings.max_trade] if settings.max_trade else Switch.DEFAULT
+
     return SimulationTask(
         type=SimulationTaskType.REGULAR,
-        settings=settings.__dict__,
         settings_group_key=settings_group_key,
         signature=signature,
         regular=regular,
         status=status,
         priority=priority,
+        region=region,
+        delay=delay,
+        language=settings.language,
+        instrument_type=instrument_type,
+        universe=universe,
+        truncation=settings.truncation,
+        unit_handling=unit_handling,
+        test_period=settings.test_period,
+        pasteurization=pasteurization,
+        decay=settings.decay,
+        neutralization=neutralization,
+        visualization=(
+            settings.visualization if settings.visualization is not None else False
+        ),
+        max_trade=max_trade,
     )
 
 

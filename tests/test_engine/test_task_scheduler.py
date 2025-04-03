@@ -10,7 +10,17 @@ import pytest
 from sqlalchemy import text
 
 from alphapower.client import SimulationSettingsView
-from alphapower.constants import DB_SIMULATION
+from alphapower.constants import (
+    DB_SIMULATION,
+    Delay,
+    InstrumentType,
+    Neutralization,
+    Region,
+    RegularLanguage,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 from alphapower.engine.simulation.task import (
     DatabaseTaskProvider,
     PriorityScheduler,
@@ -142,10 +152,34 @@ async def test_schedule_with_database_task_provider() -> None:
         regular = ["task1", "task2"]
         settings: List[SimulationSettingsView] = [
             SimulationSettingsView.model_construct(
-                region="USA", delay=10, language="FASTEXPRESS", instrument_type="type1"
+                region=Region.USA.name,
+                delay=Delay.ONE.value,
+                language=RegularLanguage.FASTEXPR.value,
+                instrument_type=InstrumentType.EQUITY.value,
+                universe=Universe.TOP1000.value,
+                neutralization=Neutralization.INDUSTRY.value,
+                pasteurization=Switch.ON.value,
+                unit_handling=UnitHandling.VERIFY.value,
+                max_trade=Switch.OFF.value,
+                decay=10,
+                truncation=0.5,
+                visualization=False,
+                test_period="2020-01-01:2021-01-01",
             ),
             SimulationSettingsView.model_construct(
-                region="CN", delay=20, language="FASTEXPRESS", instrument_type="type2"
+                region=Region.CHINA.name,
+                delay=Delay.ONE.value,
+                language=RegularLanguage.FASTEXPR.value,
+                instrument_type=InstrumentType.EQUITY.value,
+                universe=Universe.TOP2000U.value,
+                neutralization=Neutralization.INDUSTRY.value,
+                pasteurization=Switch.ON.value,
+                unit_handling=UnitHandling.VERIFY.value,
+                max_trade=Switch.OFF.value,
+                decay=10,
+                truncation=0.5,
+                visualization=False,
+                test_period="2020-01-01:2021-01-01",
             ),
         ]
         priority = [1, 1]

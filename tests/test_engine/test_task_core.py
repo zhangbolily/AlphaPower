@@ -8,6 +8,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from alphapower.client import SimulationSettingsView
+from alphapower.constants import (
+    Delay,
+    InstrumentType,
+    Neutralization,
+    Region,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 from alphapower.engine.simulation.task.core import (
     create_simulation_task,
     create_simulation_tasks,
@@ -19,7 +29,6 @@ from alphapower.entity import (
     SimulationTaskStatus,
     SimulationTaskType,
 )
-from alphapower.client import SimulationSettingsView
 
 
 @pytest.mark.asyncio
@@ -29,10 +38,19 @@ async def test_create_simulation_task() -> None:
     """
     session: AsyncMock = AsyncMock()
     settings: SimulationSettingsView = SimulationSettingsView.model_construct(
-        region="USA",
-        delay=1,
+        region=Region.USA.value,
+        delay=Delay.ONE.value,
         language="FASTEXPRESSION",
-        instrument_type="EQUITY",
+        instrument_type=InstrumentType.EQUITY.value,
+        universe=Universe.TOP1000.value,
+        neutralization=Neutralization.INDUSTRY.value,
+        pasteurization=Switch.ON.value,
+        unit_handling=UnitHandling.VERIFY.value,
+        max_trade=Switch.OFF.value,
+        decay=10,
+        truncation=0.5,
+        visualization=False,
+        test_period="2020-01-01:2021-01-01",
     )
     task: SimulationTask = await create_simulation_task(
         session, "regular_1", settings, priority=10
@@ -54,10 +72,34 @@ async def test_create_simulation_tasks() -> None:
     session: AsyncMock = AsyncMock()
     settings_list: List[SimulationSettingsView] = [
         SimulationSettingsView.model_construct(
-            region="USA", delay=1, language="FASTEXPRESSION", instrument_type="EQUITY"
+            region=Region.USA.name,
+            delay=Delay.ONE.value,
+            language="FASTEXPRESSION",
+            instrument_type=InstrumentType.EQUITY.value,
+            universe=Universe.TOP1000.value,
+            neutralization=Neutralization.INDUSTRY.value,
+            pasteurization=Switch.ON.value,
+            unit_handling=UnitHandling.VERIFY.value,
+            max_trade=Switch.OFF.value,
+            decay=10,
+            truncation=0.5,
+            visualization=False,
+            test_period="2020-01-01:2021-01-01",
         ),
         SimulationSettingsView.model_construct(
-            region="EU", delay=0, language="FASTEXPRESSION", instrument_type="EQUITY"
+            region=Region.EUROPE.name,
+            delay=Delay.ZERO.value,
+            language="FASTEXPRESSION",
+            instrument_type=InstrumentType.EQUITY.value,
+            universe=Universe.TOP1000.value,
+            neutralization=Neutralization.INDUSTRY.value,
+            pasteurization=Switch.ON.value,
+            unit_handling=UnitHandling.VERIFY.value,
+            max_trade=Switch.OFF.value,
+            decay=10,
+            truncation=0.5,
+            visualization=False,
+            test_period="2020-01-01:2021-01-01",
         ),
     ]
     regular_list: List[str] = ["regular_1", "regular_2"]
@@ -69,7 +111,7 @@ async def test_create_simulation_tasks() -> None:
 
     assert len(tasks) == 2
     assert tasks[0].settings_group_key == "USA_1_FASTEXPRESSION_EQUITY"
-    assert tasks[1].settings_group_key == "EU_0_FASTEXPRESSION_EQUITY"
+    assert tasks[1].settings_group_key == "EUROPE_0_FASTEXPRESSION_EQUITY"
     session.add_all.assert_called_once_with(tasks)
 
 

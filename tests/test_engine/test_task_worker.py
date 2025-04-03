@@ -40,7 +40,18 @@ from alphapower.client import (
     SingleSimulationResultView,
     WorldQuantClient,
 )
-from alphapower.constants import ROLE_CONSULTANT, ROLE_USER
+from alphapower.constants import (
+    ROLE_CONSULTANT,
+    ROLE_USER,
+    Delay,
+    InstrumentType,
+    Neutralization,
+    Region,
+    RegularLanguage,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker import Worker
 from alphapower.entity import SimulationTask, SimulationTaskStatus, SimulationTaskType
@@ -225,10 +236,19 @@ async def test_handle_single_simulation_task(user_worker: Worker) -> None:
         id=1,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正：从 Delay.D1 修改为 Delay.ONE
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正：从 Universe.ALL 修改为 Universe.TOP500
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正：从 UnitHandling.RAW 修改为 UnitHandling.VERIFY
+        max_trade=Switch.OFF,
+        language=RegularLanguage.FASTEXPR,  # 修正：从 "FASTEXPRESSION" 修改为 "python"
+        visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0]
@@ -252,19 +272,37 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
         id=1,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
     task1: SimulationTask = SimulationTask(
         id=2,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0, task1]
@@ -290,10 +328,19 @@ async def test_cancel_single_simulation_task(
         id=1,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0]
@@ -322,19 +369,37 @@ async def test_cancel_multi_simulation_tasks(
         id=1,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
     task1: SimulationTask = SimulationTask(
         id=2,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
     mock_scheduler.schedule.return_value = [task0, task1]
@@ -407,10 +472,19 @@ async def test_cancel_task_failure_handling(
         id=1,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
 
     test_func = getattr(user_worker, "_cancel_task_if_possible")
@@ -433,10 +507,19 @@ async def test_do_work_with_unknown_user_role_raises_error(
         id=1,
         type=SimulationTaskType.REGULAR,
         status=SimulationTaskStatus.PENDING,
-        settings={},
         regular="rank(-returns)",
         settings_group_key="test_group",
         signature="test_signature",
+        region=Region.USA,
+        delay=Delay.ONE,  # 修正
+        instrument_type=InstrumentType.EQUITY,
+        universe=Universe.TOP500,  # 修正
+        neutralization=Neutralization.INDUSTRY,
+        pasteurization=Switch.ON,
+        unit_handling=UnitHandling.VERIFY,  # 修正
+        max_trade=Switch.OFF,
+        language=RegularLanguage.EXPRESSION,  # 修正
+        visualization=False,
     )
 
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
@@ -466,15 +549,37 @@ async def test_handle_multi_task_completion_with_partial_failures(
             id=1,
             type=SimulationTaskType.REGULAR,
             status=SimulationTaskStatus.PENDING,
-            settings={},
             regular="rank(-returns)",
+            signature="test_signature",
+            settings_group_key="test_group",
+            region=Region.USA,
+            delay=Delay.ONE,  # 修正
+            instrument_type=InstrumentType.EQUITY,
+            universe=Universe.TOP500,  # 修正
+            neutralization=Neutralization.INDUSTRY,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,  # 修正
+            max_trade=Switch.OFF,
+            language=RegularLanguage.EXPRESSION,  # 修正
+            visualization=False,
         ),
         SimulationTask(
             id=2,
             type=SimulationTaskType.REGULAR,
             status=SimulationTaskStatus.PENDING,
-            settings={},
             regular="rank(-returns)",
+            signature="test_signature",
+            settings_group_key="test_group",
+            region=Region.USA,
+            delay=Delay.ONE,  # 修正
+            instrument_type=InstrumentType.EQUITY,
+            universe=Universe.TOP500,  # 修正
+            neutralization=Neutralization.INDUSTRY,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,  # 修正
+            max_trade=Switch.OFF,
+            language=RegularLanguage.EXPRESSION,  # 修正
+            visualization=False,
         ),
     ]
     result = MultiSimulationResultView(
