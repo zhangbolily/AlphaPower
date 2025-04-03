@@ -11,13 +11,24 @@
 """
 
 import datetime
-from typing import AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator, Optional
 
 import pytest
 from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_SIMULATION
+from alphapower.constants import (
+    DB_SIMULATION,
+    Decay,
+    Delay,
+    InstrumentType,
+    Neutralization,
+    Region,
+    Switch,
+    Truncation,
+    UnitHandling,
+    Universe,
+)
 from alphapower.entity.simulation import (
     Base,
     SimulationTask,
@@ -94,13 +105,9 @@ class TestSimulationTask:
         Args:
             session: 数据库会话对象。
         """
-        # 创建任务设置
-        settings: Dict = {"param1": "value1", "param2": 42, "nested": {"key": "value"}}
-
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings=settings,
             settings_group_key="test_group",
             regular="test_regular",
             status=SimulationTaskStatus.PENDING,
@@ -108,7 +115,21 @@ class TestSimulationTask:
             priority=5,
             signature="unique_signature_1",
             description="测试模拟任务",
-            tags="test,simulation,unit",
+            tags=["test", "simulation", "unit"],
+            # 设置参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.CHINA,
+            universe=Universe.TOP2000U,
+            delay=Delay.ONE,
+            decay=10,
+            neutralization=Neutralization.MARKET,
+            truncation=0.5,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            language="python",
+            visualization=True,
+            test_period="2020-01-01/2021-01-01",
+            max_trade=Switch.OFF,
         )
         session.add(task)
         await session.flush()  # 使用flush而非commit，让fixture管理事务
@@ -122,7 +143,6 @@ class TestSimulationTask:
         # 验证查询结果包含所有原始字段
         assert db_task is not None
         assert db_task.type == SimulationTaskType.REGULAR
-        assert db_task.settings == settings
         assert db_task.settings_group_key == "test_group"
         assert db_task.regular == "test_regular"
         assert db_task.status == SimulationTaskStatus.PENDING
@@ -132,7 +152,7 @@ class TestSimulationTask:
         assert db_task.created_at is not None
         assert db_task.updated_at is not None
         assert db_task.description == "测试模拟任务"
-        assert db_task.tags == "test,simulation,unit"
+        assert db_task.tags == ["test", "simulation", "unit"]
         assert db_task.parent_progress_id is None
         assert db_task.child_progress_id is None
         assert db_task.result is None
@@ -140,6 +160,21 @@ class TestSimulationTask:
         assert db_task.deleted_at is None
         assert db_task.dependencies is None
         assert db_task.completed_at is None
+
+        # 验证设置参数字段
+        assert db_task.instrument_type == InstrumentType.EQUITY
+        assert db_task.region == Region.CHINA
+        assert db_task.universe == Universe.TOP2000U
+        assert db_task.delay == Delay.ONE
+        assert db_task.decay == 10
+        assert db_task.neutralization == Neutralization.MARKET
+        assert db_task.truncation == 0.5
+        assert db_task.pasteurization == Switch.ON
+        assert db_task.unit_handling == UnitHandling.VERIFY
+        assert db_task.language == "python"
+        assert db_task.visualization is True
+        assert db_task.test_period == "2020-01-01/2021-01-01"
+        assert db_task.max_trade == Switch.OFF
 
     async def test_update_simulation_task(self, session: AsyncSession) -> None:
         """测试更新 SimulationTask 实例。
@@ -153,11 +188,19 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings={"initial": "config"},
             settings_group_key="update_group",
             regular="regular_value",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_2",
+            # 设置参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.USA,
+            universe=Universe.TOP500,
+            delay=Delay.ZERO,
+            neutralization=Neutralization.NONE,
+            pasteurization=Switch.OFF,
+            unit_handling=UnitHandling.DEFAULT,
+            max_trade=Switch.DEFAULT,
         )
         session.add(task)
         await session.flush()
@@ -175,6 +218,11 @@ class TestSimulationTask:
         db_task.priority = 10
         db_task.result = {"status": "in_progress", "percentage": 50}
         db_task.scheduled_at = datetime.datetime.now()
+        # 更新枚举字段
+        db_task.region = Region.GLOBAL
+        db_task.universe = Universe.TOP1000
+        db_task.neutralization = Neutralization.INDUSTRY
+        db_task.visualization = True
 
         await session.flush()
 
@@ -191,6 +239,11 @@ class TestSimulationTask:
         assert updated_task.priority == 10
         assert updated_task.result == {"status": "in_progress", "percentage": 50}
         assert updated_task.scheduled_at is not None
+        # 验证更新后的枚举字段
+        assert updated_task.region == Region.GLOBAL
+        assert updated_task.universe == Universe.TOP1000
+        assert updated_task.neutralization == Neutralization.INDUSTRY
+        assert updated_task.visualization is True
 
     async def test_complete_simulation_task(self, session: AsyncSession) -> None:
         """测试完成 SimulationTask 任务的流程。
@@ -203,11 +256,19 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.SUPER,
-            settings={"super": "config"},
             settings_group_key="lifecycle_group",
             regular="lifecycle_regular",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_3",
+            # 设置参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.JAPAN,
+            universe=Universe.TOP1200,
+            delay=Delay.ONE,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            max_trade=Switch.ON,
         )
         session.add(task)
         await session.flush()
@@ -234,6 +295,12 @@ class TestSimulationTask:
         assert completed_task.result["outcome"] == "success"
         assert completed_task.result["metrics"]["score"] == 0.95
         assert completed_task.completed_at is not None
+        # 验证枚举字段保持不变
+        assert completed_task.instrument_type == InstrumentType.EQUITY
+        assert completed_task.region == Region.JAPAN
+        assert completed_task.universe == Universe.TOP1200
+        assert completed_task.delay == Delay.ONE
+        assert completed_task.neutralization == Neutralization.SECTOR
 
     async def test_simulation_task_with_error(self, session: AsyncSession) -> None:
         """测试带有错误信息的 SimulationTask 状态处理。
@@ -246,11 +313,19 @@ class TestSimulationTask:
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings={"error": "test"},
             settings_group_key="error_group",
             regular="error_regular",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_4",
+            # 设置参数
+            instrument_type=InstrumentType.CRYPTO,
+            region=Region.GLOBAL,
+            universe=Universe.TOP20,
+            delay=Delay.ONE,
+            neutralization=Neutralization.MARKET,
+            pasteurization=Switch.DEFAULT,
+            unit_handling=UnitHandling.DEFAULT,
+            max_trade=Switch.DEFAULT,
         )
         session.add(task)
         await session.flush()
@@ -271,6 +346,11 @@ class TestSimulationTask:
         assert error_task.result is not None
         assert "error" in error_task.result
         assert error_task.result["error"] == "计算超时"
+        # 验证加密货币特有设置
+        assert error_task.instrument_type == InstrumentType.CRYPTO
+        assert error_task.region == Region.GLOBAL
+        assert error_task.universe == Universe.TOP20
+        assert error_task.neutralization == Neutralization.MARKET
 
     async def test_query_simulation_tasks_by_group(self, session: AsyncSession) -> None:
         """测试通过分组键查询 SimulationTask。
@@ -287,22 +367,38 @@ class TestSimulationTask:
         for i in range(3):
             task = SimulationTask(
                 type=SimulationTaskType.REGULAR,
-                settings={"test_index": i},
                 settings_group_key=group_key,
                 regular=f"regular_{i}",
                 status=SimulationTaskStatus.PENDING,
                 signature=f"group_signature_{i}",
+                # 设置参数
+                instrument_type=InstrumentType.EQUITY,
+                region=Region.CHINA,
+                universe=Universe.TOP2000U,
+                delay=Delay.ONE,
+                neutralization=Neutralization.MARKET,
+                pasteurization=Switch.DEFAULT,
+                unit_handling=UnitHandling.DEFAULT,
+                max_trade=Switch.DEFAULT,
             )
             tasks.append(task)
 
         # 额外创建一个不同分组的任务
         different_task = SimulationTask(
             type=SimulationTaskType.REGULAR,
-            settings={"different": "true"},
             settings_group_key="different_group",
             regular="different_regular",
             status=SimulationTaskStatus.PENDING,
             signature="different_signature",
+            # 设置参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.CHINA,
+            universe=Universe.TOP2000U,
+            delay=Delay.ONE,
+            neutralization=Neutralization.MARKET,
+            pasteurization=Switch.DEFAULT,
+            unit_handling=UnitHandling.DEFAULT,
+            max_trade=Switch.DEFAULT,
         )
 
         session.add_all(tasks + [different_task])
@@ -318,4 +414,155 @@ class TestSimulationTask:
         assert len(group_tasks) == 3
         for task in group_tasks:
             assert task.settings_group_key == group_key
-            assert "test_index" in task.settings
+
+    async def test_validation_methods(self, session: AsyncSession) -> None:
+        """测试参数验证方法的边界情况和异常处理。
+
+        验证 decay 和 truncation 参数的验证方法是否正确工作，包括成功和失败的情况。
+
+        Args:
+            session: 数据库会话对象。
+        """
+        # 测试有效参数值
+        valid_task = SimulationTask(
+            type=SimulationTaskType.REGULAR,
+            settings_group_key="validation_test",
+            regular="valid_params",
+            signature="validation_signature",
+            decay=10,  # 有效的 decay 值
+            truncation=0.5,  # 有效的 truncation 值
+            # 设置必需的枚举参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.USA,
+            universe=Universe.TOP500,
+            delay=Delay.ZERO,
+            neutralization=Neutralization.NONE,
+            pasteurization=Switch.OFF,
+            unit_handling=UnitHandling.DEFAULT,
+            max_trade=Switch.DEFAULT,
+        )
+        session.add(valid_task)
+        await session.flush()
+
+        # 验证有效值被正确保存
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == valid_task.id)
+        )
+        db_valid_task = result.scalars().one()
+        assert db_valid_task.decay == 10
+        assert db_valid_task.truncation == 0.5
+
+        # 测试无效的 decay 值（应该触发验证异常）
+        with pytest.raises(
+            ValueError,
+            match=f"decay 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间",
+        ):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                settings_group_key="invalid_decay",
+                regular="invalid_params",
+                signature="invalid_decay_signature",
+                decay=513,  # 超出有效范围
+                # 设置必需的枚举参数
+                instrument_type=InstrumentType.EQUITY,
+                region=Region.USA,
+                universe=Universe.TOP500,
+                delay=Delay.ZERO,
+                neutralization=Neutralization.NONE,
+                pasteurization=Switch.OFF,
+                unit_handling=UnitHandling.DEFAULT,
+                max_trade=Switch.DEFAULT,
+            )
+
+        # 测试无效的 truncation 值（应该触发验证异常）
+        with pytest.raises(
+            ValueError,
+            match=f"truncation 必须在 {Truncation.MIN.value} 到 {Truncation.MAX.value} 之间",
+        ):
+            SimulationTask(
+                type=SimulationTaskType.REGULAR,
+                settings_group_key="invalid_truncation",
+                regular="invalid_params",
+                signature="invalid_truncation_signature",
+                truncation=1.5,  # 超出有效范围
+                # 设置必需的枚举参数
+                instrument_type=InstrumentType.EQUITY,
+                region=Region.USA,
+                universe=Universe.TOP500,
+                delay=Delay.ZERO,
+                neutralization=Neutralization.NONE,
+                pasteurization=Switch.OFF,
+                unit_handling=UnitHandling.DEFAULT,
+                max_trade=Switch.DEFAULT,
+            )
+
+    async def test_tag_methods(self, session: AsyncSession) -> None:
+        """测试标签管理方法的功能。
+
+        验证标签的添加、移除以及获取功能是否正常工作。
+
+        Args:
+            session: 数据库会话对象。
+        """
+        # 创建带有初始标签的任务
+        task = SimulationTask(
+            type=SimulationTaskType.REGULAR,
+            settings_group_key="tag_test",
+            regular="tag_methods",
+            signature="tag_signature",
+            tags=["initial", "tags"],
+            # 设置必需的枚举参数
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.USA,
+            universe=Universe.TOP500,
+            delay=Delay.ZERO,
+            neutralization=Neutralization.NONE,
+            pasteurization=Switch.OFF,
+            unit_handling=UnitHandling.DEFAULT,
+            max_trade=Switch.DEFAULT,
+        )
+        session.add(task)
+        await session.flush()
+
+        # 验证初始标签
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        db_task = result.scalars().one()
+        assert db_task.tags == ["initial", "tags"]
+
+        # 测试添加标签
+        db_task.add_tag("new_tag")
+        await session.flush()
+
+        # 重新查询以验证
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        updated_task = result.scalars().one()
+        assert "new_tag" in updated_task.tags
+        assert len(updated_task.tags) == 3
+
+        # 测试移除标签
+        updated_task.remove_tag("initial")
+        await session.flush()
+
+        # 再次查询验证
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        final_task = result.scalars().one()
+        assert "initial" not in final_task.tags
+        assert len(final_task.tags) == 2
+        assert final_task.tags == ["tags", "new_tag"]
+
+        # 测试设置全新的标签列表
+        final_task.tags = ["completely", "new", "list"]  # type: ignore[method-assign]
+        await session.flush()
+
+        result = await session.execute(
+            select(SimulationTask).where(SimulationTask.id == task.id)
+        )
+        reset_task = result.scalars().one()
+        assert reset_task.tags == ["completely", "new", "list"]
+        assert len(reset_task.tags) == 3

@@ -22,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
 
-from alphapower.constants import Region
+from alphapower.constants import DataFieldType, Delay, Region, Universe
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -32,6 +32,7 @@ class Base(AsyncAttrs, DeclarativeBase):
     """
 
 
+# 定义所有中间表
 # 中间表，用于表示Dataset和ResearchPaper之间的多对多关系
 dataset_research_papers = Table(
     "dataset_research_papers",
@@ -65,31 +66,6 @@ datafield_categories = Table(
 datafield_subcategories = datafield_categories
 
 
-class Pyramid(Base):
-    """
-    金字塔类，用于表示金字塔模型的参数设置。
-    金字塔模型通常用于金融数据分析中，用于表示数据的层级结构和延迟。
-    Attributes:
-        id: 自增主键ID。
-        delay: 延迟天数。
-        multiplier: 金字塔乘数。
-        region: 区域类型。
-        category_id: 分类ID，外键关联到Category表。
-        category: 分类对象(关联Category)。
-    """
-
-    __tablename__ = "pyramids"
-
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    delay = mapped_column(Integer)  # 延迟 天
-    multiplier = mapped_column(Float)  # 金字塔乘数
-    region = mapped_column(Enum(Region), nullable=False, default=Region.DEFAULT)  # 区域
-    category_id = mapped_column(
-        Integer, ForeignKey("categories.id"), nullable=False
-    )  # 分类ID
-    category = relationship("Category", backref="pyramids")  # 分类关系
-
-
 class Category(Base):
     """数据类别类，用于表示数据的分类信息。
 
@@ -109,22 +85,56 @@ class Category(Base):
 
     __tablename__ = "categories"
 
+    # 标识符字段
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 基础数据字段
     category_id = mapped_column(String, unique=True)  # 分类唯一标识
     name = mapped_column(String)  # 分类名称
-
-    # 添加父分类关联
     parent_id = mapped_column(Integer, ForeignKey("categories.id"), nullable=True)
-    parent = relationship("Category", remote_side=[id], backref="children")
 
-    # 保留与Dataset和DataField的多对多关系
+    # 关系字段
+    parent = relationship("Category", remote_side=[id], backref="children")
     datasets = relationship(
         "Dataset", secondary=dataset_categories, back_populates="categories"
     )
-
     data_fields = relationship(
         "DataField", secondary=datafield_categories, back_populates="categories"
     )
+
+
+class Pyramid(Base):
+    """
+    金字塔类，用于表示金字塔模型的参数设置。
+    金字塔模型通常用于金融数据分析中，用于表示数据的层级结构和延迟。
+    Attributes:
+        id: 自增主键ID。
+        delay: 延迟天数。
+        multiplier: 金字塔乘数。
+        region: 区域类型。
+        category_id: 分类ID，外键关联到Category表。
+        category: 分类对象(关联Category)。
+    """
+
+    __tablename__ = "pyramids"
+
+    # 标识符字段
+    id = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 枚举类型字段
+    delay = mapped_column(
+        Enum(Delay), nullable=False, default=Delay.DEFAULT
+    )  # 延迟天数
+    region = mapped_column(Enum(Region), nullable=False, default=Region.DEFAULT)  # 区域
+
+    # 基础数据字段
+    multiplier = mapped_column(Float)  # 金字塔乘数
+    category_id = mapped_column(
+        Integer, ForeignKey("categories.id"), nullable=False
+    )  # 分类ID
+
+    # 关系字段
+    category = relationship("Category", backref="pyramids")  # 分类关系
 
 
 class Dataset(Base):
@@ -157,34 +167,40 @@ class Dataset(Base):
 
     __tablename__ = "datasets"
 
+    # 标识符字段
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    dataset_id = mapped_column(String)  # 数据集唯一标识
-    name = mapped_column(String)  # 数据集名称
-    description = mapped_column(String)  # 数据集描述
+
+    # 枚举类型字段
     region = mapped_column(
         Enum(Region), nullable=False, default=Region.DEFAULT
     )  # 数据集所属区域
-    delay = mapped_column(Integer)  # 数据延迟(小时)
-    universe = mapped_column(String)  # 数据集的覆盖范围
+    delay = mapped_column(
+        Enum(Delay), nullable=False, default=Delay.DEFAULT
+    )  # 数据集延迟
+    universe = mapped_column(
+        Enum(Universe), nullable=False, default=Universe.DEFAULT
+    )  # 数据集覆盖范围
+
+    # 基础数据字段
+    dataset_id = mapped_column(String)  # 数据集唯一标识
+    name = mapped_column(String)  # 数据集名称
+    description = mapped_column(String)  # 数据集描述
     coverage = mapped_column(Float)  # 数据覆盖率(0.0-1.0)
     value_score = mapped_column(Float)  # 数据价值评分(0.0-10.0)
     user_count = mapped_column(Integer)  # 用户数量
     alpha_count = mapped_column(Integer)  # Alpha数量
     field_count = mapped_column(Integer)  # 字段数量
-    # themes = mapped_column(JSON, nullable=True)  # 数据集主题
+    pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
 
-    # 保留与Category的多对多关系
+    # 关系字段
     categories = relationship(
         "Category", secondary=dataset_categories, back_populates="datasets"
     )
-
-    # 将subcategory修改为多对多关系，使用同一个中间表
     subcategories = relationship(
         "Category",
         secondary=dataset_subcategories,
         overlaps="categories",  # 指示这个关系与categories重叠
     )
-
     data_fields = relationship("DataField", back_populates="dataset")  # 数据字段关系
     stats_data = relationship("StatsData", back_populates="data_set")  # 统计数据关系
     research_papers = relationship(
@@ -192,7 +208,6 @@ class Dataset(Base):
         secondary=dataset_research_papers,
         back_populates="datasets",
     )  # 研究论文关系
-    pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
 
     __table_args__ = (
         UniqueConstraint(
@@ -232,36 +247,43 @@ class DataField(Base):
 
     __tablename__ = "data_fields"
 
+    # 标识符字段
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 枚举类型字段
+    region = mapped_column(
+        Enum(Region), nullable=False, default=Region.DEFAULT
+    )  # 字段所属区域
+    delay = mapped_column(
+        Enum(Delay), nullable=False, default=Delay.DEFAULT
+    )  # 字段延迟
+    universe = mapped_column(
+        Enum(Universe), nullable=False, default=Universe.DEFAULT
+    )  # 字段覆盖范围
+    type = mapped_column(
+        Enum(DataFieldType), nullable=False, default=DataFieldType.DEFAULT
+    )  # 字段类型
+
+    # 基础数据字段
     field_id = mapped_column(String)  # 字段唯一标识
     description = mapped_column(String)  # 字段描述
     dataset_id = mapped_column(Integer, ForeignKey("datasets.id"))  # 数据集 ID
-    dataset = relationship("Dataset", back_populates="data_fields")  # 数据集关系
+    coverage = mapped_column(Float)  # 字段覆盖率
+    user_count = mapped_column(Integer)  # 用户数量
+    alpha_count = mapped_column(Integer)  # Alpha 数量
+    pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
 
-    # 保留与Category的多对多关系
+    # 关系字段
+    dataset = relationship("Dataset", back_populates="data_fields")  # 数据集关系
     categories = relationship(
         "Category", secondary=datafield_categories, back_populates="data_fields"
     )
-
-    # 将subcategory修改为多对多关系，使用同一个中间表
     subcategories = relationship(
         "Category",
         secondary=datafield_subcategories,
         overlaps="categories",  # 指示这个关系与categories重叠
     )
-
-    region = mapped_column(
-        Enum(Region), nullable=False, default=Region.DEFAULT
-    )  # 字段所属区域
-    delay = mapped_column(Integer)  # 字段延迟
-    universe = mapped_column(String)  # 字段范围
-    type = mapped_column(String)  # 字段类型
-    coverage = mapped_column(Float)  # 字段覆盖率
-    user_count = mapped_column(Integer)  # 用户数量
-    alpha_count = mapped_column(Integer)  # Alpha 数量
-    # themes = mapped_column(JSON)  # 字段主题
     stats_data = relationship("StatsData", back_populates="data_field")  # 统计数据关系
-    pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
 
 
 class StatsData(Base):
@@ -288,22 +310,32 @@ class StatsData(Base):
 
     __tablename__ = "stats_data"
 
+    # 标识符字段
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    data_set_id = mapped_column(Integer, ForeignKey("datasets.id"))  # 数据集 ID
-    data_set = relationship("Dataset", back_populates="stats_data")  # 数据集关系
-    data_field_id = mapped_column(Integer, ForeignKey("data_fields.id"))  # 数据字段 ID
-    data_field = relationship("DataField", back_populates="stats_data")  # 数据字段关系
+
+    # 枚举类型字段
     region = mapped_column(
         Enum(Region), nullable=False, default=Region.DEFAULT
     )  # 统计数据所属区域
-    delay = mapped_column(Integer)  # 统计数据延迟
-    universe = mapped_column(String)  # 统计数据范围
+    delay = mapped_column(
+        Enum(Delay), nullable=False, default=Delay.DEFAULT
+    )  # 统计数据延迟
+    universe = mapped_column(
+        Enum(Universe), nullable=False, default=Universe.DEFAULT
+    )  # 统计数据覆盖范围
+
+    # 基础数据字段
+    data_set_id = mapped_column(Integer, ForeignKey("datasets.id"))  # 数据集 ID
+    data_field_id = mapped_column(Integer, ForeignKey("data_fields.id"))  # 数据字段 ID
     coverage = mapped_column(Float)  # 统计数据覆盖率
     value_score = mapped_column(Float)  # 统计数据价值评分
     user_count = mapped_column(Integer)  # 用户数量
     alpha_count = mapped_column(Integer)  # Alpha 数量
     field_count = mapped_column(Integer)  # 字段数量
-    # themes = mapped_column(JSON)  # 统计数据主题
+
+    # 关系字段
+    data_set = relationship("Dataset", back_populates="stats_data")  # 数据集关系
+    data_field = relationship("DataField", back_populates="stats_data")  # 数据字段关系
 
 
 class ResearchPaper(Base):
@@ -321,10 +353,15 @@ class ResearchPaper(Base):
 
     __tablename__ = "research_papers"
 
+    # 标识符字段
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 基础数据字段
     type = mapped_column(String)  # 论文类型
     title = mapped_column(String)  # 论文标题
     url = mapped_column(String)  # 论文链接
+
+    # 关系字段
     datasets = relationship(
         "Dataset", secondary=dataset_research_papers, back_populates="research_papers"
     )  # 数据集关系

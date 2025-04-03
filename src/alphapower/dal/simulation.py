@@ -1,0 +1,172 @@
+"""
+模拟任务数据访问层模块
+提供对模拟任务及其状态的数据访问操作。
+"""
+
+from typing import Any, List, Optional
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.expression import Select
+
+from alphapower.entity.simulation import SimulationTask, SimulationTaskStatus
+
+from .base import EntityDAL
+
+
+class SimulationTaskDAL(EntityDAL[SimulationTask]):
+    """
+    SimulationTask 数据访问层类，提供对 SimulationTask 实体的特定操作。
+
+    管理模拟任务的CRUD操作，支持按状态、优先级等多种方式查询任务。
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        """
+        初始化 SimulationTaskDAL 实例。
+
+        Args:
+            session: SQLAlchemy 异步会话对象。
+        """
+        super().__init__(SimulationTask, session)
+
+    async def find_by_status(
+        self, status: Any, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询特定状态的所有任务。
+
+        Args:
+            status: 任务状态值。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            指定状态的所有任务列表。
+        """
+        return await self.find_by(session=session, status=status)
+
+    async def find_by_alpha_id(
+        self, alpha_id: str, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询与特定 Alpha 关联的所有任务。
+
+        Args:
+            alpha_id: Alpha的唯一标识符。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            与指定Alpha关联的所有任务列表。
+        """
+        return await self.find_by(session=session, alpha_id=alpha_id)
+
+    async def find_by_signature(
+        self, signature: str, session: Optional[AsyncSession] = None
+    ) -> Optional[SimulationTask]:
+        """
+        通过签名查询任务。
+
+        任务签名通常是任务配置的哈希值，用于唯一标识特定配置的任务。
+
+        Args:
+            signature: 任务签名字符串。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            找到的任务实体，若不存在则返回None。
+        """
+        return await self.find_one_by(session=session, signature=signature)
+
+    async def find_pending_tasks(
+        self, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询所有待处理的任务。
+
+        待处理任务是指已创建但尚未开始执行的任务。
+
+        Args:
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            所有待处理任务的列表。
+        """
+        return await self.find_by(session=session, status=SimulationTaskStatus.PENDING)
+
+    async def find_running_tasks(
+        self, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询所有正在运行的任务。
+
+        正在运行的任务是指已开始执行但尚未完成的任务。
+
+        Args:
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            所有正在运行任务的列表。
+        """
+        return await self.find_by(session=session, status=SimulationTaskStatus.RUNNING)
+
+    async def find_high_priority_tasks(
+        self, min_priority: int, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询优先级高于指定值的所有任务。
+
+        优先级越高的任务应该越先被处理，此方法用于任务调度优化。
+
+        Args:
+            min_priority: 最小优先级阈值。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            符合条件的任务列表。
+        """
+        actual_session: AsyncSession = session or self.session
+        query: Select = select(SimulationTask).where(
+            SimulationTask.priority >= min_priority
+        )
+        result = await actual_session.execute(query)
+        return list(result.scalars().all())
+
+    async def find_by_settings_group(
+        self, group_key: str, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询属于特定设置组的所有任务。
+
+        设置组用于对相关的任务进行分组管理，便于批量操作。
+
+        Args:
+            group_key: 设置组的键名。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            属于指定设置组的所有任务列表。
+        """
+        return await self.find_by(session=session, settings_group_key=group_key)
+
+    async def find_tasks_by_date_range(
+        self, start_date: str, end_date: str, session: Optional[AsyncSession] = None
+    ) -> List[SimulationTask]:
+        """
+        查询在指定日期范围内创建的所有任务。
+
+        此方法用于时间范围分析，支持按创建时间筛选任务。
+
+        Args:
+            start_date: 开始日期字符串，格式 'YYYY-MM-DD'。
+            end_date: 结束日期字符串，格式 'YYYY-MM-DD'。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            符合条件的任务列表。
+        """
+        actual_session: AsyncSession = session or self.session
+        query: Select = select(SimulationTask).where(
+            SimulationTask.created_at.between(start_date, end_date)
+        )
+        result = await actual_session.execute(query)
+        return list(result.scalars().all())

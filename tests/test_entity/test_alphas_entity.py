@@ -23,7 +23,21 @@ import pytest
 from sqlalchemy import Result, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_ALPHAS
+from alphapower.constants import (
+    DB_ALPHAS,
+    AlphaType,
+    Color,
+    Delay,
+    Grade,
+    InstrumentType,
+    Neutralization,
+    Region,
+    Stage,
+    Status,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 from alphapower.entity import (
     Alpha,
     AlphaBase,
@@ -111,20 +125,20 @@ class TestSetting:
             session: 数据库会话对象。
         """
         setting: Setting = Setting(
-            instrument_type="stock",
-            region="US",
-            universe="top1000",
-            delay=1,
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.USA,
+            universe=Universe.TOP1000,
+            delay=Delay.ONE,
             decay=5,
-            neutralization="industry",
+            neutralization=Neutralization.INDUSTRY,
             truncation=3.0,
-            pasteurization="standard",
-            unit_handling="rank",
-            nan_handling="fill_zero",
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.ON,
             language="python",
             visualization=True,
             test_period="3m",
-            max_trade=100.0,
+            max_trade=Switch.DEFAULT,
         )
         session.add(setting)
         await session.flush()  # 使用flush而非commit，让fixture管理事务
@@ -136,20 +150,20 @@ class TestSetting:
 
         # 验证查询结果包含所有原始字段
         assert db_setting is not None
-        assert db_setting.instrument_type == "stock"
-        assert db_setting.region == "US"
-        assert db_setting.universe == "top1000"
-        assert db_setting.delay == 1
+        assert db_setting.instrument_type == InstrumentType.EQUITY
+        assert db_setting.region == Region.USA
+        assert db_setting.universe == Universe.TOP1000
+        assert db_setting.delay == Delay.ONE
         assert db_setting.decay == 5
-        assert db_setting.neutralization == "industry"
+        assert db_setting.neutralization == Neutralization.INDUSTRY
         assert db_setting.truncation == 3.0
-        assert db_setting.pasteurization == "standard"
-        assert db_setting.unit_handling == "rank"
-        assert db_setting.nan_handling == "fill_zero"
+        assert db_setting.pasteurization == Switch.ON
+        assert db_setting.unit_handling == UnitHandling.VERIFY
+        assert db_setting.nan_handling == Switch.ON
         assert db_setting.language == "python"
         assert db_setting.visualization is True
         assert db_setting.test_period == "3m"
-        assert db_setting.max_trade == 100.0
+        assert db_setting.max_trade == Switch.DEFAULT
 
 
 class TestAlphaRegular:
@@ -360,16 +374,16 @@ class TestAlpha:
         """
         # 创建依赖的相关实例：Setting, Regular, Samples, Classifications, Competitions
         setting: Setting = Setting(
-            instrument_type="stock",
-            region="CN",
-            universe="CSI300",
-            delay=2,
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.CHINA,
+            universe=Universe.TOP2000U,
+            delay=Delay.ONE,
             decay=10,
-            neutralization="sector",
+            neutralization=Neutralization.SECTOR,
             truncation=2.5,
-            pasteurization="standard",
-            unit_handling="rank",
-            nan_handling="fill_zero",
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.ON,
             language="python",
             visualization=True,
         )
@@ -411,7 +425,7 @@ class TestAlpha:
         now: datetime.datetime = datetime.datetime.now()
         alpha: Alpha = Alpha(
             alpha_id="ALPHA123",
-            type="prediction",
+            type=AlphaType.SUPER,
             author="test_user",
             settings_id=setting.id,
             regular_id=regular.id,
@@ -421,12 +435,12 @@ class TestAlpha:
             name="测试Alpha",
             favorite=True,
             hidden=False,
-            color="#FF5733",
+            color=Color.RED,
             category="stock",
-            tags="trend,momentum",
-            grade="A",
-            stage="production",
-            status="active",
+            tags=["trend", "momentum"],
+            grade=Grade.EXCELLENT,  # 修改：用 Grade.EXCELLENT 替换 Grade.A
+            stage=Stage.PROD,  # 修改：用 Stage.PROD 替换 Stage.PRODUCTION
+            status=Status.ACTIVE,
             in_sample_id=sample1.id,
             out_sample_id=sample2.id,
             train_id=sample3.id,
@@ -453,11 +467,15 @@ class TestAlpha:
 
         assert db_alpha is not None
         assert db_alpha.alpha_id == "ALPHA123"
-        assert db_alpha.type == "prediction"
+        assert db_alpha.type == AlphaType.SUPER
         assert db_alpha.author == "test_user"
         assert db_alpha.name == "测试Alpha"
         assert db_alpha.favorite is True
         assert db_alpha.hidden is False
+        assert db_alpha.color == Color.RED
+        assert db_alpha.grade == Grade.EXCELLENT  # 修改：与创建时一致
+        assert db_alpha.stage == Stage.PROD  # 修改：与创建时一致
+        assert db_alpha.status == Status.ACTIVE
 
         # 验证关联关系
         assert db_alpha.settings_id == setting.id
@@ -471,18 +489,39 @@ class TestAlpha:
         # 验证多对多关系
         assert len(db_alpha.classifications) == 2
         assert len(db_alpha.competitions) == 1
-        assert db_alpha.classifications[0].name in ["趋势因子", "价值因子"]
+
+        # 使用集合验证分类名称，避免顺序问题
+        classification_names = {c.name for c in db_alpha.classifications}
+        assert classification_names == {"趋势因子", "价值因子"}
+
         assert db_alpha.competitions[0].name == "中国Alpha大赛2023"
 
         # 测试字段属性
         assert db_alpha.themes == "market_neutral"
         assert db_alpha.pyramids == "basic"
         assert db_alpha.team == "alpha_team"
-        assert len(db_alpha.competitions) == 1
-        assert db_alpha.classifications[0].name in ["趋势因子", "价值因子"]
-        assert db_alpha.competitions[0].name == "中国Alpha大赛2023"
+        assert set(db_alpha.tags) == {"trend", "momentum"}
 
-        # 测试字段属性
-        assert db_alpha.themes == "market_neutral"
-        assert db_alpha.pyramids == "basic"
-        assert db_alpha.team == "alpha_team"
+        # 测试标签相关方法
+        db_alpha.add_tag("new_tag")
+        await session.flush()
+
+        result = await session.execute(
+            select(Alpha).where(Alpha.alpha_id == "ALPHA123")
+        )
+        updated_alpha = result.scalars().first()
+        assert updated_alpha is not None
+        assert "new_tag" in updated_alpha.tags
+        assert len(updated_alpha.tags) == 3
+
+        updated_alpha.remove_tag("trend")
+        await session.flush()
+
+        result = await session.execute(
+            select(Alpha).where(Alpha.alpha_id == "ALPHA123")
+        )
+        final_alpha = result.scalars().first()
+        assert final_alpha is not None
+        assert "trend" not in final_alpha.tags
+        assert "momentum" in final_alpha.tags
+        assert "new_tag" in final_alpha.tags
