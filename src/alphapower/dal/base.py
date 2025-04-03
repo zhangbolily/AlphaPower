@@ -95,6 +95,34 @@ class BaseDAL(Generic[T]):
         await self.session.flush()
         return entity
 
+    async def create_entity_obj(self, entity: T) -> T:
+        """
+        创建单个实体对象。
+
+        Args:
+            entity: 实体对象。
+
+        Returns:
+            新创建的实体对象。
+        """
+        self.session.add(entity)
+        await self.session.flush()
+        return entity
+
+    async def create_entities_obj(self, entities: List[T]) -> List[T]:
+        """
+        批量创建实体对象。
+
+        Args:
+            entities: 实体对象列表。
+
+        Returns:
+            新创建的实体对象列表。
+        """
+        self.session.add_all(entities)
+        await self.session.flush()
+        return entities
+
     async def get_by_id(
         self, entity_id: int, session: Optional[AsyncSession] = None
     ) -> Optional[T]:
@@ -187,6 +215,35 @@ class BaseDAL(Generic[T]):
             await actual_session.flush()
         return entity
 
+    async def update_entity_obj(self, entity: T) -> T:
+        """
+        更新单个实体对象。
+
+        Args:
+            entity: 实体对象。
+
+        Returns:
+            更新后的实体对象。
+        """
+        self.session.add(entity)
+        await self.session.flush()
+        return entity
+
+    async def update_entities_obj(self, entities: List[T]) -> List[T]:
+        """
+        批量更新实体对象。
+
+        Args:
+            entities: 实体对象列表。
+
+        Returns:
+            更新后的实体对象列表。
+        """
+        for e in entities:
+            self.session.add(e)
+        await self.session.flush()
+        return entities
+
     async def update_by_query(
         self,
         filter_kwargs: Dict[str, Any],
@@ -232,6 +289,35 @@ class BaseDAL(Generic[T]):
             await actual_session.flush()
             return True
         return False
+
+    async def delete_entity_obj(self, entity: T) -> bool:
+        """
+        删除单个实体对象。
+
+        Args:
+            entity: 实体对象。
+
+        Returns:
+            如果成功删除返回 True。
+        """
+        await self.session.delete(entity)
+        await self.session.flush()
+        return True
+
+    async def delete_entities_obj(self, entities: List[T]) -> int:
+        """
+        批量删除实体对象。
+
+        Args:
+            entities: 实体对象列表。
+
+        Returns:
+            删除的记录数量。
+        """
+        for e in entities:
+            await self.session.delete(e)
+        await self.session.flush()
+        return len(entities)
 
     async def delete_by(
         self, session: Optional[AsyncSession] = None, **kwargs: Any

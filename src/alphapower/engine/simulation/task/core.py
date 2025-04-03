@@ -19,7 +19,6 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
@@ -32,25 +31,12 @@ from alphapower.constants import (
     UnitHandling,
     Universe,
 )
+from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import (
     SimulationTask,
     SimulationTaskStatus,
     SimulationTaskType,
 )
-
-
-def get_settings_group_key(settings: SimulationSettingsView) -> str:
-    """生成唯一的设置组键。
-
-    基于模拟设置中的区域、延迟、语言和工具类型生成一个唯一标识符。
-
-    Args:
-        settings: 包含模拟配置的设置对象。
-
-    Returns:
-        一个字符串，作为设置组的唯一键。
-    """
-    return f"{settings.region}_{settings.delay}_{settings.language}_{settings.instrument_type}"
 
 
 def get_task_signature(regular: str, settings: SimulationSettingsView) -> str:
@@ -171,17 +157,10 @@ async def create_simulation_task(
     settings: SimulationSettingsView,
     priority: int = 0,
 ) -> SimulationTask:
-    """创建单个SimulationTask并保存到数据库。
-
-    Args:
-        session: 数据库会话对象。
-        regular: 任务的常规标识符。
-        settings: 包含模拟配置的设置对象。
-        priority: 任务的优先级，默认为0。
-
-    Returns:
-        一个新创建的SimulationTask实例。
     """
+    创建单个SimulationTask并保存到数据库，使用SimulationTaskDAL。
+    """
+    dal = SimulationTaskDAL(session)
     signature = get_task_signature(regular, settings)
     task = _create_task(
         regular=regular,
@@ -191,7 +170,8 @@ async def create_simulation_task(
         status=SimulationTaskStatus.PENDING,
         priority=priority,
     )
-    session.add(task)
+    dal.session.add(task)
+    await dal.session.flush()
     return task
 
 
@@ -201,20 +181,10 @@ async def create_simulation_tasks(
     settings: List[SimulationSettingsView],
     priority: List[int],
 ) -> List[SimulationTask]:
-    """批量创建SimulationTask并保存到数据库。
-
-    Args:
-        session: 数据库会话对象。
-        regular: 任务的常规标识符列表。
-        settings: 包含模拟配置的设置对象列表。
-        priority: 任务的优先级列表。
-
-    Returns:
-        一个包含新创建的SimulationTask实例的列表。
-
-    Raises:
-        ValueError: 如果regular、settings和priority的长度不相同。
     """
+    批量创建SimulationTask，并使用SimulationTaskDAL将其保存到数据库。
+    """
+    dal = SimulationTaskDAL(session)
     if len(regular) != len(settings) or len(regular) != len(priority):
         raise ValueError("regular、settings和priority的长度必须相同")
 
@@ -222,38 +192,30 @@ async def create_simulation_tasks(
         _create_task(
             regular=regular[i],
             settings=settings[i],
-            settings_group_key=get_settings_group_key(settings[i]),
+            settings_group_key="",
             signature=get_task_signature(regular[i], settings[i]),
             status=SimulationTaskStatus.PENDING,
             priority=priority[i],
         )
         for i in range(len(regular))
     ]
-    session.add_all(tasks)
+    dal.session.add_all(tasks)
+    await dal.session.flush()
     return tasks
 
 
 async def update_simulation_task_status(
     session: AsyncSession, task_id: int, status: SimulationTaskStatus
 ) -> SimulationTask:
-    """更新指定任务的状态。
-
-    Args:
-        session: 数据库会话对象。
-        task_id: 任务的唯一标识符。
-        status: 任务的新状态。
-
-    Returns:
-        更新后的SimulationTask实例。
-
-    Raises:
-        ValueError: 如果找不到指定ID的任务。
     """
-    task: Optional[SimulationTask] = await session.get(SimulationTask, task_id)
+    更新指定任务的状态，使用SimulationTaskDAL。
+    """
+    dal = SimulationTaskDAL(session)
+    task = await dal.find_one_by(id=task_id)
     if task is None:
         raise ValueError(f"找不到ID为{task_id}的任务")
     task.status = status
-    await session.merge(task)
+    await dal.session.flush()
     return task
 
 
@@ -263,45 +225,27 @@ async def update_simulation_task_scheduled_info(
     scheduled_at: datetime,
     status: SimulationTaskStatus,
 ) -> SimulationTask:
-    """更新指定任务的调度信息。
-
-    Args:
-        session: 数据库会话对象。
-        task_id: 任务的唯一标识符。
-        scheduled_at: 任务的调度时间。
-        status: 任务的新状态。
-
-    Returns:
-        更新后的SimulationTask实例。
-
-    Raises:
-        ValueError: 如果找不到指定ID的任务。
     """
-    task: Optional[SimulationTask] = await session.get(SimulationTask, task_id)
+    更新指定任务的调度信息，使用SimulationTaskDAL。
+    """
+    dal = SimulationTaskDAL(session)
+    task = await dal.find_one_by(id=task_id)
     if task is None:
         raise ValueError(f"找不到ID为{task_id}的任务")
     task.scheduled_at = scheduled_at
     task.status = status
-    await session.merge(task)
+    await dal.session.flush()
     return task
 
 
 async def get_simulation_task_by_id(
     session: AsyncSession, task_id: int
 ) -> SimulationTask:
-    """根据任务ID获取任务。
-
-    Args:
-        session: 数据库会话对象。
-        task_id: 任务的唯一标识符。
-
-    Returns:
-        对应的SimulationTask实例。
-
-    Raises:
-        ValueError: 如果找不到指定ID的任务。
     """
-    task: Optional[SimulationTask] = await session.get(SimulationTask, task_id)
+    通过DAL查询指定ID的任务。
+    """
+    dal = SimulationTaskDAL(session)
+    task = await dal.find_one_by(id=task_id)
     if task is None:
         raise ValueError(f"找不到ID为{task_id}的任务")
     return task
@@ -316,50 +260,15 @@ async def get_simulation_tasks_by(
     limit: Optional[int] = None,
     offset: Optional[int] = None,
 ) -> List[SimulationTask]:
-    """根据条件从数据库中获取SimulationTask列表。
-
-    Args:
-        session: 数据库会话对象。
-        status: 任务的状态过滤条件。
-        priority: 任务的优先级过滤条件。
-        not_in_: 不包含的字段值过滤条件。
-        in_: 包含的字段值过滤条件。
-        limit: 返回结果的最大数量。
-        offset: 返回结果的偏移量。
-
-    Returns:
-        一个包含符合条件的SimulationTask实例的列表。
-
-    Raises:
-        ValueError: 如果没有提供任何过滤条件或字段名无效。
     """
-    filters = []
-    if status is not None:
-        filters.append(SimulationTask.status == status)
-    if priority is not None:
-        filters.append(SimulationTask.priority == priority)
-    if not_in_ is not None:
-        for key, values in not_in_.items():
-            if hasattr(SimulationTask, key):
-                column = getattr(SimulationTask, key)
-                filters.append(column.notin_(values))
-            else:
-                raise ValueError(f"无效的字段名: {key}")
-    if in_ is not None:
-        for key, values in in_.items():
-            if hasattr(SimulationTask, key):
-                column = getattr(SimulationTask, key)
-                filters.append(column.in_(values))
-            else:
-                raise ValueError(f"无效的字段名: {key}")
-
-    if not filters:
-        raise ValueError("至少需要一个过滤条件")
-
-    query = select(SimulationTask).filter(*filters)
-    if limit is not None:
-        query = query.limit(limit)
-    if offset is not None:
-        query = query.offset(offset)
-    result = await session.execute(query)
-    return list(result.scalars().all())
+    通过DAL多条件查询模拟任务列表。
+    """
+    dal = SimulationTaskDAL(session)
+    return await dal.find_filtered(
+        status=status,
+        priority=priority,
+        not_in_=not_in_,
+        in_=in_,
+        limit=limit,
+        offset=offset,
+    )
