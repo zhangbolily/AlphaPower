@@ -116,6 +116,9 @@ class WorkerPool(AbstractWorkerPool):
         """
         try:
             client: WorldQuantClient = self._client_factory()
+            # TODO: 后面再修复这个问题
+            asyncio.create_task(client._refresh_session(0))
+            await asyncio.sleep(5)
             worker: Worker = Worker(client, dry_run=self._dry_run)
             await worker.set_scheduler(self._scheduler)
             await worker.add_task_complete_callback(self._on_task_completed)

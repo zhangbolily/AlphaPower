@@ -22,7 +22,7 @@ class DatabaseConfig(BaseSettings):
     description: str = Field(default="")
 
 
-class CredentialsConfig(BaseSettings):
+class CredentialConfig(BaseSettings):
     """
     凭据配置类，用于定义用户名和密码。
     """
@@ -58,11 +58,12 @@ class AppConfig(BaseSettings):
     log_dir: str = Field(default="./logs")
     sql_echo: bool = Field(default=False)
     environment: str = Field(default=ENV_PROD)
-
-    credentials: Dict[str, CredentialsConfig] = {
-        "0": CredentialsConfig(),
-        "1": CredentialsConfig(),
-    }
+    credential: CredentialConfig = Field(
+        default=CredentialConfig(
+            username="",
+            password="",
+        )
+    )
 
     model_config = SettingsConfigDict(
         env_file=f".env.{os.getenv('ENVIRONMENT', 'default')}",

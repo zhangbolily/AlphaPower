@@ -5,10 +5,23 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from typing import Any, Mapping, MutableMapping
 
 import structlog
 
 from alphapower.settings import settings
+
+
+def unicode_decoder(
+    _: Any, __: str, event_dict: MutableMapping[str, Any]
+) -> Mapping[str, Any]:
+    """
+    确保日志内容支持中文输出。
+    """
+    for key, value in event_dict.items():
+        if isinstance(value, bytes):
+            event_dict[key] = value.decode("utf-8")
+    return event_dict
 
 
 def setup_logging(
@@ -50,7 +63,10 @@ def setup_logging(
     structlog.configure(
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
+            unicode_decoder,  # 添加自定义处理器以支持中文
+            structlog.processors.JSONRenderer(
+                ensure_ascii=False
+            ),  # 确保 JSON 输出支持中文
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),

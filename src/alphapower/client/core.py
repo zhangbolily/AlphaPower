@@ -9,6 +9,7 @@ from typing import Coroutine, Optional, Union
 from aiohttp import BasicAuth, ClientSession, TCPConnector
 
 from alphapower.internal.wraps import exception_handler
+from alphapower.settings import settings
 
 from .models import (
     AuthenticationView,
@@ -61,8 +62,8 @@ def create_client(
     WorldQuantClient: 客户端实例。
     """
     client = WorldQuantClient(
-        username=credentials["username"],
-        password=credentials["password"],
+        username=settings.credential.username,
+        password=settings.credential.password,
         pool_connections=pool_connections,
         pool_maxsize=pool_maxsize,
     )
