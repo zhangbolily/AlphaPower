@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 from multidict import CIMultiDictProxy
 from pydantic import BaseModel, Field, RootModel
 
+from alphapower.constants import AlphaType
+
 
 class PyramidView(BaseModel):
     """
@@ -748,7 +750,7 @@ class SingleSimulationResultView(BaseModel):
     """
 
     id: str
-    type: str
+    type: AlphaType
     status: str
     message: Optional[str] = None
     location: Optional["SingleSimulationResultView.ErrorLocation"] = None
@@ -775,7 +777,7 @@ class MultiSimulationResultView(BaseModel):
 
     children: List[str]
     status: str
-    type: str
+    type: AlphaType
     settings: Optional[SimulationSettingsView] = None
 
 

@@ -27,6 +27,7 @@ from alphapower.constants import (
     MAX_CONSULTANT_SIMULATION_SLOTS,
     ROLE_CONSULTANT,
     ROLE_USER,
+    AlphaType,
 )
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
@@ -95,7 +96,7 @@ class Worker(AbstractWorker):
         _user_role: 用户角色，决定了工作者可以执行的任务类型
     """
 
-    def __init__(self, client: WorldQuantClient) -> None:
+    def __init__(self, client: WorldQuantClient, dry_run: bool = False) -> None:
         """初始化工作者实例。
 
         Args:
@@ -116,6 +117,7 @@ class Worker(AbstractWorker):
         self._scheduler: Optional[AbstractScheduler] = None
         self._shutdown_flag: bool = False
         self._is_task_cancel_requested: bool = False
+        self._dry_run: bool = dry_run
 
         if not isinstance(self._client, WorldQuantClient):
             raise ValueError("Client must be an instance of WorldQuantClient.")
@@ -206,6 +208,9 @@ class Worker(AbstractWorker):
             )
             # 因为这里数据更新是个很低频的操作，每次都提交事务即可
 
+        if self._dry_run:
+            logger.debug("dry-run: 回调方法不调用。")
+
         for callback in self._task_complete_callbacks:
             try:
                 if asyncio.iscoroutinefunction(callback):
@@ -234,6 +239,18 @@ class Worker(AbstractWorker):
         logger.debug(f"开始处理单个模拟任务，任务 ID: {task.id}")
         if self._shutdown_flag:
             await logger.aerror(f"工作者已关闭，无法处理任务 ID: {task.id}")
+            return
+
+        if self._dry_run:
+            logger.debug("dry-run 模式下跳过实际请求。")
+            task.status = SimulationTaskStatus.RUNNING
+            mock_result = SingleSimulationResultView(
+                id="dry-run-single-id",
+                status="COMPLETE",
+                alpha=None,
+                type=AlphaType.REGULAR,
+            )
+            await self._handle_task_completion(task, mock_result)
             return
 
         # 构建任务负载数据
@@ -332,6 +349,17 @@ class Worker(AbstractWorker):
                 task: 模拟任务
                 child_id: 子任务 ID
             """
+            if self._dry_run:
+                logger.debug("dry-run: 跳过 get_multi_simulation_child_result 调用。")
+                mock_result = SingleSimulationResultView(
+                    id=f"dry-run-child-{child_id}",
+                    status="COMPLETE",
+                    alpha=None,
+                    type=AlphaType.REGULAR,
+                )
+                await self._handle_task_completion(task, mock_result)
+                return
+
             async with self._client:
                 try:
                     success, result = (
@@ -388,6 +416,18 @@ class Worker(AbstractWorker):
             await logger.aerror(
                 f"任务数量超出限制，当前任务数量: {len(tasks)}，最大数量: {MAX_CONSULTANT_SIMULATION_SLOTS}"
             )
+            return
+
+        if self._dry_run:
+            logger.debug("dry-run 模式下跳过实际请求。")
+            for t in tasks:
+                t.status = SimulationTaskStatus.RUNNING
+            mock_result = MultiSimulationResultView(
+                children=[f"dry-run-child-{t.id}" for t in tasks],
+                type=AlphaType.REGULAR,
+                status="COMPLETE",
+            )
+            await self._handle_multi_task_completion(tasks, mock_result)
             return
 
         single_simu_payloads: List[SingleSimulationPayload] = [
@@ -522,9 +562,11 @@ class Worker(AbstractWorker):
                 for task in tasks:
                     await session.merge(task)
                 await session.commit()
-                await logger.ainfo(
-                    f"调度器返回任务，任务 ID 列表: {[task.id for task in tasks]}"
+                task_info = "\n".join(
+                    f"任务 ID: {task.id}, 优先级: {task.priority}, 分组键: {task.settings_group_key}"
+                    for task in tasks
                 )
+                await logger.ainfo(f"调度器返回任务，任务详情:\n{task_info}")
 
             # 根据用户角色执行不同的任务处理逻辑
             if self._user_role == ROLE_USER:
