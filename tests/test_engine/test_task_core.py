@@ -3,8 +3,8 @@ Test the core simulation task functions.
 """
 
 from datetime import datetime
-from typing import List
-from unittest.mock import AsyncMock, MagicMock
+from typing import List, Optional
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -105,9 +105,10 @@ async def test_create_simulation_tasks() -> None:
     ]
     regular_list: List[str] = ["regular_1", "regular_2"]
     priority_list: List[int] = [10, 20]
+    tags_list: List[Optional[List[str]]] = [["tag1"], ["tag2", "tag3"]]
 
     tasks: List[SimulationTask] = await create_simulation_tasks(
-        session, regular_list, settings_list, priority_list
+        session, regular_list, settings_list, priority_list, tags_list
     )
 
     assert len(tasks) == 2
@@ -122,15 +123,20 @@ async def test_update_simulation_task_status() -> None:
     Test the update of a simulation task's status.
     """
     session: AsyncMock = AsyncMock()
-    task: MagicMock = MagicMock(spec=SimulationTask)
-    session.get.return_value = task
-
-    updated_task: SimulationTask = await update_simulation_task_status(
-        session, 1, SimulationTaskStatus.COMPLETE
+    task: AsyncMock = AsyncMock(
+        spec=SimulationTask, id=1, status=SimulationTaskStatus.PENDING
     )
 
-    assert updated_task.status == SimulationTaskStatus.COMPLETE
-    session.merge.assert_called_once_with(task)
+    with patch(
+        "alphapower.dal.simulation.SimulationTaskDAL.find_one_by"
+    ) as mock_find_one_by:
+        mock_find_one_by.return_value = task
+        updated_task: SimulationTask = await update_simulation_task_status(
+            session, 1, SimulationTaskStatus.COMPLETE
+        )
+
+        assert updated_task.status == SimulationTaskStatus.COMPLETE
+        session.flush.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -139,13 +145,19 @@ async def test_update_simulation_task_scheduled_time() -> None:
     Test the update of a simulation task's scheduled time.
     """
     session: AsyncMock = AsyncMock()
-    task: MagicMock = MagicMock(spec=SimulationTask)
-    session.get.return_value = task
+    task: AsyncMock = AsyncMock(
+        spec=SimulationTask, id=1, status=SimulationTaskStatus.PENDING
+    )
     scheduled_time: datetime = datetime(2023, 1, 1, 12, 0, 0)
 
-    updated_task: SimulationTask = await update_simulation_task_scheduled_info(
-        session, 1, scheduled_time, SimulationTaskStatus.SCHEDULED
-    )
+    with patch(
+        "alphapower.dal.simulation.SimulationTaskDAL.find_one_by"
+    ) as mock_find_one_by:
+        mock_find_one_by.return_value = task
+        updated_task: SimulationTask = await update_simulation_task_scheduled_info(
+            session, 1, scheduled_time, SimulationTaskStatus.SCHEDULED
+        )
 
-    assert updated_task.scheduled_at == scheduled_time
-    session.merge.assert_called_once_with(task)
+        assert updated_task.scheduled_at == scheduled_time
+        assert updated_task.status == SimulationTaskStatus.SCHEDULED
+        session.flush.assert_called_once()

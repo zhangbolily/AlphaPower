@@ -3,7 +3,7 @@
 """
 
 import asyncio
-from typing import List
+from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -183,9 +183,13 @@ async def test_schedule_with_database_task_provider() -> None:
             ),
         ]
         priority = [1, 1]
+        tags_list: List[Optional[List[str]]] = [
+            ["tag1", "tag2"],
+            ["tag3", "tag4"],
+        ]
 
         # 向数据库插入测试数据
-        await create_simulation_tasks(session, regular, settings, priority)
+        await create_simulation_tasks(session, regular, settings, priority, tags_list)
         await session.commit()
 
         # 初始化 DatabaseTaskProvider
@@ -213,7 +217,7 @@ async def test_scheduler_with_mock_task_worker() -> None:
 
     scheduler = PriorityScheduler()
     worker = MockWorker(work_time=1, job_slots=2)
-    worker.set_scheduler(scheduler)
+    await worker.set_scheduler(scheduler)
 
     task1 = MagicMock(
         spec=SimulationTask,

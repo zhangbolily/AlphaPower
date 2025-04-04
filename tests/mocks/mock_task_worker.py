@@ -6,7 +6,7 @@
 """
 
 import asyncio
-from typing import List, Optional, Callable
+from typing import Callable, List, Optional
 
 from alphapower.engine import AbstractScheduler, AbstractWorker
 from alphapower.entity import SimulationTask, SimulationTaskStatus
@@ -30,7 +30,7 @@ class MockWorker(AbstractWorker):
         self._job_slots: int = job_slots
         self._task_complete_callbacks: List[Callable] = []
 
-    def set_scheduler(self, scheduler: AbstractScheduler) -> None:
+    async def set_scheduler(self, scheduler: AbstractScheduler) -> None:
         """
         设置调度器。
         :param scheduler: 调度器实例
@@ -75,9 +75,16 @@ class MockWorker(AbstractWorker):
                 self._tasks.clear()
             self._running = False
 
-    def add_task_complete_callback(self, callback: Callable) -> None:
+    async def add_task_complete_callback(self, callback: Callable) -> None:
         """
         添加任务完成回调函数。
         :param callback: 回调函数
         """
         self._task_complete_callbacks.append(callback)
+
+    async def get_current_tasks(self) -> List[SimulationTask]:
+        """
+        获取当前任务的信息。
+        :return: 当前任务列表
+        """
+        return self._tasks

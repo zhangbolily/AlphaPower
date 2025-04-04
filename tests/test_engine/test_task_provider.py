@@ -9,7 +9,7 @@
 这些测试使用pytest异步测试框架和模拟(mock)来隔离测试环境。
 """
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List, Optional
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -88,9 +88,13 @@ async def test_fetch_tasks(session: AsyncSession) -> None:
         ),
     ]
     priority = [1, 1]
+    tags_list: List[Optional[List[str]]] = [
+        ["tag1", "tag2"],
+        ["tag3", "tag4"],
+    ]
 
     # 向数据库插入测试数据
-    await create_simulation_tasks(session, regular, settings, priority)
+    await create_simulation_tasks(session, regular, settings, priority, tags_list)
     await session.commit()
 
     # 初始化 DatabaseTaskProvider
@@ -166,9 +170,12 @@ async def test_fetch_tasks_invalid_priority(session: AsyncSession) -> None:
         )
     ]
     priority = [1]
+    tags_list: List[Optional[List[str]]] = [
+        ["tag1", "tag2"],
+    ]
 
     # 向数据库插入测试数据
-    await create_simulation_tasks(session, regular, settings, priority)
+    await create_simulation_tasks(session, regular, settings, priority, tags_list)
     await session.commit()
 
     # 初始化 DatabaseTaskProvider
