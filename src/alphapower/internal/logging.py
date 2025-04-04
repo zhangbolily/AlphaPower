@@ -31,6 +31,7 @@ def setup_logging(
         os.path.join(settings.log_dir, f"{module_name}.log"),
         maxBytes=5 * 1024 * 1024,
         backupCount=3,
+        encoding="utf-8",
     )
     file_handler.setLevel(settings.log_level)
     file_handler.setFormatter(logging.Formatter(log_format))
@@ -43,7 +44,7 @@ def setup_logging(
         console_handler.setFormatter(logging.Formatter(log_format))
         handlers.append(console_handler)
 
-    logging.basicConfig(level=settings.log_level, handlers=handlers)
+    logging.basicConfig(level=settings.log_level, encoding="utf-8", handlers=handlers)
 
     # 配置 structlog
     structlog.configure(

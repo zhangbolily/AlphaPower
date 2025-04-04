@@ -61,7 +61,7 @@ class TestDatasetDAL:
             dataset_id="TEST_DATASET_ID",
             name="测试数据集",
             description="数据集描述",
-            region=Region.CHINA,
+            region=Region.CHN,
             field_count=10,
             delay=Delay.ONE,
             universe=Universe.TOP2000U,
@@ -96,7 +96,7 @@ class TestDatasetDAL:
                 dataset_id=f"REGION_TEST_{i}",
                 name=f"区域测试_{i}",
                 description=f"区域测试描述_{i}",
-                region=Region.ASIA,
+                region=Region.ASI,
                 field_count=i * 5,
                 delay=Delay.ONE,
                 universe=Universe.TOP1000,
@@ -111,11 +111,11 @@ class TestDatasetDAL:
         await data_session.flush()
 
         # 使用特定方法查询
-        results = await dataset_dal.find_by_region(Region.ASIA)
+        results = await dataset_dal.find_by_region(Region.ASI)
 
         # 验证查询结果
         assert len(results) >= 3
-        assert all(d.region == Region.ASIA for d in results)
+        assert all(d.region == Region.ASI for d in results)
 
     async def test_find_high_value_datasets(self, data_session: AsyncSession) -> None:
         """测试高价值数据集查询方法。
@@ -132,7 +132,7 @@ class TestDatasetDAL:
                 dataset_id=f"VALUE_TEST_{i}",
                 name=f"价值测试_{i}",
                 description=f"价值测试描述_{i}",
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 value_score=i * 20,  # 20, 40, 60
                 delay=Delay.ONE,
                 universe=Universe.TOP3000,
@@ -169,7 +169,7 @@ class TestDatasetDAL:
                 name=f"字段测试_{i}",
                 description=f"字段测试描述_{i}",
                 field_count=i * 10,  # 10, 20, 30
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 delay=Delay.ONE,
                 universe=Universe.TOP3000,
                 coverage=0.8,
@@ -210,7 +210,7 @@ class TestDatasetDAL:
             dataset_id="CAT_DS_TEST",
             name="分类关联数据集",
             description="测试数据集-分类关联",
-            region=Region.GLOBAL,
+            region=Region.GLB,
             field_count=10,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
@@ -359,7 +359,7 @@ class TestDataFieldDAL:
         datafield = DataField(
             field_id="TEST_FIELD_ID",
             description="字段描述",
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             type=DataFieldType.VECTOR,
@@ -394,7 +394,7 @@ class TestDataFieldDAL:
                 description=f"数据集字段描述_{i}",
                 dataset_id=dataset_id,
                 type=DataFieldType.VECTOR,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 delay=Delay.ONE,
                 universe=Universe.TOP3000,
                 coverage=0.8,
@@ -430,7 +430,7 @@ class TestDataFieldDAL:
                     field_id=f"{ft.name}_FIELD_{i}",
                     description=f"{ft.name}字段描述_{i}",
                     type=ft,
-                    region=Region.GLOBAL,
+                    region=Region.GLB,
                     delay=Delay.ONE,
                     universe=Universe.TOP3000,
                     coverage=0.8,
@@ -464,7 +464,7 @@ class TestDataFieldDAL:
                 field_id=f"COVERAGE_FIELD_{i}",
                 description=f"覆盖率字段描述_{i}",
                 coverage=i * 0.2,  # 0.2, 0.4, 0.6, 0.8
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 delay=Delay.ONE,
                 universe=Universe.TOP3000,
                 type=DataFieldType.VECTOR,
@@ -501,7 +501,7 @@ class TestStatsDataDAL:
         stats = [
             StatsData(
                 data_set_id=dataset_id,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 delay=Delay.ONE,
                 universe=Universe.TOP3000,
                 coverage=0.8,
@@ -536,7 +536,7 @@ class TestStatsDataDAL:
         stats = [
             StatsData(
                 data_field_id=field_id,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 delay=Delay.ONE,
                 universe=Universe.TOP3000,
                 coverage=0.8,
@@ -605,7 +605,7 @@ class TestPyramidDAL:
         pyramid_dal = PyramidDAL(data_session)
 
         # 创建测试数据
-        regions = [Region.CHINA, Region.USA, Region.EUROPE]
+        regions = [Region.CHN, Region.USA, Region.EUR]
         for region in regions:
             pyramids = [
                 Pyramid(
@@ -620,11 +620,11 @@ class TestPyramidDAL:
         await data_session.flush()
 
         # 使用特定方法查询
-        results = await pyramid_dal.find_by_region(Region.CHINA)
+        results = await pyramid_dal.find_by_region(Region.CHN)
 
         # 验证查询结果
         assert len(results) >= 2
-        assert all(p.region == Region.CHINA for p in results)
+        assert all(p.region == Region.CHN for p in results)
 
     async def test_find_by_category(self, data_session: AsyncSession) -> None:
         """测试通过分类ID查询金字塔的方法。
@@ -641,7 +641,7 @@ class TestPyramidDAL:
             Pyramid(
                 delay=Delay.ONE,
                 multiplier=i * 1.5,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 category_id=category_id,
             )
             for i in range(1, 4)

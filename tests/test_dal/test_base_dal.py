@@ -87,7 +87,7 @@ class TestBaseDAL:
         # 创建测试数据
         setting: Setting = Setting(
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
+            region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
         )
@@ -101,7 +101,7 @@ class TestBaseDAL:
         assert retrieved_setting is not None
         assert retrieved_setting.id == setting.id
         assert retrieved_setting.instrument_type == InstrumentType.EQUITY
-        assert retrieved_setting.region == Region.CHINA
+        assert retrieved_setting.region == Region.CHN
 
         # 测试获取不存在的 ID
         non_existent = await dal.get_by_id(-1)
@@ -186,7 +186,7 @@ class TestBaseDAL:
         # 创建测试数据
         setting: Setting = Setting(
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
+            region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
             decay=5,
@@ -207,7 +207,7 @@ class TestBaseDAL:
         assert updated_setting.id == setting.id
         assert updated_setting.universe == Universe.TOP1000
         assert updated_setting.delay == Delay.ZERO
-        assert updated_setting.region == Region.CHINA  # 未修改字段保持不变
+        assert updated_setting.region == Region.CHN  # 未修改字段保持不变
 
         # 通过新查询验证更新是否成功
         result: Result = await alphas_session.execute(
@@ -268,7 +268,7 @@ class TestBaseDAL:
         # 创建测试数据
         setting1 = Setting(
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
+            region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
         )
@@ -280,7 +280,7 @@ class TestBaseDAL:
         )
         setting3 = Setting(
             instrument_type=InstrumentType.CRYPTO,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP50,
             delay=Delay.ONE,
         )
@@ -288,9 +288,9 @@ class TestBaseDAL:
         await alphas_session.flush()
 
         # 测试单一过滤条件
-        results1 = await setting_dal.find_by(region=Region.CHINA)
+        results1 = await setting_dal.find_by(region=Region.CHN)
         assert len(results1) >= 1
-        assert all(s.region == Region.CHINA for s in results1)
+        assert all(s.region == Region.CHN for s in results1)
 
         # 测试多个过滤条件
         results2 = await setting_dal.find_by(
@@ -303,7 +303,7 @@ class TestBaseDAL:
         )
 
         # 测试没有匹配的过滤条件
-        results3 = await setting_dal.find_by(region=Region.EUROPE)
+        results3 = await setting_dal.find_by(region=Region.EUR)
         assert len(results3) == 0
 
     async def test_find_one_by(self, alphas_session: AsyncSession) -> None:

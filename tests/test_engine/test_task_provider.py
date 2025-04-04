@@ -72,7 +72,7 @@ async def test_fetch_tasks(session: AsyncSession) -> None:
             test_period="2020-01-01:2021-01-01",
         ),
         SimulationSettingsView.model_construct(
-            region=Region.CHINA.name,
+            region=Region.CHN.name,
             delay=Delay.ONE.value,
             language=RegularLanguage.EXPRESSION.value,
             instrument_type=InstrumentType.EQUITY.value,

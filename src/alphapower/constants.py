@@ -87,15 +87,10 @@ DB_ALPHAS: Final[str] = "alphas"  # Alpha因子数据库名称
 DB_DATA: Final[str] = "data"  # 市场数据库名称
 DB_SIMULATION: Final[str] = "simulation"  # 模拟回测数据库名称
 
+
 # -----------------------------------------------------------------------------
 # API 路由相关常量
 # -----------------------------------------------------------------------------
-"""
-API 路由相关常量定义。
-
-这些常量用于构建API请求URL，包括基础URL和各种端点路径。
-在构建API请求时应优先使用这些常量，而非硬编码URL。
-"""
 # API基础URL
 BASE_URL: Final[str] = "https://api.worldquantbrain.com"  # API服务器基础URL
 
@@ -386,15 +381,15 @@ class Region(Enum):
     """
 
     DEFAULT = "DEFAULT"
-    AMERICA = "AMR"
-    ASIA = "ASI"
-    CHINA = "CHN"
-    EUROPE = "EUR"
-    GLOBAL = "GLB"
-    HONGKONG = "HKG"
-    JAPAN = "JPN"
-    KOREA = "KOR"
-    TAIWAN = "TWN"
+    AMR = "AMR"
+    ASI = "ASI"
+    CHN = "CHN"
+    EUR = "EUR"
+    GLB = "GLB"
+    HKG = "HKG"
+    JPN = "JPN"
+    KOR = "KOR"
+    TWN = "TWN"
     USA = "USA"
 
 
@@ -694,19 +689,19 @@ class DataFieldType(Enum):
 # 证券类型到支持地区的映射
 INSTRUMENT_TYPE_REGION_MAP: Final[Dict[InstrumentType, List[Region]]] = {
     InstrumentType.EQUITY: [
-        Region.GLOBAL,
-        Region.EUROPE,
-        Region.ASIA,
-        Region.CHINA,
-        Region.KOREA,
-        Region.TAIWAN,
-        Region.HONGKONG,
-        Region.JAPAN,
-        Region.AMERICA,
+        Region.GLB,
+        Region.EUR,
+        Region.ASI,
+        Region.CHN,
+        Region.KOR,
+        Region.TWN,
+        Region.HKG,
+        Region.JPN,
+        Region.AMR,
         Region.USA,
     ],
     InstrumentType.CRYPTO: [
-        Region.GLOBAL,
+        Region.GLB,
     ],
 }
 
@@ -731,39 +726,39 @@ EQUITY_REGION_UNIVERSE_MAP: Final[Dict[Region, List[Universe]]] = {
         Universe.ILLIQUID_MINVOL1M,
         Universe.TOPSP500,
     ],
-    Region.ASIA: [
+    Region.ASI: [
         Universe.MINVOL1M,
         Universe.ILLIQUID_MINVOL1M,
     ],
-    Region.CHINA: [
+    Region.CHN: [
         Universe.TOP2000U,
     ],
-    Region.KOREA: [
+    Region.KOR: [
         Universe.TOP600,
     ],
-    Region.TAIWAN: [
+    Region.TWN: [
         Universe.TOP500,
         Universe.TOP100,
     ],
-    Region.HONGKONG: [
+    Region.HKG: [
         Universe.TOP800,
         Universe.TOP500,
     ],
-    Region.JAPAN: [
+    Region.JPN: [
         Universe.TOP1600,
         Universe.TOP1200,
     ],
-    Region.AMERICA: [
+    Region.AMR: [
         Universe.TOP600,
     ],
-    Region.EUROPE: [
+    Region.EUR: [
         Universe.TOP2500,
         Universe.TOP1200,
         Universe.TOP800,
         Universe.TOP400,
         Universe.ILLIQUID_MINVOL1M,
     ],
-    Region.GLOBAL: [
+    Region.GLB: [
         Universe.TOP3000,
         Universe.MINVOL1M,
     ],
@@ -771,7 +766,7 @@ EQUITY_REGION_UNIVERSE_MAP: Final[Dict[Region, List[Universe]]] = {
 
 # 加密货币的选股范围映射
 CRYPTO_REGION_UNIVERSE_MAP: Final[Dict[Region, List[Universe]]] = {
-    Region.GLOBAL: [
+    Region.GLB: [
         Universe.TOP50,
         Universe.TOP20,
         Universe.TOP10,
@@ -790,15 +785,15 @@ INSTRUMENT_TYPE_UNIVERSE_MAP: Final[
 # 区域支持的延迟配置
 REGION_DELAY_MAP: Final[Dict[Region, List[Delay]]] = {
     Region.USA: [Delay.ZERO, Delay.ONE],
-    Region.GLOBAL: [Delay.ONE],
-    Region.EUROPE: [Delay.ZERO, Delay.ONE],
-    Region.ASIA: [Delay.ONE],
-    Region.CHINA: [Delay.ZERO, Delay.ONE],
-    Region.KOREA: [Delay.ONE],
-    Region.TAIWAN: [Delay.ONE],
-    Region.HONGKONG: [Delay.ONE],
-    Region.JAPAN: [Delay.ONE],
-    Region.AMERICA: [Delay.ZERO, Delay.ONE],
+    Region.GLB: [Delay.ONE],
+    Region.EUR: [Delay.ZERO, Delay.ONE],
+    Region.ASI: [Delay.ONE],
+    Region.CHN: [Delay.ZERO, Delay.ONE],
+    Region.KOR: [Delay.ONE],
+    Region.TWN: [Delay.ONE],
+    Region.HKG: [Delay.ONE],
+    Region.JPN: [Delay.ONE],
+    Region.AMR: [Delay.ZERO, Delay.ONE],
 }
 
 # 证券类型支持的中性化策略
@@ -823,7 +818,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.SUBINDUSTRY,
         Neutralization.SLOW_AND_FAST,
     ],
-    Region.GLOBAL: [
+    Region.GLB: [
         Neutralization.NONE,
         Neutralization.STATISTICAL,
         Neutralization.CROWDING,
@@ -836,7 +831,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.COUNTRY,
         Neutralization.SLOW_AND_FAST,
     ],
-    Region.EUROPE: [
+    Region.EUR: [
         Neutralization.NONE,
         Neutralization.STATISTICAL,
         Neutralization.CROWDING,
@@ -849,7 +844,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.COUNTRY,
         Neutralization.SLOW_AND_FAST,
     ],
-    Region.ASIA: [
+    Region.ASI: [
         Neutralization.NONE,
         Neutralization.CROWDING,
         Neutralization.FAST,
@@ -861,7 +856,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.COUNTRY,
         Neutralization.SLOW_AND_FAST,
     ],
-    Region.CHINA: [
+    Region.CHN: [
         Neutralization.NONE,
         Neutralization.CROWDING,
         Neutralization.FAST,
@@ -872,11 +867,11 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.SUBINDUSTRY,
         Neutralization.SLOW_AND_FAST,
     ],
-    Region.KOREA: NEUTRALIZATION_BASIC,
-    Region.TAIWAN: NEUTRALIZATION_BASIC,
-    Region.HONGKONG: NEUTRALIZATION_BASIC,
-    Region.JAPAN: NEUTRALIZATION_BASIC,
-    Region.AMERICA: [
+    Region.KOR: NEUTRALIZATION_BASIC,
+    Region.TWN: NEUTRALIZATION_BASIC,
+    Region.HKG: NEUTRALIZATION_BASIC,
+    Region.JPN: NEUTRALIZATION_BASIC,
+    Region.AMR: [
         Neutralization.NONE,
         Neutralization.MARKET,
         Neutralization.SECTOR,

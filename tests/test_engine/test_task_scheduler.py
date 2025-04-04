@@ -167,7 +167,7 @@ async def test_schedule_with_database_task_provider() -> None:
                 test_period="2020-01-01:2021-01-01",
             ),
             SimulationSettingsView.model_construct(
-                region=Region.CHINA.name,
+                region=Region.CHN.name,
                 delay=Delay.ONE.value,
                 language=RegularLanguage.FASTEXPR.value,
                 instrument_type=InstrumentType.EQUITY.value,

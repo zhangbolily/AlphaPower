@@ -83,6 +83,7 @@ def _create_task(
     signature: str,
     status: SimulationTaskStatus,
     priority: int,
+    tags: Optional[List[str]] = None,
 ) -> SimulationTask:
     """创建单个SimulationTask对象。
 
@@ -148,6 +149,7 @@ def _create_task(
             settings.visualization if settings.visualization is not None else False
         ),
         max_trade=max_trade,
+        tags=tags or [],
     )
 
 
@@ -156,6 +158,7 @@ async def create_simulation_task(
     regular: str,
     settings: SimulationSettingsView,
     priority: int = 0,
+    tags: Optional[List[str]] = None,
 ) -> SimulationTask:
     """
     创建单个SimulationTask并保存到数据库，使用SimulationTaskDAL。
@@ -169,6 +172,7 @@ async def create_simulation_task(
         signature=signature,
         status=SimulationTaskStatus.PENDING,
         priority=priority,
+        tags=tags,
     )
     dal.session.add(task)
     await dal.session.flush()
@@ -180,6 +184,7 @@ async def create_simulation_tasks(
     regular: List[str],
     settings: List[SimulationSettingsView],
     priority: List[int],
+    tags_list: List[Optional[List[str]]],
 ) -> List[SimulationTask]:
     """
     批量创建SimulationTask，并使用SimulationTaskDAL将其保存到数据库。
@@ -196,6 +201,7 @@ async def create_simulation_tasks(
             signature=get_task_signature(regular[i], settings[i]),
             status=SimulationTaskStatus.PENDING,
             priority=priority[i],
+            tags=tags_list[i],
         )
         for i in range(len(regular))
     ]

@@ -116,8 +116,10 @@ class Worker(AbstractWorker):
         ] = []
         self._scheduler: Optional[AbstractScheduler] = None
         self._shutdown_flag: bool = False
+        self._running: bool = False
         self._is_task_cancel_requested: bool = False
         self._dry_run: bool = dry_run
+        self._current_tasks: List[SimulationTask] = []
 
         if not isinstance(self._client, WorldQuantClient):
             raise ValueError("Client must be an instance of WorldQuantClient.")
@@ -546,6 +548,7 @@ class Worker(AbstractWorker):
             tasks: List[SimulationTask] = await self._scheduler.schedule(
                 batch_size=scheduled_task_count
             )
+            self._current_tasks = tasks
 
             # 如果没有可用任务，等待后重试
             if not tasks:
@@ -577,6 +580,8 @@ class Worker(AbstractWorker):
                 await logger.aerror(f"未知用户角色 {self._user_role}，无法处理任务")
                 raise ValueError(f"未知用户角色 {self._user_role}，无法处理任务")
 
+            self._current_tasks = []
+
     async def set_scheduler(self, scheduler: AbstractScheduler) -> None:
         """设置任务调度器。
 
@@ -594,9 +599,16 @@ class Worker(AbstractWorker):
 
         重置关闭标志并启动工作循环，直到被明确停止。
         """
+        if self._running:
+            await logger.aerror("工作者已在运行中，无法重复启动")
+            return
+        self._running = True
+
         logger.debug("启动工作者")
         self._shutdown_flag = False
         await self._do_work()
+        await logger.ainfo("工作者已停止")
+        self._running = False
 
     async def stop(self, cancel_tasks: bool = False) -> None:
         """停止工作者，清理资源。
@@ -637,3 +649,10 @@ class Worker(AbstractWorker):
         await logger.adebug(
             f"添加任务完成回调函数 {callback}， 当前回调函数数量 {len(self._task_complete_callbacks)}"
         )
+
+    async def get_current_tasks(self) -> List[SimulationTask]:
+        """获取当前任务的信息。
+        返回当前正在执行的任务列表。
+        """
+        logger.debug(f"获取当前任务，当前任务数量: {len(self._current_tasks)}")
+        return self._current_tasks

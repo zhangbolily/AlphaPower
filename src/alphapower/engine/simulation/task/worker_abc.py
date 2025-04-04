@@ -8,7 +8,9 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, List
+
+from alphapower.entity import SimulationTask
 
 from .scheduler_abc import AbstractScheduler
 
@@ -45,4 +47,10 @@ class AbstractWorker(ABC):
         TODO: 回调函数的入参类型需要确定一下
 
         :param callback: 回调函数
+        """
+
+    @abstractmethod
+    async def get_current_tasks(self) -> List[SimulationTask]:
+        """
+        获取当前任务的信息。
         """

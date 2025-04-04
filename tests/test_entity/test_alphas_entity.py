@@ -375,7 +375,7 @@ class TestAlpha:
         # 创建依赖的相关实例：Setting, Regular, Samples, Classifications, Competitions
         setting: Setting = Setting(
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
+            region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
             decay=10,

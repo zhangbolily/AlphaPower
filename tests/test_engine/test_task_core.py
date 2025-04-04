@@ -88,7 +88,7 @@ async def test_create_simulation_tasks() -> None:
             test_period="2020-01-01:2021-01-01",
         ),
         SimulationSettingsView.model_construct(
-            region=Region.EUROPE.name,
+            region=Region.EUR.name,
             delay=Delay.ZERO.value,
             language=RegularLanguage.FASTEXPR.value,
             instrument_type=InstrumentType.EQUITY.value,

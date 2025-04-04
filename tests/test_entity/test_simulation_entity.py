@@ -125,7 +125,7 @@ class TestSimulationTask:
             tags=["test", "simulation", "unit"],
             # 设置参数
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
+            region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
             decay=10,
@@ -151,7 +151,7 @@ class TestSimulationTask:
         assert db_task is not None
         assert db_task.type == SimulationTaskType.REGULAR
         expected_key = (
-            f"{Region.CHINA.value}_{Delay.ONE.value}_"
+            f"{Region.CHN.value}_{Delay.ONE.value}_"
             + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         assert db_task.settings_group_key == expected_key
@@ -174,7 +174,7 @@ class TestSimulationTask:
 
         # 验证设置参数字段
         assert db_task.instrument_type == InstrumentType.EQUITY
-        assert db_task.region == Region.CHINA
+        assert db_task.region == Region.CHN
         assert db_task.universe == Universe.TOP2000U
         assert db_task.delay == Delay.ONE
         assert db_task.decay == 10
@@ -232,7 +232,7 @@ class TestSimulationTask:
         # 更新枚举字段
         db_task.delay = Delay.ONE
         db_task.universe = Universe.TOP3000
-        db_task.region = Region.GLOBAL
+        db_task.region = Region.GLB
         db_task.neutralization = Neutralization.INDUSTRY
         db_task.visualization = True
 
@@ -252,7 +252,7 @@ class TestSimulationTask:
         assert updated_task.result == {"status": "in_progress", "percentage": 50}
         assert updated_task.scheduled_at is not None
         # 验证更新后的枚举字段
-        assert updated_task.region == Region.GLOBAL
+        assert updated_task.region == Region.GLB
         assert updated_task.universe == Universe.TOP3000
         assert updated_task.neutralization == Neutralization.INDUSTRY
         assert updated_task.visualization is True
@@ -273,7 +273,7 @@ class TestSimulationTask:
             signature="unique_signature_3",
             # 设置参数
             instrument_type=InstrumentType.EQUITY,
-            region=Region.JAPAN,
+            region=Region.JPN,
             universe=Universe.TOP1200,
             delay=Delay.ONE,
             neutralization=Neutralization.SECTOR,
@@ -309,7 +309,7 @@ class TestSimulationTask:
         assert completed_task.completed_at is not None
         # 验证枚举字段保持不变
         assert completed_task.instrument_type == InstrumentType.EQUITY
-        assert completed_task.region == Region.JAPAN
+        assert completed_task.region == Region.JPN
         assert completed_task.universe == Universe.TOP1200
         assert completed_task.delay == Delay.ONE
         assert completed_task.neutralization == Neutralization.SECTOR
@@ -330,7 +330,7 @@ class TestSimulationTask:
             signature="unique_signature_4",
             # 设置参数
             instrument_type=InstrumentType.CRYPTO,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP20,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -360,7 +360,7 @@ class TestSimulationTask:
         assert error_task.result["error"] == "计算超时"
         # 验证加密货币特有设置
         assert error_task.instrument_type == InstrumentType.CRYPTO
-        assert error_task.region == Region.GLOBAL
+        assert error_task.region == Region.GLB
         assert error_task.universe == Universe.TOP20
         assert error_task.neutralization == Neutralization.MARKET
 
@@ -373,7 +373,7 @@ class TestSimulationTask:
             session: 数据库会话对象。
         """
         # 使用相同的region、delay、language和instrument_type创建任务，以生成相同的settings_group_key
-        group_region = Region.CHINA
+        group_region = Region.CHN
         group_delay = Delay.ONE
         group_language = RegularLanguage.PYTHON
         group_instrument = InstrumentType.EQUITY
@@ -629,7 +629,7 @@ class TestSimulationTask:
             signature="settings_key_signature",
             # 设置参数
             instrument_type=InstrumentType.EQUITY,
-            region=Region.CHINA,
+            region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -643,7 +643,7 @@ class TestSimulationTask:
 
         # 验证初始 settings_group_key
         expected_key = (
-            f"{Region.CHINA.value}_{Delay.ONE.value}_"
+            f"{Region.CHN.value}_{Delay.ONE.value}_"
             + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         assert task.settings_group_key == expected_key
@@ -785,7 +785,7 @@ class TestSimulationTask:
                 type=SimulationTaskType.REGULAR,
                 regular="relationship_test",
                 signature="relationship_signature",
-                region=Region.TAIWAN,
+                region=Region.TWN,
                 instrument_type=InstrumentType.CRYPTO,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
@@ -819,7 +819,7 @@ class TestSimulationTask:
                 type=SimulationTaskType.REGULAR,
                 regular="delay_test",
                 signature="delay_signature",
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 instrument_type=InstrumentType.EQUITY,
                 universe=Universe.TOP3000,
                 delay=Delay.ZERO,
@@ -878,7 +878,7 @@ class TestSimulationTask:
 
         # 修改影响 settings_group_key 的字段，验证监听器是否触发更新
         task.universe = Universe.TOP2000U
-        task.region = Region.CHINA
+        task.region = Region.CHN
         await session.flush()
 
         # 重新查询验证自动更新
@@ -888,7 +888,7 @@ class TestSimulationTask:
         updated_task = result.scalars().one()
 
         assert updated_task.settings_group_key != original_key
-        assert Region.CHINA.value in updated_task.settings_group_key
+        assert Region.CHN.value in updated_task.settings_group_key
 
         # 测试多字段同时变更
         task.delay = Delay.ONE

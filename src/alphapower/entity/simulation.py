@@ -40,7 +40,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, validates
+from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column
 
 from alphapower.constants import (
     Decay,
@@ -237,7 +237,7 @@ class SimulationTask(Base):
         """
         # 处理 tags 属性 (如果存在)
         tags: Optional[List[str]] = kwargs.pop("tags", None)
-        self._initializing = True
+        self._initializing: bool = True
 
         # 调用父类的 __init__ 处理其他属性
         super().__init__(**kwargs)
@@ -276,75 +276,32 @@ class SimulationTask(Base):
                 + f"{self.language.value}_{self.instrument_type.value}"
             )
 
-    # 验证器部分
-    @validates("region")
-    def validate_region(self, key: str, value: Region) -> Region:
-        """验证区域值的合法性"""
-        if value == Region.DEFAULT:
-            raise ValueError(f"{key} 不能使用 DEFAULT 值")
-        return value
-
-    @validates("instrument_type")
-    def validate_instrument_type(
-        self, key: str, value: InstrumentType
-    ) -> InstrumentType:
-        """验证证券类型的合法性"""
-        if value == InstrumentType.DEFAULT:
-            raise ValueError(f"{key} 不能使用 DEFAULT 值")
-        return value
-
-    @validates("universe")
-    def validate_universe(self, key: str, value: Universe) -> Universe:
-        """验证选股范围的合法性"""
-        if value == Universe.DEFAULT:
-            raise ValueError(f"{key} 不能使用 DEFAULT 值")
-        return value
-
-    @validates("decay")
-    def validate_decay(self, key: str, value: int) -> int:
-        """验证 decay 字段的值是否在有效范围内"""
-        if not Decay.MIN.value <= value <= Decay.MAX.value:
-            raise ValueError(
-                f"{key} 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间"
-            )
-        return value
-
-    @validates("truncation")
-    def validate_truncation(self, key: str, value: float) -> float:
-        """验证截断阈值是否在合理范围内"""
-        if not Truncation.MIN.value <= value <= Truncation.MAX.value:
-            raise ValueError(
-                f"{key} 必须在 {Truncation.MIN.value} 到 {Truncation.MAX.value} 之间"
-            )
-        return value
-
-    @validates("delay")
-    def validate_delay(self, key: str, value: Delay) -> Delay:
-        """验证延迟值的合法性"""
-        if value == Delay.DEFAULT:
-            raise ValueError(f"{key} 不能使用 DEFAULT 值")
-        return value
-
-    @validates("neutralization")
-    def validate_neutralization(
-        self, key: str, value: Neutralization
-    ) -> Neutralization:
-        """验证中性化策略的合法性"""
-        if value == Neutralization.DEFAULT:
-            raise ValueError(f"{key} 不能使用 DEFAULT 值")
-        return value
-
     def validate_field_relationships(self) -> None:
         """验证字段间的关系是否符合业务规则"""
-        # 跳过对默认值的验证
+        if self.region == Region.DEFAULT:
+            raise ValueError("region 不能使用 DEFAULT 值")
+        if self.instrument_type == InstrumentType.DEFAULT:
+            raise ValueError("instrument_type 不能使用 DEFAULT 值")
+        if self.universe == Universe.DEFAULT:
+            raise ValueError("universe 不能使用 DEFAULT 值")
         if (
-            self.region == Region.DEFAULT
-            or self.instrument_type == InstrumentType.DEFAULT
-            or self.universe == Universe.DEFAULT
-            or self.delay == Delay.DEFAULT
-            or self.neutralization == Neutralization.DEFAULT
+            self.decay is not None
+            and not Decay.MIN.value <= self.decay <= Decay.MAX.value
         ):
-            return
+            raise ValueError(
+                f"decay 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间"
+            )
+        if (
+            self.truncation is not None
+            and not Truncation.MIN.value <= self.truncation <= Truncation.MAX.value
+        ):
+            raise ValueError(
+                f"truncation 必须在 {Truncation.MIN.value} 到 {Truncation.MAX.value} 之间"
+            )
+        if self.delay == Delay.DEFAULT:
+            raise ValueError("delay 不能使用 DEFAULT 值")
+        if self.neutralization == Neutralization.DEFAULT:
+            raise ValueError("neutralization 不能使用 DEFAULT 值")
 
         # 验证 region 和 instrument_type 的兼容性
         if not is_region_supported_for_instrument_type(
@@ -443,71 +400,39 @@ class SimulationTask(Base):
 # ==========================
 
 
-# 更新后验证字段关系的监听器
-@event.listens_for(SimulationTask, "after_update")
-def validate_after_update(
+@event.listens_for(SimulationTask, "before_insert")
+def validate_before_insert(
     mapper: Mapper,  # pylint: disable=unused-argument
     connection: Connection,  # pylint: disable=unused-argument
     target: SimulationTask,
 ) -> None:
-    """在对象更新后验证字段关系
-    通过 SQLAlchemy 事件监听器，确保在对象更新后重新验证字段关系。
+    """在对象插入前验证字段关系
+    通过 SQLAlchemy 事件监听器，确保在对象插入前重新验证字段关系。
     这确保了在对象属性变更后，字段间的关系仍然符合业务规则。
 
     Args:
         mapper: SQLAlchemy映射器对象
         connection: 数据库连接对象
-        target: 更新后的SimulationTask实例
+        target: 插入前的SimulationTask实例
     """
     target.validate_field_relationships()
+    target._update_settings_group_key()  # pylint: disable=W0212
 
 
-# 更新对象前更新settings_group_key的监听器
 @event.listens_for(SimulationTask, "before_update")
-def update_settings_group_key_before_update(
+def validate_before_update(
     mapper: Mapper,  # pylint: disable=unused-argument
     connection: Connection,  # pylint: disable=unused-argument
     target: SimulationTask,
 ) -> None:
-    """在更新对象前更新 settings_group_key
-
-    当 region、delay、language 或 instrument_type 发生变化时，
-    自动更新 settings_group_key 字段。
+    """在对象更新前验证字段关系
+    通过 SQLAlchemy 事件监听器，确保在对象更新前重新验证字段关系。
+    这确保了在对象属性变更后，字段间的关系仍然符合业务规则。
 
     Args:
         mapper: SQLAlchemy映射器对象
         connection: 数据库连接对象
         target: 更新前的SimulationTask实例
     """
+    target.validate_field_relationships()
     target._update_settings_group_key()  # pylint: disable=W0212
-
-
-# 为关键字段添加属性变更监听器
-# 对每个影响settings_group_key的字段添加监听器
-for attr_name in ["region", "delay", "language", "instrument_type"]:
-    attr: Optional[Mapped[Any]] = getattr(SimulationTask, attr_name, None)
-
-    @event.listens_for(attr, "set")  # pylint: disable=W0640
-    def receive_set(
-        target: SimulationTask,
-        value: Any,  # pylint: disable=unused-argument
-        oldvalue: Any,  # pylint: disable=unused-argument
-        initiator: Any,  # pylint: disable=unused-argument
-    ) -> None:
-        """监听属性变更，更新 settings_group_key
-
-        当任何关键字段值变化时，更新 settings_group_key。
-
-        Args:
-            target: 目标SimulationTask实例
-            value: 新值
-            oldvalue: 旧值
-            initiator: 触发事件的属性
-        """
-        if "_initializing" not in target.__dict__:
-            # merge 等方式进入可能会导致 _initializing 属性丢失
-            target._initializing = False  # pylint: disable=W0212
-        if target._initializing:  # pylint: disable=W0212
-            return
-        # 仅在对象初始化完成后更新 settings_group_key
-        target._update_settings_group_key()  # pylint: disable=W0212

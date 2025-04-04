@@ -75,7 +75,7 @@ class TestSimulationTaskDAL:
                     regular="test_regular",
                     # 添加缺失的必填字段
                     instrument_type=InstrumentType.EQUITY,
-                    region=Region.GLOBAL,
+                    region=Region.GLB,
                     universe=Universe.TOP500,
                     delay=Delay.ONE,
                     neutralization=Neutralization.MARKET,
@@ -120,7 +120,7 @@ class TestSimulationTaskDAL:
                 regular="test_regular",
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
@@ -164,7 +164,7 @@ class TestSimulationTaskDAL:
             regular="test_regular",
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP500,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -206,7 +206,7 @@ class TestSimulationTaskDAL:
                 regular="test_regular",
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
@@ -229,7 +229,7 @@ class TestSimulationTaskDAL:
             regular="test_regular",
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP500,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -272,7 +272,7 @@ class TestSimulationTaskDAL:
                 regular="test_regular",
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
@@ -295,7 +295,7 @@ class TestSimulationTaskDAL:
             type=SimulationTaskType.REGULAR,
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP500,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -341,7 +341,7 @@ class TestSimulationTaskDAL:
                 regular="test_regular",
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
@@ -386,7 +386,7 @@ class TestSimulationTaskDAL:
                 regular="test_regular",
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
@@ -410,7 +410,7 @@ class TestSimulationTaskDAL:
             regular="test_regular",
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP500,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -459,7 +459,7 @@ class TestSimulationTaskDAL:
             regular="test_regular",
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP500,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
@@ -482,7 +482,7 @@ class TestSimulationTaskDAL:
                 settings_group_key="TEST_GROUP",
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
-                region=Region.GLOBAL,
+                region=Region.GLB,
                 universe=Universe.TOP500,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
@@ -506,7 +506,7 @@ class TestSimulationTaskDAL:
             regular="test_regular",
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             universe=Universe.TOP500,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,

@@ -127,7 +127,7 @@ class TestDataset:
             dataset_id="DS001",
             name="GDP数据集",
             description="包含全球各国GDP数据",
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             coverage=0.95,
@@ -153,7 +153,7 @@ class TestDataset:
         assert retrieved_dataset.id is not None
         assert retrieved_dataset.dataset_id == "DS001"
         assert retrieved_dataset.name == "GDP数据集"
-        assert retrieved_dataset.region == Region.GLOBAL
+        assert retrieved_dataset.region == Region.GLB
         assert retrieved_dataset.delay == Delay.ONE
         assert retrieved_dataset.universe == Universe.TOP3000
         assert retrieved_dataset.pyramid_multiplier == 1.5
@@ -194,7 +194,7 @@ class TestDataField:
             dataset_id="DS002",
             name="股价数据集",
             description="包含股票价格数据",
-            region=Region.CHINA,
+            region=Region.CHN,
             delay=Delay.ONE,
             universe=Universe.TOP2000U,
             coverage=1.0,
@@ -211,7 +211,7 @@ class TestDataField:
             field_id="FD001",
             description="收盘价",
             dataset=dataset,
-            region=Region.CHINA,
+            region=Region.CHN,
             delay=Delay.ONE,
             universe=Universe.TOP2000U,
             type=DataFieldType.VECTOR,
@@ -235,7 +235,7 @@ class TestDataField:
         assert retrieved_field.field_id == "FD001"
         assert retrieved_field.description == "收盘价"
         assert retrieved_field.dataset.dataset_id == "DS002"
-        assert retrieved_field.region == Region.CHINA
+        assert retrieved_field.region == Region.CHN
         assert retrieved_field.delay == Delay.ONE
         assert retrieved_field.universe == Universe.TOP2000U
         assert retrieved_field.type == DataFieldType.VECTOR
@@ -260,7 +260,7 @@ class TestStatsData:
             dataset_id="DS003",
             name="经济指标",
             description="经济指标数据集",
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             coverage=0.9,
@@ -275,7 +275,7 @@ class TestStatsData:
             field_id="FD002",
             description="通胀率",
             dataset=dataset,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             type=DataFieldType.VECTOR,
@@ -289,7 +289,7 @@ class TestStatsData:
         # 创建统计数据
         stats_data0: StatsData = StatsData(
             data_set=dataset,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             coverage=0.9,
@@ -301,7 +301,7 @@ class TestStatsData:
 
         stats_data1: StatsData = StatsData(
             data_field=data_field,
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             coverage=0.9,
@@ -323,7 +323,7 @@ class TestStatsData:
 
         # 验证统计数据
         assert retrieved_stats.id is not None
-        assert retrieved_stats.region == Region.GLOBAL
+        assert retrieved_stats.region == Region.GLB
         assert retrieved_stats.delay == Delay.ONE
         assert retrieved_stats.universe == Universe.TOP3000
         assert retrieved_stats.value_score == 8.0
@@ -336,7 +336,7 @@ class TestStatsData:
         await retrieved_stats.awaitable_attrs.data_field
         # 验证统计数据
         assert retrieved_stats.id is not None
-        assert retrieved_stats.region == Region.GLOBAL
+        assert retrieved_stats.region == Region.GLB
         assert retrieved_stats.delay == Delay.ONE
         assert retrieved_stats.universe == Universe.TOP3000
         assert retrieved_stats.value_score == 8.0
@@ -362,7 +362,7 @@ class TestResearchPaper:
             dataset_id="DS004",
             name="金融市场数据",
             description="金融市场分析数据",
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             coverage=1.0,
@@ -376,7 +376,7 @@ class TestResearchPaper:
             dataset_id="DS005",
             name="宏观经济数据",
             description="宏观经济分析数据",
-            region=Region.GLOBAL,
+            region=Region.GLB,
             delay=Delay.ONE,
             universe=Universe.TOP3000,
             coverage=0.95,
@@ -460,7 +460,7 @@ class TestCategoryRelationships:
             dataset_id="DS006",
             name="政府债券数据",
             description="政府债券相关数据",
-            region=Region.CHINA,
+            region=Region.CHN,
             delay=Delay.ONE,
             universe=Universe.TOP2000U,
             coverage=0.98,
@@ -476,7 +476,7 @@ class TestCategoryRelationships:
             field_id="FD003",
             description="收益率",
             dataset=dataset,
-            region=Region.CHINA,
+            region=Region.CHN,
             delay=Delay.ONE,
             universe=Universe.TOP2000U,
             type=DataFieldType.VECTOR,
@@ -491,7 +491,7 @@ class TestCategoryRelationships:
             field_id="FD004",
             description="到期日",
             dataset=dataset,
-            region=Region.CHINA,
+            region=Region.CHN,
             delay=Delay.ONE,
             universe=Universe.TOP2000U,
             type=DataFieldType.VECTOR,
@@ -542,7 +542,7 @@ class TestPyramid:
         pyramid: Pyramid = Pyramid(
             delay=Delay.ONE,
             multiplier=2.5,
-            region=Region.CHINA,
+            region=Region.CHN,
             category=category,
         )
         db_session.add(pyramid)
@@ -558,7 +558,7 @@ class TestPyramid:
         assert retrieved_pyramid.id is not None
         assert retrieved_pyramid.delay == Delay.ONE
         assert retrieved_pyramid.multiplier == 2.5
-        assert retrieved_pyramid.region == Region.CHINA
+        assert retrieved_pyramid.region == Region.CHN
         assert retrieved_pyramid.category.category_id == "CAT005"
         assert retrieved_pyramid.category.name == "金字塔测试分类"
 
