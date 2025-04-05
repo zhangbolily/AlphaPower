@@ -64,28 +64,73 @@ class WorldQuantClient:
         username (str): 用户名。
         password (str): 密码。
         """
-        self.shutdown: bool = False
-        auth: BasicAuth = BasicAuth(username, password)
-        self.session: ClientSession = ClientSession(auth=auth)
-        self._auth_task: Coroutine = authentication(self.session)
+        self._is_closed: bool = True
+        self._auth: BasicAuth = BasicAuth(username, password)
+        self.session: Optional[ClientSession] = None
+        self._auth_task: Optional[Coroutine] = None
         self._refresh_task: Optional[asyncio.Task] = None
         self._usage_count: int = 0
         self._usage_lock: asyncio.Lock = asyncio.Lock()
         self.authentication_info: Optional[AuthenticationView] = None
 
-    async def _refresh_session(self, expiry: float) -> None:
+    async def _start_refresh_task(self, expiry: float) -> None:
         """
-        后台任务定期刷新会话。
+        后台异步循环刷新会话。
+        """
+        while not self._is_closed:
+            try:
+                await asyncio.sleep(max(expiry - 60, 0))
+                if self._auth_task is None:
+                    raise RuntimeError("认证任务未初始化")
+                session_info: AuthenticationView = await self._auth_task
+                self.authentication_info = session_info
+                expiry = session_info.token.expiry
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"刷新会话时发生错误: {e}")
 
-        参数:
-        expiry (int): 会话过期时间（秒）。
+    async def initialize(self) -> None:
         """
-        while not self.shutdown:
-            await asyncio.sleep(max(expiry - 60, 0))  # 提前 60 秒刷新
-            self._auth_task = authentication(self.session)
-            session_info: AuthenticationView = await self._auth_task
-            self.authentication_info = session_info
-            expiry = session_info.token.expiry  # 更新下次刷新时间
+        初始化客户端会话。
+        """
+        self.session = ClientSession(auth=self._auth)
+        self._auth_task = authentication(self.session)
+        self.authentication_info = await self._auth_task
+        self._is_closed = False
+        self._refresh_task = asyncio.create_task(
+            self._start_refresh_task(self.authentication_info.token.expiry)
+        )
+
+    async def close(self) -> None:
+        """
+        关闭客户端会话。
+        """
+        if self.session and not self.session.closed:
+            await self.session.close()
+        self._is_closed = True
+        self._auth_task = None
+        if self._refresh_task:
+            self._refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._refresh_task
+        self._refresh_task = None
+
+    async def _is_initialized(self) -> bool:
+        """
+        检查客户端是否已初始化。
+
+        返回:
+        bool: 如果已初始化，则返回 True，否则返回 False。
+        """
+        if self.session and self.session.closed:
+            if self._is_closed:
+                return False
+            else:
+                await self.close()
+                return False
+
+        return not self._is_closed
 
     async def __aenter__(self) -> "WorldQuantClient":
         """
@@ -96,15 +141,10 @@ class WorldQuantClient:
         """
         async with self._usage_lock:
             if self._usage_count == 0:
-                if not self.session or self.session.closed:
-                    raise RuntimeError("客户端会话未初始化或已关闭")
-
-                if self._auth_task is None:
-                    raise RuntimeError("客户端会话认证方法未提供")
-
-                session_info: AuthenticationView = await self._auth_task
-                expiry: float = session_info.token.expiry
-                self._refresh_task = asyncio.create_task(self._refresh_session(expiry))
+                if self._is_closed:
+                    await self.initialize()
+                if self.session is None:
+                    raise RuntimeError("会话未初始化")
             self._usage_count += 1
         return self
 
@@ -125,12 +165,14 @@ class WorldQuantClient:
         async with self._usage_lock:
             self._usage_count -= 1
             if self._usage_count == 0:
-                if self._refresh_task:
-                    self._refresh_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await self._refresh_task
-                if self.session:
-                    await self.session.close()
+                await self.close()
+
+    def __del__(self) -> None:
+        """
+        确保在对象销毁时清理资源。
+        """
+        if self.session and not self.session.closed:
+            asyncio.create_task(self.session.close())
 
     # -------------------------------
     # Simulation-related methods
@@ -148,6 +190,12 @@ class WorldQuantClient:
         返回:
         tuple: 包含成功状态、进度 ID 和重试时间的元组。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         success, progress_id, retry_after = await create_single_simulation(
             self.session, payload.to_params()
         )
@@ -166,6 +214,12 @@ class WorldQuantClient:
         返回:
         tuple: 包含成功状态、进度 ID 和重试时间的元组。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         success, progress_id, retry_after = await create_multi_simulation(
             self.session, payload.to_params()
         )
@@ -182,6 +236,12 @@ class WorldQuantClient:
         返回:
         bool: 删除是否成功。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         await delete_simulation(self.session, progress_id)
         return True
 
@@ -198,6 +258,12 @@ class WorldQuantClient:
         返回:
         tuple: 包含完成状态、进度或结果对象以及重试时间的元组。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         finished, progress_or_result, retry_after = await get_simulation_progress(
             self.session, progress_id, is_multi=False
         )
@@ -221,6 +287,13 @@ class WorldQuantClient:
         返回:
         tuple: 包含完成状态、进度或结果对象以及重试时间的元组。
         """
+
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         finished, progress_or_result, retry_after = await get_simulation_progress(
             self.session, progress_id, is_multi=True
         )
@@ -244,6 +317,12 @@ class WorldQuantClient:
         返回:
         tuple: 包含完成状态和单次模拟结果的元组。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         finished, progress_or_result, _ = await get_simulation_progress(
             self.session, child_progress_id, is_multi=False
         )
@@ -268,6 +347,12 @@ class WorldQuantClient:
         返回:
         tuple: 包含 Alpha 列表视图和速率限制信息的元组。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await get_self_alphas(self.session, query.to_params())
         return resp
 
@@ -282,6 +367,12 @@ class WorldQuantClient:
         返回:
         DataCategoriesListView: 数据类别列表。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await fetch_data_categories(self.session)
         return resp
 
@@ -299,6 +390,12 @@ class WorldQuantClient:
         返回:
         Optional[DatasetListView]: 数据集列表视图。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await fetch_datasets(self.session, query.to_params())
         return resp
 
@@ -314,6 +411,12 @@ class WorldQuantClient:
         返回:
         Optional[DatasetDetail]: 数据集详情。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await fetch_dataset_detail(self.session, dataset_id)
         return resp
 
@@ -328,6 +431,12 @@ class WorldQuantClient:
         返回:
         DatasetDataFieldsView: 数据字段详情视图。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await fetch_data_field_detail(self.session, data_field_id)
         return resp
 
@@ -345,6 +454,12 @@ class WorldQuantClient:
         返回:
         Optional[DataFieldListView]: 数据字段列表视图。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await fetch_dataset_data_fields(self.session, query.to_params())
         return resp
 
@@ -359,6 +474,12 @@ class WorldQuantClient:
         返回:
         Operators: 操作符对象。
         """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
         resp = await get_all_operators(self.session)
         return resp
 

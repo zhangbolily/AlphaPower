@@ -1,19 +1,32 @@
-"""
-This module contains the data models for the AlphaPower API.
+# pylint: disable=C0302
+"""This module contains the data models for the AlphaPower API.
+
+This module defines the data structures used for interacting with the AlphaPower API.
+It includes models for Alpha metrics, classifications, competitions, simulations,
+data categories, and other related entities.
+
+Attributes:
+    All classes in this module are Pydantic models that handle data validation,
+    serialization, and deserialization.
 """
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from multidict import CIMultiDictProxy
-from pydantic import BaseModel, Field, RootModel
+from pydantic import AliasChoices, BaseModel, Field, RootModel
 
 from alphapower.constants import AlphaType
 
 
 class PyramidView(BaseModel):
-    """
-    表示金字塔模型的类。
+    """表示金字塔模型的类。
+
+    这个类用于表示金字塔模型的基本信息，包括名称和乘数。
+
+    Attributes:
+        name (str): 金字塔的名称。
+        multiplier (float): 金字塔的乘数值。
     """
 
     name: str
@@ -21,8 +34,13 @@ class PyramidView(BaseModel):
 
 
 class ClassificationView(BaseModel):
-    """
-    表示分类信息的类。
+    """表示分类信息的类。
+
+    这个类用于表示分类的基本信息，包括ID和名称。
+
+    Attributes:
+        id (str): 分类的唯一标识符。
+        name (str): 分类的名称。
     """
 
     id: str
@@ -30,8 +48,13 @@ class ClassificationView(BaseModel):
 
 
 class CompetitionView(BaseModel):
-    """
-    表示竞赛信息的类。
+    """表示竞赛信息的类。
+
+    这个类用于表示竞赛的基本信息，包括ID和名称。
+
+    Attributes:
+        id (str): 竞赛的唯一标识符。
+        name (str): 竞赛的名称。
     """
 
     id: str
@@ -39,20 +62,32 @@ class CompetitionView(BaseModel):
 
 
 class RegularView(BaseModel):
-    """
-    表示常规信息的类。
+    """表示常规信息的类。
+
+    这个类用于表示常规Alpha信息，包括代码、描述和操作符计数。
+
+    Attributes:
+        code (str): Alpha或策略的代码。
+        description (Optional[str]): Alpha或策略的描述。默认为None。
+        operator_count (Optional[int]): Alpha中使用的操作符数量。默认为None。
     """
 
     code: str
     description: Optional[str] = None
     operator_count: Optional[int] = Field(
-        default=None, validation_alias="operatorCount"
+        default=None, validation_alias=AliasChoices("operatorCount", "operator_count")
     )
 
 
 class TableSchema(BaseModel):
-    """
-    表示记录的模式。
+    """表示记录的模式。
+
+    这个类用于描述表格数据的结构，包括名称、标题和属性列表。
+
+    Attributes:
+        name (str): 模式的名称。
+        title (str): 模式的标题。
+        properties (List[TableSchema.Property]): 模式包含的属性列表。
     """
 
     name: str
@@ -60,8 +95,14 @@ class TableSchema(BaseModel):
     properties: List["TableSchema.Property"]
 
     class Property(BaseModel):
-        """
-        表示模式中的一个属性。
+        """表示模式中的一个属性。
+
+        这个嵌套类用于描述模式中的单个属性，包括名称、标题和类型。
+
+        Attributes:
+            name (str): 属性的名称。
+            title (str): 属性的标题。
+            type (str): 属性的数据类型。
         """
 
         name: str
@@ -74,13 +115,29 @@ class SimulationSettingsView(BaseModel):
     表示模拟的设置。
     """
 
-    nan_handling: Optional[str] = Field(None, validation_alias="nanHandling")
-    instrument_type: Optional[str] = Field(None, validation_alias="instrumentType")
+    nan_handling: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("nanHandling", "nan_handling"),
+        serialization_alias="nanHandling",
+    )
+    instrument_type: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("instrumentType", "instrument_type"),
+        serialization_alias="instrumentType",
+    )
     delay: Optional[int] = None
     universe: Optional[str] = None
     truncation: Optional[float] = None
-    unit_handling: Optional[str] = Field(None, validation_alias="unitHandling")
-    test_period: Optional[str] = Field(None, validation_alias="testPeriod")
+    unit_handling: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("unitHandling", "unit_handling"),
+        serialization_alias="unitHandling",
+    )
+    test_period: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("testPeriod", "test_period"),
+        serialization_alias="testPeriod",
+    )
     pasteurization: Optional[str] = None
     region: Optional[str] = None
     language: Optional[str] = None
@@ -88,8 +145,10 @@ class SimulationSettingsView(BaseModel):
     neutralization: Optional[str] = None
     visualization: Optional[bool] = None
     max_trade: Optional[str] = Field(
-        None, validation_alias="maxTrade"
-    )  # 无权限字段，默认值为 None
+        None,
+        validation_alias=AliasChoices("maxTrade", "max_trade"),
+        serialization_alias="maxTrade",
+    )
 
 
 class SelfAlphaListQueryParams(BaseModel):
@@ -101,13 +160,17 @@ class SelfAlphaListQueryParams(BaseModel):
     limit: Optional[int] = None
     offset: Optional[int] = None
     order: Optional[str] = None
-    status_eq: Optional[str] = Field(default=None, validation_alias="status")
-    status_ne: Optional[str] = Field(default=None, validation_alias="status//!")
+    status_eq: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("status", "status_eq")
+    )
+    status_ne: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("status//!", "status_ne")
+    )
     date_created_gt: Optional[str] = Field(
-        default=None, validation_alias="dateCreated>"
+        default=None, validation_alias=AliasChoices("dateCreated>", "date_created_gt")
     )
     date_created_lt: Optional[str] = Field(
-        default=None, validation_alias="dateCreated<"
+        default=None, validation_alias=AliasChoices("dateCreated<", "date_created_lt")
     )
 
     def to_params(self) -> dict:
@@ -148,8 +211,12 @@ class AlphaCheckItemView(BaseModel):
     message: Optional[str] = None
     year: Optional[int] = None
     pyramids: Optional[List[PyramidView]] = None
-    start_date: Optional[str] = Field(default=None, validation_alias="startDate")
-    end_date: Optional[str] = Field(default=None, validation_alias="endDate")
+    start_date: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("startDate", "start_date")
+    )
+    end_date: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("endDate", "end_date")
+    )
     multiplier: Optional[float] = None
 
 
@@ -159,28 +226,40 @@ class AlphaSampleView(BaseModel):
     """
 
     pnl: Optional[float] = None
-    book_size: Optional[float] = Field(default=None, validation_alias="bookSize")
-    long_count: Optional[int] = Field(default=None, validation_alias="longCount")
-    short_count: Optional[int] = Field(default=None, validation_alias="shortCount")
+    book_size: Optional[float] = Field(
+        default=None, validation_alias=AliasChoices("bookSize", "book_size")
+    )
+    long_count: Optional[int] = Field(
+        default=None, validation_alias=AliasChoices("longCount", "long_count")
+    )
+    short_count: Optional[int] = Field(
+        default=None, validation_alias=AliasChoices("shortCount", "short_count")
+    )
     turnover: Optional[float] = None
     returns: Optional[float] = None
     drawdown: Optional[float] = None
     margin: Optional[float] = None
     sharpe: Optional[float] = None
     fitness: Optional[float] = None
-    start_date: Optional[datetime] = Field(default=None, validation_alias="startDate")
+    start_date: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("startDate", "start_date")
+    )
     checks: Optional[List["AlphaCheckItemView"]] = None
     self_correlation: Optional[float] = Field(
-        default=None, validation_alias="selfCorrelation"
+        default=None,
+        validation_alias=AliasChoices("selfCorrelation", "self_correlation"),
     )
     prod_correlation: Optional[float] = Field(
-        default=None, validation_alias="prodCorrelation"
+        default=None,
+        validation_alias=AliasChoices("prodCorrelation", "prod_correlation"),
     )
     os_is_sharpe_ratio: Optional[float] = Field(
-        default=None, validation_alias="osISSharpeRatio"
+        default=None,
+        validation_alias=AliasChoices("osISSharpeRatio", "os_is_sharpe_ratio"),
     )
     pre_close_sharpe_ratio: Optional[float] = Field(
-        default=None, validation_alias="preCloseSharpeRatio"
+        default=None,
+        validation_alias=AliasChoices("preCloseSharpeRatio", "pre_close_sharpe_ratio"),
     )
 
 
@@ -195,13 +274,13 @@ class AlphaView(BaseModel):
     settings: SimulationSettingsView
     regular: RegularView
     date_created: Optional[datetime] = Field(
-        default=None, validation_alias="dateCreated"
+        default=None, validation_alias=AliasChoices("dateCreated", "date_created")
     )
     date_submitted: Optional[datetime] = Field(
-        default=None, validation_alias="dateSubmitted"
+        default=None, validation_alias=AliasChoices("dateSubmitted", "date_submitted")
     )
     date_modified: Optional[datetime] = Field(
-        default=None, validation_alias="dateModified"
+        default=None, validation_alias=AliasChoices("dateModified", "date_modified")
     )
     name: str = ""
     favorite: bool = False
@@ -213,8 +292,12 @@ class AlphaView(BaseModel):
     grade: Optional[str] = None
     stage: Optional[str] = None
     status: Optional[str] = None
-    in_sample: Optional[AlphaSampleView] = Field(default=None, validation_alias="is")
-    out_sample: Optional[AlphaSampleView] = Field(default=None, validation_alias="os")
+    in_sample: Optional[AlphaSampleView] = Field(
+        default=None, validation_alias=AliasChoices("is", "in_sample")
+    )
+    out_sample: Optional[AlphaSampleView] = Field(
+        default=None, validation_alias=AliasChoices("os", "out_sample")
+    )
     train: Optional[AlphaSampleView] = None
     test: Optional[AlphaSampleView] = None
     prod: Optional[AlphaSampleView] = None
@@ -248,13 +331,13 @@ class AlphaDetailView(BaseModel):
     selection: Optional[RegularView] = None
     combo: Optional[RegularView] = None
     date_created: Optional[datetime] = Field(
-        default=None, validation_alias="dateCreated"
+        default=None, validation_alias=AliasChoices("dateCreated", "date_created")
     )
     date_submitted: Optional[datetime] = Field(
-        default=None, validation_alias="dateSubmitted"
+        default=None, validation_alias=AliasChoices("dateSubmitted", "date_submitted")
     )
     date_modified: Optional[datetime] = Field(
-        default=None, validation_alias="dateModified"
+        default=None, validation_alias=AliasChoices("dateModified", "date_modified")
     )
     name: Optional[str] = None
     favorite: bool = False
@@ -267,10 +350,10 @@ class AlphaDetailView(BaseModel):
     stage: Optional[str] = None
     status: Optional[str] = None
     in_sample: Optional["AlphaDetailView.Sample"] = Field(
-        default=None, validation_alias="is"
+        default=None, validation_alias=AliasChoices("is", "in_sample")
     )
     out_sample: Optional["AlphaDetailView.Sample"] = Field(
-        default=None, validation_alias="os"
+        default=None, validation_alias=AliasChoices("os", "out_sample")
     )
     train: Optional["AlphaDetailView.Sample"] = None
     test: Optional["AlphaDetailView.Sample"] = None
@@ -286,15 +369,33 @@ class AlphaDetailView(BaseModel):
         """
 
         investability_constrained: Optional[AlphaSampleView] = Field(
-            default=None, validation_alias="investabilityConstrained"
+            default=None,
+            validation_alias=AliasChoices(
+                "investabilityConstrained", "investability_constrained"
+            ),
+            serialization_alias="investabilityConstrained",
         )
         risk_neutralized: Optional[AlphaSampleView] = Field(
-            default=None, validation_alias="riskNeutralized"
+            default=None,
+            validation_alias=AliasChoices("riskNeutralized", "risk_neutralized"),
+            serialization_alias="riskNeutralized",
         )
         pnl: Optional[float] = None
-        book_size: Optional[float] = Field(default=None, validation_alias="bookSize")
-        long_count: Optional[int] = Field(default=None, validation_alias="longCount")
-        short_count: Optional[int] = Field(default=None, validation_alias="shortCount")
+        book_size: Optional[float] = Field(
+            default=None,
+            validation_alias=AliasChoices("bookSize", "book_size"),
+            serialization_alias="bookSize",
+        )
+        long_count: Optional[int] = Field(
+            default=None,
+            validation_alias=AliasChoices("longCount", "long_count"),
+            serialization_alias="longCount",
+        )
+        short_count: Optional[int] = Field(
+            default=None,
+            validation_alias=AliasChoices("shortCount", "short_count"),
+            serialization_alias="shortCount",
+        )
         turnover: Optional[float] = None
         returns: Optional[float] = None
         drawdown: Optional[float] = None
@@ -302,20 +403,32 @@ class AlphaDetailView(BaseModel):
         sharpe: Optional[float] = None
         fitness: Optional[float] = None
         start_date: Optional[datetime] = Field(
-            default=None, validation_alias="startDate"
+            default=None,
+            validation_alias=AliasChoices("startDate", "start_date"),
+            serialization_alias="startDate",
         )
         checks: Optional[List[AlphaCheckItemView]] = None
         self_correlation: Optional[float] = Field(
-            default=None, validation_alias="selfCorrelation"
+            default=None,
+            validation_alias=AliasChoices("selfCorrelation", "self_correlation"),
+            serialization_alias="selfCorrelation",
         )
         prod_correlation: Optional[float] = Field(
-            default=None, validation_alias="prodCorrelation"
+            default=None,
+            validation_alias=AliasChoices("prodCorrelation", "prod_correlation"),
+            serialization_alias="prodCorrelation",
         )
         os_is_sharpe_ratio: Optional[float] = Field(
-            default=None, validation_alias="osISSharpeRatio"
+            default=None,
+            validation_alias=AliasChoices("osISSharpeRatio", "os_is_sharpe_ratio"),
+            serialization_alias="osISSharpeRatio",
         )
         pre_close_sharpe_ratio: Optional[float] = Field(
-            default=None, validation_alias="preCloseSharpeRatio"
+            default=None,
+            validation_alias=AliasChoices(
+                "preCloseSharpeRatio", "pre_close_sharpe_ratio"
+            ),
+            serialization_alias="preCloseSharpeRatio",
         )
 
 
@@ -326,9 +439,18 @@ class AlphaYearlyStatsRecordView(BaseModel):
 
     year: int
     pnl: float
-    book_size: float = Field(alias="bookSize")
-    long_count: int = Field(alias="longCount")
-    short_count: int = Field(alias="shortCount")
+    book_size: float = Field(
+        validation_alias=AliasChoices("bookSize", "book_size"),
+        serialization_alias="bookSize",
+    )
+    long_count: int = Field(
+        validation_alias=AliasChoices("longCount", "long_count"),
+        serialization_alias="longCount",
+    )
+    short_count: int = Field(
+        validation_alias=AliasChoices("shortCount", "short_count"),
+        serialization_alias="shortCount",
+    )
     turnover: float
     sharpe: float
     returns: float
@@ -343,7 +465,10 @@ class AlphaYearlyStatsView(BaseModel):
     表示 Alpha 年度统计的类。
     """
 
-    table_schema: TableSchema = Field(alias="schema")
+    table_schema: TableSchema = Field(
+        validation_alias=AliasChoices("schema", "table_schema"),
+        serialization_alias="schema",
+    )
     records: List[AlphaYearlyStatsRecordView]
 
 
@@ -361,7 +486,10 @@ class AlphaPnLView(BaseModel):
     表示 Alpha 盈亏的类。
     """
 
-    table_schema: TableSchema = Field(alias="schema")
+    table_schema: TableSchema = Field(
+        validation_alias=AliasChoices("schema", "table_schema"),
+        serialization_alias="schema",
+    )
     records: List[AlphaPnLRecordView]
 
 
@@ -372,7 +500,10 @@ class AlphaCorrelationRecordView(BaseModel):
 
     id: str
     name: str
-    instrument_type: str = Field(alias="instrumentType")
+    instrument_type: str = Field(
+        validation_alias=AliasChoices("instrumentType", "instrument_type"),
+        serialization_alias="instrumentType",
+    )
     region: str
     universe: str
     correlation: float
@@ -388,7 +519,10 @@ class AlphaCorrelationsView(BaseModel):
     表示 Alpha 相关性的类。
     """
 
-    table_schema: TableSchema = Field(alias="schema")
+    table_schema: TableSchema = Field(
+        validation_alias=AliasChoices("schema", "table_schema"),
+        serialization_alias="schema",
+    )
     records: List[List[Any]]
     min: Optional[float] = 0.0
     max: Optional[float] = 0.0
@@ -419,10 +553,10 @@ class AlphaCheckResultView(BaseModel):
     """
 
     in_sample: Optional["AlphaCheckResultView.Sample"] = Field(
-        default=None, validation_alias="is"
+        default=None, validation_alias=AliasChoices("is", "in_sample")
     )
     out_sample: Optional["AlphaCheckResultView.Sample"] = Field(
-        default=None, validation_alias="os"
+        default=None, validation_alias=AliasChoices("os", "out_sample")
     )
 
     class Sample(BaseModel):
@@ -432,10 +566,14 @@ class AlphaCheckResultView(BaseModel):
 
         checks: Optional[List[AlphaCheckItemView]] = None
         self_correlated: Optional[AlphaCorrelationsView] = Field(
-            default=None, validation_alias="selfCorrelated"
+            default=None,
+            validation_alias=AliasChoices("selfCorrelated", "self_correlated"),
+            serialization_alias="selfCorrelated",
         )
         prod_correlated: Optional[AlphaCorrelationsView] = Field(
-            default=None, validation_alias="prodCorrelated"
+            default=None,
+            validation_alias=AliasChoices("prodCorrelated", "prod_correlated"),
+            serialization_alias="prodCorrelated",
         )
 
 
@@ -474,11 +612,26 @@ class DataCategoriesView(BaseModel):
 
     id: str  # 类别的唯一标识符
     name: str  # 类别名称
-    dataset_count: int = Field(alias="datasetCount")  # 数据集数量
-    field_count: int = Field(alias="fieldCount")  # 字段数量
-    alpha_count: int = Field(alias="alphaCount")  # Alpha 数量
-    user_count: int = Field(alias="userCount")  # 用户数量
-    value_score: float = Field(alias="valueScore")  # 价值评分
+    dataset_count: int = Field(
+        validation_alias=AliasChoices("datasetCount", "dataset_count"),
+        serialization_alias="datasetCount",
+    )  # 数据集数量
+    field_count: int = Field(
+        validation_alias=AliasChoices("fieldCount", "field_count"),
+        serialization_alias="fieldCount",
+    )  # 字段数量
+    alpha_count: int = Field(
+        validation_alias=AliasChoices("alphaCount", "alpha_count"),
+        serialization_alias="alphaCount",
+    )  # Alpha 数量
+    user_count: int = Field(
+        validation_alias=AliasChoices("userCount", "user_count"),
+        serialization_alias="userCount",
+    )  # 用户数量
+    value_score: float = Field(
+        validation_alias=AliasChoices("valueScore", "value_score"),
+        serialization_alias="valueScore",
+    )  # 价值评分
     region: str  # 所属区域
     children: List["DataCategoriesView"] = []  # 子类别列表
 
@@ -540,15 +693,31 @@ class DatasetView(BaseModel):
     delay: int  # 延迟时间
     universe: str  # 宇宙（范围）
     coverage: str  # 覆盖范围
-    value_score: float = Field(alias="valueScore")  # 价值评分
-    user_count: int = Field(alias="userCount")  # 用户数量
-    alpha_count: int = Field(alias="alphaCount")  # Alpha 数量
-    field_count: int = Field(alias="fieldCount")  # 字段数量
+    value_score: float = Field(
+        validation_alias=AliasChoices("valueScore", "value_score"),
+        serialization_alias="valueScore",
+    )  # 价值评分
+    user_count: int = Field(
+        validation_alias=AliasChoices("userCount", "user_count"),
+        serialization_alias="userCount",
+    )  # 用户数量
+    alpha_count: int = Field(
+        validation_alias=AliasChoices("alphaCount", "alpha_count"),
+        serialization_alias="alphaCount",
+    )  # Alpha 数量
+    field_count: int = Field(
+        validation_alias=AliasChoices("fieldCount", "field_count"),
+        serialization_alias="fieldCount",
+    )  # 字段数量
     themes: List[str]  # 主题列表
     research_papers: List["ResearchPaperView"] = Field(
-        alias="researchPapers"
+        validation_alias=AliasChoices("researchPapers", "research_papers"),
+        serialization_alias="researchPapers",
     )  # 相关研究论文
-    pyramid_multiplier: Optional[float] = Field(alias="pyramidMultiplier")  # 金字塔乘数
+    pyramid_multiplier: Optional[float] = Field(
+        validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
+        serialization_alias="pyramidMultiplier",
+    )  # 金字塔乘数
 
 
 class DatasetListView(BaseModel):
@@ -571,12 +740,27 @@ class DatasetDataView(BaseModel):
     delay: int  # 延迟时间
     universe: str  # 宇宙（范围）
     coverage: str  # 覆盖范围
-    value_score: float = Field(alias="valueScore")  # 价值评分
-    user_count: int = Field(alias="userCount")  # 用户数量
-    alpha_count: int = Field(alias="alphaCount")  # Alpha 数量
-    field_count: int = Field(alias="fieldCount")  # 字段数量
+    value_score: float = Field(
+        validation_alias=AliasChoices("valueScore", "value_score"),
+        serialization_alias="valueScore",
+    )  # 价值评分
+    user_count: int = Field(
+        validation_alias=AliasChoices("userCount", "user_count"),
+        serialization_alias="userCount",
+    )  # 用户数量
+    alpha_count: int = Field(
+        validation_alias=AliasChoices("alphaCount", "alpha_count"),
+        serialization_alias="alphaCount",
+    )  # Alpha 数量
+    field_count: int = Field(
+        validation_alias=AliasChoices("fieldCount", "field_count"),
+        serialization_alias="fieldCount",
+    )  # 字段数量
     themes: List[str]  # 主题列表
-    pyramid_multiplier: Optional[float] = Field(alias="pyramidMultiplier")  # 金字塔乘数
+    pyramid_multiplier: Optional[float] = Field(
+        validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
+        serialization_alias="pyramidMultiplier",
+    )  # 金字塔乘数
 
 
 class ResearchPaperView(BaseModel):
@@ -602,7 +786,8 @@ class DatasetDetailView(BaseModel):
     subcategory: DataCategoryView  # 数据集所属子类别
     data: List[DatasetDataView]  # 数据集详细数据
     research_papers: List[ResearchPaperView] = Field(
-        alias="researchPapers"
+        validation_alias=AliasChoices("researchPapers", "research_papers"),
+        serialization_alias="researchPapers",
     )  # 相关研究论文
 
 
@@ -616,8 +801,14 @@ class DataFieldItemView(BaseModel):
     delay: int  # 延迟时间
     universe: str  # 宇宙（范围）
     coverage: str  # 覆盖范围
-    user_count: int = Field(alias="userCount")  # 用户数量
-    alpha_count: int = Field(alias="alphaCount")  # Alpha 数量
+    user_count: int = Field(
+        validation_alias=AliasChoices("userCount", "user_count"),
+        serialization_alias="userCount",
+    )  # 用户数量
+    alpha_count: int = Field(
+        validation_alias=AliasChoices("alphaCount", "alpha_count"),
+        serialization_alias="alphaCount",
+    )  # Alpha 数量
     themes: List[str]  # 主题列表
 
 
@@ -661,10 +852,19 @@ class DataFieldView(BaseModel):
     universe: str  # 宇宙（范围）
     type: str  # 数据字段类型
     coverage: str  # 覆盖范围
-    user_count: int = Field(alias="userCount")  # 用户数量
-    alpha_count: int = Field(alias="alphaCount")  # Alpha 数量
+    user_count: int = Field(
+        validation_alias=AliasChoices("userCount", "user_count"),
+        serialization_alias="userCount",
+    )  # 用户数量
+    alpha_count: int = Field(
+        validation_alias=AliasChoices("alphaCount", "alpha_count"),
+        serialization_alias="alphaCount",
+    )  # Alpha 数量
     themes: List[str]  # 主题列表
-    pyramid_multiplier: Optional[float] = Field(alias="pyramidMultiplier")  # 金字塔乘数
+    pyramid_multiplier: Optional[float] = Field(
+        validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
+        serialization_alias="pyramidMultiplier",
+    )  # 金字塔乘数
 
 
 class DataFieldListView(BaseModel):
@@ -683,10 +883,12 @@ class GetDataFieldsQueryParams(BaseModel):
     用于定义查询数据字段时的参数
     """
 
-    dataset_id: str = Field(serialization_alias="dataset.id")  # 数据集 ID
+    dataset_id: str = Field(
+        validation_alias=AliasChoices("dataset.id", "dataset_id")
+    )  # 数据集 ID
     delay: Optional[int] = None  # 延迟时间
     instrument_type: Optional[str] = Field(
-        serialization_alias="instrumentType"
+        validation_alias=AliasChoices("instrumentType", "instrument_type")
     )  # 仪器类型
     limit: Optional[int] = None  # 查询结果限制数量
     offset: Optional[int] = None  # 查询结果偏移量
@@ -848,7 +1050,10 @@ class SelfSimulationActivitiesView(BaseModel):
         表示模拟活动的记录。
         """
 
-        table_schema: TableSchema = Field(validation_alias="schema")
+        table_schema: TableSchema = Field(
+            validation_alias=AliasChoices("schema", "table_schema"),
+            serialization_alias="schema",
+        )
         records: List[Dict[str, Any]]
 
 
