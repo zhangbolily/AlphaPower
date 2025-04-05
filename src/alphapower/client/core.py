@@ -6,7 +6,7 @@ import asyncio
 from contextlib import suppress
 from typing import Coroutine, Optional, Union
 
-from aiohttp import BasicAuth, ClientSession, TCPConnector
+from aiohttp import BasicAuth, ClientSession
 
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
@@ -47,29 +47,6 @@ from .raw_api import (
 from .utils import rate_limit_handler
 
 
-def create_client(
-    credentials: dict[str, str], pool_connections: int = 10, pool_maxsize: int = 10
-) -> "WorldQuantClient":
-    """
-    创建 WorldQuant 客户端。
-
-    参数:
-    credentials (dict): 包含用户名和密码的凭据。
-    pool_connections (int): 连接池的最大连接数。
-    pool_maxsize (int): 每个主机的最大连接数。
-
-    返回:
-    WorldQuantClient: 客户端实例。
-    """
-    client = WorldQuantClient(
-        username=settings.credential.username,
-        password=settings.credential.password,
-        pool_connections=pool_connections,
-        pool_maxsize=pool_maxsize,
-    )
-    return client
-
-
 class WorldQuantClient:
     """
     WorldQuant 客户端类，用于与 AlphaPower API 交互。
@@ -79,8 +56,6 @@ class WorldQuantClient:
         self,
         username: str,
         password: str,
-        pool_connections: int = 10,
-        pool_maxsize: int = 10,
     ) -> None:
         """
         初始化 WorldQuantClient 实例。
@@ -90,11 +65,8 @@ class WorldQuantClient:
         password (str): 密码。
         """
         self.shutdown: bool = False
-        connector: TCPConnector = TCPConnector(
-            limit=pool_connections, limit_per_host=pool_maxsize
-        )
         auth: BasicAuth = BasicAuth(username, password)
-        self.session: ClientSession = ClientSession(connector=connector, auth=auth)
+        self.session: ClientSession = ClientSession(auth=auth)
         self._auth_task: Coroutine = authentication(self.session)
         self._refresh_task: Optional[asyncio.Task] = None
         self._usage_count: int = 0
@@ -389,3 +361,9 @@ class WorldQuantClient:
         """
         resp = await get_all_operators(self.session)
         return resp
+
+
+wq_client: WorldQuantClient = WorldQuantClient(
+    username=settings.credential.username,
+    password=settings.credential.password,
+)

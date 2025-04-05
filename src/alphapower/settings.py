@@ -58,12 +58,8 @@ class AppConfig(BaseSettings):
     log_dir: str = Field(default="./logs")
     sql_echo: bool = Field(default=False)
     environment: str = Field(default=ENV_PROD)
-    credential: CredentialConfig = Field(
-        default=CredentialConfig(
-            username="",
-            password="",
-        )
-    )
+    credential: CredentialConfig = CredentialConfig()
+    
 
     model_config = SettingsConfigDict(
         env_file=f".env.{os.getenv('ENVIRONMENT', 'default')}",

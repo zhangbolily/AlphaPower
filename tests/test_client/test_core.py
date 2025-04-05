@@ -15,9 +15,8 @@ from alphapower.client import (
     SingleSimulationPayload,
     SingleSimulationResultView,
     WorldQuantClient,
-    create_client,
+    wq_client,
 )
-from alphapower.config.settings import get_credentials
 
 
 @pytest.fixture(name="client")
@@ -28,8 +27,7 @@ async def fixture_client() -> AsyncGenerator[WorldQuantClient, None]:
     返回:
         异步生成器，生成一个 WorldQuantClient 实例。
     """
-    credentials: dict = get_credentials(1)
-    async with create_client(credentials) as client_session:
+    async with wq_client as client_session:
         yield client_session
 
 
@@ -184,8 +182,8 @@ async def test_create_multi_simulation(client: WorldQuantClient) -> None:
 
     if progress_or_result.status == "COMPLETE":
         for child_progress_id in progress_or_result.children:
-            finished, progress_or_result = await client.get_multi_simulation_child_result(
-                child_progress_id
+            finished, progress_or_result = (
+                await client.get_multi_simulation_child_result(child_progress_id)
             )
             assert isinstance(progress_or_result, SingleSimulationResultView)
             assert progress_or_result.id is not None

@@ -18,7 +18,6 @@ __all__ = [
     "AuthenticationView",
     "ClassificationView",
     "CompetitionView",
-    "create_client",
     "DataCategoriesListView",
     "DataCategoriesView",
     "DataFieldView",
@@ -50,9 +49,10 @@ __all__ = [
     "SingleSimulationResultView",
     "TableSchema",
     "WorldQuantClient",
+    "wq_client",
 ]
 
-from .core import WorldQuantClient, create_client
+from .core import WorldQuantClient, wq_client
 from .models import (
     AlphaCheckItemView,
     AlphaCheckResultView,

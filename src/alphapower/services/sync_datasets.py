@@ -17,9 +17,8 @@ from alphapower.client import (
     DataSetsQueryParams,
     DatasetView,
     WorldQuantClient,
-    create_client,
+    wq_client,
 )
-from alphapower.config.settings import get_credentials
 from alphapower.constants import DB_DATA
 from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
 from alphapower.internal.db_session import get_db_session
@@ -271,21 +270,16 @@ async def sync_datasets(
     delay: 延迟过滤条件。
     parallel: 并行度，控制同时运行的任务数量。
     """
-    credentials = get_credentials(1)  # 获取认证信息
-    client = create_client(
-        credentials, pool_connections=parallel, pool_maxsize=parallel * parallel
-    )  # 创建客户端实例
+    offset: int = 0
+    limit: int = 50  # 每次查询的最大数据量限制
+    total_count: int = 0
+    sync_start_time: float = 0.0
+    query_params_list: List[DataSetsQueryParams] = []
+    lock: Lock = Lock()  # 创建异步互斥锁
 
-    async with client:
+    async with wq_client:
         async with get_db_session(DB_DATA) as session:
             try:
-                offset: int = 0
-                limit: int = 50  # 每次查询的最大数据量限制
-                total_count: int = 0
-                sync_start_time: float = 0.0
-                query_params_list: List[DataSetsQueryParams] = []
-                lock: Lock = Lock()  # 创建异步互斥锁
-
                 console_logger.info("=== 数据集同步任务开始 ===")
                 console_logger.info(
                     "过滤参数 - 地区: %s, 股票池: %s, delay: %s",
@@ -296,21 +290,23 @@ async def sync_datasets(
                 console_logger.info("正在获取数据集总数...")
 
                 # 获取数据集总数
-                count_query_params = DataSetsQueryParams(
+                count_query_params: DataSetsQueryParams = DataSetsQueryParams(
                     limit=1, offset=0, region=region, universe=universe, delay=delay
                 )
-                datasets_response = await client.get_datasets(count_query_params)
+                datasets_response: DatasetListView = await wq_client.get_datasets(
+                    count_query_params
+                )
                 total_count = datasets_response.count  # 数据集总数
                 console_logger.info("总计 %d 个数据集需要同步。", total_count)
 
                 # 初始化进度条
-                progress_bar = tqdm(
+                progress_bar: tqdm = tqdm(
                     total=total_count, desc="同步数据集", unit="个", dynamic_ncols=True
                 )  # dynamic_ncols=True 确保进度条在同一行刷新
 
                 # 构建查询参数列表
                 while offset < total_count:
-                    query_params = DataSetsQueryParams(
+                    query_params: DataSetsQueryParams = DataSetsQueryParams(
                         limit=limit,
                         offset=offset,
                         region=region,
@@ -323,7 +319,7 @@ async def sync_datasets(
                 # 并发处理数据集
                 sync_start_time = time.time()  # 开始计时
                 await process_datasets_concurrently(
-                    session, client, query_params_list, parallel, progress_bar, lock
+                    session, wq_client, query_params_list, parallel, progress_bar, lock
                 )
                 await session.commit()  # 提交数据库事务
             except Exception as e:
@@ -332,7 +328,9 @@ async def sync_datasets(
                 raise  # 重新抛出异常
             finally:
                 progress_bar.close()  # 确保进度条关闭
-                sync_elapsed_time = time.time() - sync_start_time  # 计算同步任务耗时
+                sync_elapsed_time: float = (
+                    time.time() - sync_start_time
+                )  # 计算同步任务耗时
                 console_logger.info("同步任务总耗时: %.2f 秒", sync_elapsed_time)
                 console_logger.info("成功同步 %d 个数据集。", total_count)
                 logger.info("资源已释放。")

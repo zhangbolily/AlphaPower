@@ -1,7 +1,6 @@
 import asyncio
 
-from alphapower.client import WorldQuantClient, create_client
-from alphapower.config.settings import get_credentials
+from alphapower.client import WorldQuantClient, wq_client
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker_pool import WorkerPool
 from alphapower.internal.logging import setup_logging
@@ -41,9 +40,7 @@ async def task_start_worker_pool(
                 创建一个新的 WorldQuantClient 实例。
                 这里可以根据需要添加身份验证或其他初始化逻辑。
                 """
-                # 获取凭据
-                credential = get_credentials(1)
-                return create_client(credentials=credential)
+                return wq_client
 
             # 初始化工作池
             worker_pool = WorkerPool(

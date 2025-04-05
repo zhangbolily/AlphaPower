@@ -10,16 +10,15 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select  # 添加导入
 
-from alphapower.client import SelfAlphaListQueryParams  # 引入客户端
 from alphapower.client import (
     AlphaView,
     ClassificationView,
     CompetitionView,
     RegularView,
+    SelfAlphaListQueryParams,
     WorldQuantClient,
-    create_client,
+    wq_client,
 )
-from alphapower.config.settings import get_credentials
 from alphapower.constants import DB_ALPHAS
 from alphapower.entity import (
     Alpha,
@@ -360,14 +359,12 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
         raise ValueError("start_time 必须早于 end_time。")
 
     file_logger.info("开始同步因子...")
-    credentials = get_credentials(1)
-    client = create_client(credentials)
 
     fetched_alphas = 0
     inserted_alphas = 0
     updated_alphas = 0
 
-    async with client:
+    async with wq_client:
         async with get_db_session(DB_ALPHAS) as session:
             try:
                 for cur_time in (
@@ -375,7 +372,7 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
                     for i in range((end_time - start_time).days + 1)
                 ):
                     fetched, inserted, updated = await process_alphas_for_date(
-                        client, session, cur_time, parallel
+                        wq_client, session, cur_time, parallel
                     )
                     fetched_alphas += fetched
                     inserted_alphas += inserted

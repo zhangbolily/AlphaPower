@@ -21,9 +21,8 @@ from alphapower.client import (
     DataFieldView,
     GetDataFieldsQueryParams,
     WorldQuantClient,
-    create_client,
+    wq_client,
 )
-from alphapower.config.settings import get_credentials
 from alphapower.constants import DB_DATA
 from alphapower.entity import Category, DataField, Dataset
 from alphapower.internal.db_session import get_db_session
@@ -221,10 +220,8 @@ async def sync_datafields(
     dataset_id: 指定的数据集 ID，仅同步该数据集的数据字段。
     parallel: 并行度，控制同时运行的任务数量。
     """
-    credentials: dict = get_credentials(1)
-    client: WorldQuantClient = create_client(credentials)
 
-    async with client:
+    async with wq_client:
         async with get_db_session(DB_DATA) as session:
             try:
                 datasets: List[Dataset] = []
@@ -269,7 +266,7 @@ async def sync_datafields(
                     )
                     await process_datafields_concurrently(
                         session,
-                        client,
+                        wq_client,
                         dataset,
                         instrument_type,
                         parallel,
