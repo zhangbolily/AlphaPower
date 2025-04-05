@@ -239,8 +239,7 @@ class BaseDAL(Generic[T]):
         Returns:
             更新后的实体对象列表。
         """
-        for e in entities:
-            self.session.add(e)
+        self.session.add_all(entities)
         await self.session.flush()
         return entities
 

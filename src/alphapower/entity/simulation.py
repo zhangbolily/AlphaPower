@@ -9,7 +9,7 @@ Example:
 
     ```python
     task = SimulationTask(
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         settings={"param1": "value1"},
         settings_group_key="group1",
         regular="regular_value",
@@ -43,6 +43,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column
 
 from alphapower.constants import (
+    AlphaType,
     Decay,
     Delay,
     InstrumentType,
@@ -97,21 +98,6 @@ class SimulationTaskStatus(enum.Enum):
     CANCELLED = "CANCELLED"
 
 
-class SimulationTaskType(enum.Enum):
-    """模拟任务的类型枚举。
-
-    定义了系统支持的不同类型的模拟任务。
-    每种类型可能具有特定的处理逻辑和行为。
-
-    Attributes:
-        REGULAR: 标准因子模拟回测任务类型。
-        SUPER: 超级因子模拟回测任务类型。
-    """
-
-    REGULAR = "REGULAR"
-    SUPER = "SUPER"
-
-
 class SimulationTask(Base):
     """模拟任务的数据库实体模型。
 
@@ -120,7 +106,7 @@ class SimulationTask(Base):
 
     Attributes:
         id (int): 主键，模拟任务的自增标识符。
-        type (SimulationTaskType): 任务类型枚举，表示模拟任务的类别。
+        type (AlphaType): 任务类型枚举，表示模拟任务的类别。
         settings (dict): JSON 字段，包含任务的配置参数和设置。
         settings_group_key (str): 任务分组键，用于相关任务的分组查询，已建立索引。
         regular (str): 模拟任务中特定用途的字符串字段。
@@ -156,9 +142,7 @@ class SimulationTask(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # 枚举类型字段
-    type: Mapped[SimulationTaskType] = mapped_column(
-        Enum(SimulationTaskType), nullable=False
-    )
+    type: Mapped[AlphaType] = mapped_column(Enum(AlphaType), nullable=False)
     status: Mapped[SimulationTaskStatus] = mapped_column(
         Enum(SimulationTaskStatus), nullable=False, default=SimulationTaskStatus.DEFAULT
     )
@@ -184,6 +168,9 @@ class SimulationTask(Base):
         Enum(UnitHandling), nullable=False, default=UnitHandling.DEFAULT
     )
     max_trade: Mapped[Switch] = mapped_column(
+        Enum(Switch), nullable=False, default=Switch.DEFAULT
+    )
+    nan_handling: Mapped[Switch] = mapped_column(
         Enum(Switch), nullable=False, default=Switch.DEFAULT
     )
 

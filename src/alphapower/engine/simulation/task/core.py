@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
+    AlphaType,
     Delay,
     InstrumentType,
     Neutralization,
@@ -35,7 +36,6 @@ from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import (
     SimulationTask,
     SimulationTaskStatus,
-    SimulationTaskType,
 )
 
 
@@ -128,7 +128,7 @@ def _create_task(
     )
 
     return SimulationTask(
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         settings_group_key=settings_group_key,
         signature=signature,
         regular=regular,

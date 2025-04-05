@@ -45,6 +45,7 @@ from alphapower.client import (
 from alphapower.constants import (
     ROLE_CONSULTANT,
     ROLE_USER,
+    AlphaType,
     Database,
     Delay,
     InstrumentType,
@@ -58,7 +59,7 @@ from alphapower.constants import (
 from alphapower.engine.simulation.task.core import create_simulation_task
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker import Worker
-from alphapower.entity import SimulationTask, SimulationTaskStatus, SimulationTaskType
+from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
 
 
@@ -72,7 +73,7 @@ async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: SQLAlchemy 异步会话对象。
     """
-    async with get_db_session(Database.SIMULATION.value) as session:
+    async with get_db_session(Database.SIMULATION) as session:
         yield session
         # 注意：在生产环境测试中可能需要更复杂的数据清理策略
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改
@@ -94,7 +95,7 @@ def magic_mock_client() -> MagicMock:
         True,
         SingleSimulationResultView(
             id="progress_id_0",
-            type=SimulationTaskType.REGULAR.value,
+            type=AlphaType.REGULAR,
             status=SimulationTaskStatus.COMPLETE.value,
         ),
         0.0,
@@ -120,7 +121,7 @@ def magic_mock_consultant_client() -> MagicMock:
         True,
         MultiSimulationResultView(
             children=["child_id_0", "child_id_1"],
-            type=SimulationTaskType.REGULAR.value,
+            type=AlphaType.REGULAR,
             status=SimulationTaskStatus.COMPLETE.value,
         ),
         0.0,
@@ -130,7 +131,7 @@ def magic_mock_consultant_client() -> MagicMock:
         True,
         SingleSimulationResultView(
             id="child_id_0",
-            type=SimulationTaskType.REGULAR.value,
+            type=AlphaType.REGULAR,
             status=SimulationTaskStatus.COMPLETE.value,
         ),
         0.0,
@@ -223,7 +224,7 @@ async def test_process_multi_simulation_task_executes_correctly(
     )  # 使用 setattr 方法访问受保护成员
     tasks: List[SimulationTask] = [
         SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             status=SimulationTaskStatus.PENDING,
             regular="rank(-returns)",
             settings_group_key="test_group",
@@ -311,7 +312,7 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
     """
     task0: SimulationTask = SimulationTask(
         id=1,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -329,7 +330,7 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
     )
     task1: SimulationTask = SimulationTask(
         id=2,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -367,7 +368,7 @@ async def test_cancel_single_simulation_task(
     """
     task0: SimulationTask = SimulationTask(
         id=1,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -408,7 +409,7 @@ async def test_cancel_multi_simulation_tasks(
     """
     task0: SimulationTask = SimulationTask(
         id=1,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -426,7 +427,7 @@ async def test_cancel_multi_simulation_tasks(
     )
     task1: SimulationTask = SimulationTask(
         id=2,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -511,7 +512,7 @@ async def test_cancel_task_failure_handling(
 
     task = SimulationTask(
         id=1,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -546,7 +547,7 @@ async def test_do_work_with_unknown_user_role_raises_error(
     user_worker: Worker = Worker(client=mock_user_client)
     task_0: SimulationTask = SimulationTask(
         id=1,
-        type=SimulationTaskType.REGULAR,
+        type=AlphaType.REGULAR,
         status=SimulationTaskStatus.PENDING,
         regular="rank(-returns)",
         settings_group_key="test_group",
@@ -588,7 +589,7 @@ async def test_handle_multi_task_completion_with_partial_failures(
     tasks = [
         SimulationTask(
             id=1,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             status=SimulationTaskStatus.PENDING,
             regular="rank(-returns)",
             signature="test_signature",
@@ -606,7 +607,7 @@ async def test_handle_multi_task_completion_with_partial_failures(
         ),
         SimulationTask(
             id=2,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             status=SimulationTaskStatus.PENDING,
             regular="rank(-returns)",
             signature="test_signature",
@@ -625,7 +626,7 @@ async def test_handle_multi_task_completion_with_partial_failures(
     ]
     result = MultiSimulationResultView(
         children=["child_id_0", "child_id_1"],
-        type=SimulationTaskType.REGULAR.value,
+        type=AlphaType.REGULAR.value,
         status=SimulationTaskStatus.COMPLETE.value,
     )
 
@@ -635,7 +636,7 @@ async def test_handle_multi_task_completion_with_partial_failures(
             True,
             SingleSimulationResultView(
                 id="child_id_0",
-                type=SimulationTaskType.REGULAR.value,
+                type=AlphaType.REGULAR.value,
                 status=SimulationTaskStatus.COMPLETE.value,
             ),
         ),

@@ -10,6 +10,7 @@ import pytest
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
+    AlphaType,
     Delay,
     InstrumentType,
     Neutralization,
@@ -28,7 +29,6 @@ from alphapower.engine.simulation.task.core import (
 from alphapower.entity import (
     SimulationTask,
     SimulationTaskStatus,
-    SimulationTaskType,
 )
 
 
@@ -57,7 +57,7 @@ async def test_create_simulation_task() -> None:
         session, "regular_1", settings, priority=10
     )
 
-    assert task.type == SimulationTaskType.REGULAR
+    assert task.type == AlphaType.REGULAR
     assert task.settings_group_key == "USA_1_FASTEXPR_EQUITY"
     assert task.regular == "regular_1"
     assert task.status == SimulationTaskStatus.PENDING

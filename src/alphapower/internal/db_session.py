@@ -21,8 +21,9 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, List, Tuple, Type
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -31,6 +32,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+from alphapower.constants import Database
 from alphapower.settings import DatabaseConfig, settings
 
 from .logging import setup_logging
@@ -45,7 +47,7 @@ _db_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def register_db(
-    base: type[DeclarativeBase],
+    base: Type[DeclarativeBase],
     name: str,
     config: DatabaseConfig,
     force_recreate: bool = False,
@@ -57,7 +59,9 @@ async def register_db(
 
     Args:
         base: SQLAlchemy 基类，用于定义模型，必须是 DeclarativeBase 或其子类。
+        name: 数据库名称，用于后续引用。
         config: 数据库配置对象，包含数据库连接信息。
+        force_recreate: 是否强制重新创建表结构，默认为False。
 
     Returns:
         None
@@ -67,35 +71,47 @@ async def register_db(
             await logger.awarning(f"数据库 {name} 已注册，重新注册会覆盖现有配置。")
 
         # 创建数据库引擎，配置连接参数
-        connect_args = {}
+        connect_args: Dict[str, Any] = {}
+        execution_options: Dict[str, Any] = {}
+
         if "sqlite" in config.dsn.scheme:
             # SQLite连接参数，根据使用情况决定是否允许跨线程访问
             connect_args["check_same_thread"] = False
+            # 设置超时时间(秒)，防止"database is locked"错误
+            connect_args["timeout"] = 30.0
+            execution_options["isolation_level"] = "SERIALIZABLE"
 
         db_engine: AsyncEngine = create_async_engine(
             config.dsn.encoded_string(),
             echo=settings.sql_echo,
-            pool_size=5,
-            max_overflow=10,  # 增加最大溢出连接数
-            pool_timeout=30,  # 设置获取连接的超时时间
-            pool_recycle=1800,  # 连接回收时间（秒）
             connect_args=connect_args,
+            execution_options=execution_options,
         )
 
         # 注册引擎和会话工厂到全局字典
         db_engines[name] = db_engine
-        async_session_factories[name] = async_sessionmaker(
+        session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
             bind=db_engine,
             class_=AsyncSession,
             autoflush=False,
             autocommit=False,
             expire_on_commit=False,
         )
+        async_session_factories[name] = session_factory
+
+        # 如果是SQLite，配置WAL模式
+        if "sqlite" in config.dsn.scheme:
+            async with db_engine.begin() as conn:
+                # 配置WAL模式，提高并发性能
+                await conn.execute(text("PRAGMA journal_mode=WAL;"))
+                # 设置同步模式，提高性能
+                await conn.execute(text("PRAGMA synchronous=NORMAL;"))
+                await logger.ainfo(f"数据库 {name} 已配置为WAL模式")
 
         await logger.ainfo(f"数据库 {name} 已注册，连接字符串: {config.dsn}")
         await logger.adebug(
             f"数据库 {name} 注册信息，DSN: {config.dsn}，描述: {config.description}，别名: {config.alias}，"
-            + f"基类: {base}，引擎: {db_engine}，会话工厂: {async_session_factories[name]}"
+            + f"基类: {base}，引擎: {db_engine}，会话工厂: {session_factory}"
             + f"，表结构: {base.metadata.tables}"
         )
 
@@ -109,7 +125,7 @@ async def register_db(
 
 
 def sync_register_db(
-    base: type[DeclarativeBase],
+    base: Type[DeclarativeBase],
     name: str,
     config: DatabaseConfig,
     force_recreate: bool = False,
@@ -121,7 +137,9 @@ def sync_register_db(
 
     Args:
         base: SQLAlchemy 基类，用于定义模型，必须是 DeclarativeBase 或其子类。
+        name: 数据库名称，用于后续引用。
         config: 数据库配置对象，包含数据库连接信息。
+        force_recreate: 是否强制重新创建表结构，默认为False。
 
     Returns:
         None
@@ -130,7 +148,7 @@ def sync_register_db(
 
 
 @asynccontextmanager
-async def get_db_session(db_name: str) -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
     """
     获取指定数据库的异步会话。
 
@@ -155,6 +173,8 @@ async def get_db_session(db_name: str) -> AsyncGenerator[AsyncSession, None]:
             user = result.scalar_one_or_none()
         ```
     """
+    db_name: str = db.value
+
     # 使用锁保护对全局字典的读取操作
     async with _db_lock:
         if db_name not in async_session_factories:
@@ -162,7 +182,9 @@ async def get_db_session(db_name: str) -> AsyncGenerator[AsyncSession, None]:
                 f"数据库 {db_name} 未注册，无法获取会话。请先调用 register_db 进行注册。"
             )
         # 获取会话工厂的本地引用
-        session_factory = async_session_factories[db_name]
+        session_factory: async_sessionmaker[AsyncSession] = async_session_factories[
+            db_name
+        ]
 
     # 创建会话 - 在锁外创建以避免长时间持有锁
     async_session: AsyncSession = session_factory()
@@ -188,7 +210,7 @@ async def release_all_db_engines() -> None:
         None
     """
     async with _db_lock:
-        engines_to_dispose = list(db_engines.items())
+        engines_to_dispose: List[Tuple[str, AsyncEngine]] = list(db_engines.items())
         db_engines.clear()
         async_session_factories.clear()
 

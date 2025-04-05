@@ -10,7 +10,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
-    DB_SIMULATION,
+    AlphaType,
+    Database,
     Delay,
     InstrumentType,
     Neutralization,
@@ -21,9 +22,6 @@ from alphapower.constants import (
 )
 from alphapower.dal.simulation import (
     SimulationTaskDAL,
-)
-from alphapower.entity import (
-    SimulationTaskType,
 )
 from alphapower.entity.simulation import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
@@ -39,7 +37,7 @@ async def fixture_simulation_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: SQLAlchemy 异步会话对象。
     """
-    async with get_db_session(DB_SIMULATION) as simulation_session:
+    async with get_db_session(Database.SIMULATION) as simulation_session:
         yield simulation_session
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改
 
@@ -65,7 +63,7 @@ class TestSimulationTaskDAL:
         for status in statuses:
             tasks = [
                 SimulationTask(
-                    type=SimulationTaskType.REGULAR,
+                    type=AlphaType.REGULAR,
                     alpha_id=f"{status.name}_ALPHA_{i}",
                     signature=f"{status.name}_SIG_{i}",
                     settings_group_key="TEST_GROUP",
@@ -114,7 +112,7 @@ class TestSimulationTaskDAL:
                 signature=f"ALPHA_SIG_{i}",
                 settings_group_key="TEST_GROUP",
                 status=SimulationTaskStatus.PENDING,
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 priority=i,
                 created_at=datetime.now(),
                 regular="test_regular",
@@ -158,7 +156,7 @@ class TestSimulationTaskDAL:
             signature=signature,
             settings_group_key="TEST_GROUP",
             status=SimulationTaskStatus.PENDING,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             priority=1,
             created_at=datetime.now(),
             regular="test_regular",
@@ -200,7 +198,7 @@ class TestSimulationTaskDAL:
                 signature=f"PENDING_SIG_{i}",
                 settings_group_key="TEST_GROUP",
                 status=SimulationTaskStatus.PENDING,
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 priority=i,
                 created_at=datetime.now(),
                 regular="test_regular",
@@ -223,7 +221,7 @@ class TestSimulationTaskDAL:
             signature="RUNNING_SIG",
             settings_group_key="TEST_GROUP",
             status=SimulationTaskStatus.RUNNING,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             priority=1,
             created_at=datetime.now(),
             regular="test_regular",
@@ -266,7 +264,7 @@ class TestSimulationTaskDAL:
                 signature=f"RUNNING_SIG_{i}",
                 settings_group_key="TEST_GROUP",
                 status=SimulationTaskStatus.RUNNING,
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 priority=i,
                 created_at=datetime.now(),
                 regular="test_regular",
@@ -292,7 +290,7 @@ class TestSimulationTaskDAL:
             priority=1,
             created_at=datetime.now(),
             regular="test_regular",
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
@@ -334,7 +332,7 @@ class TestSimulationTaskDAL:
                 alpha_id=f"PRIO_{priority}_ALPHA",
                 signature=f"PRIO_{priority}_SIG",
                 status=SimulationTaskStatus.PENDING,
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 priority=priority,
                 created_at=datetime.now(),
                 settings_group_key="TEST_GROUP",
@@ -379,7 +377,7 @@ class TestSimulationTaskDAL:
                 alpha_id=f"GROUP_ALPHA_{i}",
                 signature=f"GROUP_SIG_{i}",
                 status=SimulationTaskStatus.PENDING,
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 priority=i,
                 settings_group_key=group_key,
                 created_at=datetime.now(),
@@ -403,7 +401,7 @@ class TestSimulationTaskDAL:
             alpha_id="OTHER_GROUP_ALPHA",
             signature="OTHER_GROUP_SIG",
             status=SimulationTaskStatus.PENDING,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             priority=1,
             settings_group_key="OTHER_GROUP",
             created_at=datetime.now(),
@@ -453,7 +451,7 @@ class TestSimulationTaskDAL:
             alpha_id="YESTERDAY_ALPHA",
             signature="YESTERDAY_SIG",
             status=SimulationTaskStatus.COMPLETE,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             settings_group_key="TEST_GROUP",
             created_at=datetime.strptime(yesterday, "%Y-%m-%d"),
             regular="test_regular",
@@ -476,7 +474,7 @@ class TestSimulationTaskDAL:
                 alpha_id=f"TODAY_ALPHA_{i}",
                 signature=f"TODAY_SIG_{i}",
                 status=SimulationTaskStatus.PENDING,
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 created_at=datetime.strptime(today, "%Y-%m-%d"),
                 regular="test_regular",
                 settings_group_key="TEST_GROUP",
@@ -501,7 +499,7 @@ class TestSimulationTaskDAL:
             signature="TOMORROW_SIG",
             settings_group_key="TEST_GROUP",
             status=SimulationTaskStatus.PENDING,
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             created_at=datetime.strptime(tomorrow, "%Y-%m-%d"),
             regular="test_regular",
             # 添加缺失的必填字段

@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_ALPHAS, AlphaType, Status
+from alphapower.constants import AlphaType, Database, Status
 from alphapower.dal.alphas import (
     AlphaDAL,
     ClassificationDAL,
@@ -48,7 +48,7 @@ async def fixture_alphas_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: SQLAlchemy 异步会话对象。
     """
-    async with get_db_session(DB_ALPHAS) as alphas_session:
+    async with get_db_session(Database.ALPHAS) as alphas_session:
         yield alphas_session
         # 注意：在生产环境测试中可能需要更复杂的数据清理策略
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改

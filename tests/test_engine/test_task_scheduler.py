@@ -11,7 +11,6 @@ from sqlalchemy import text
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
-    DB_SIMULATION,
     Delay,
     InstrumentType,
     Neutralization,
@@ -147,7 +146,7 @@ async def test_schedule_with_database_task_provider() -> None:
     """
     测试使用数据库任务提供者的调度功能。
     """
-    async with get_db_session(DB_SIMULATION) as session:
+    async with get_db_session(Database.SIMULATION) as session:
         # 准备测试数据
         regular = ["task1", "task2"]
         settings: List[SimulationSettingsView] = [

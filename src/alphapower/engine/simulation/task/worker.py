@@ -23,12 +23,14 @@ from alphapower.client import (
     WorldQuantClient,
 )
 from alphapower.constants import (
-    DB_SIMULATION,
     MAX_CONSULTANT_SIMULATION_SLOTS,
     ROLE_CONSULTANT,
     ROLE_USER,
     AlphaType,
+    Database,
+    UserRole,
 )
+from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import setup_logging
@@ -65,6 +67,7 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         truncation=task.truncation,
         visualization=task.visualization,
         test_period=task.test_period,
+        nan_handling=task.nan_handling.value,
     )
 
     logger.debug(
@@ -120,19 +123,10 @@ class Worker(AbstractWorker):
         self._is_task_cancel_requested: bool = False
         self._dry_run: bool = dry_run
         self._current_tasks: List[SimulationTask] = []
+        self._user_role: UserRole = UserRole.DEFAULT
 
         if not isinstance(self._client, WorldQuantClient):
             raise ValueError("Client must be an instance of WorldQuantClient.")
-
-        if not self._client.authentication_info:
-            raise ValueError("Client must be authenticated with valid credentials.")
-
-        if ROLE_CONSULTANT in self._client.authentication_info.permissions:
-            self._user_role = ROLE_CONSULTANT
-        elif ROLE_USER in self._client.authentication_info.permissions:
-            self._user_role = ROLE_USER
-        else:
-            raise ValueError("Client must have a valid user role (CONSULTANT or USER).")
 
     async def _cancel_task_if_possible(
         self, progress_id: str, tasks: List[SimulationTask]
@@ -159,10 +153,11 @@ class Worker(AbstractWorker):
             if success:
                 await logger.ainfo(f"任务取消成功，进度 ID: {progress_id}")
 
-                async with get_db_session(DB_SIMULATION) as session:
+                async with get_db_session(Database.SIMULATION) as session:
+                    dal: SimulationTaskDAL = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.CANCELLED
-                        await session.merge(task)
+                    await dal.update_entities_obj(tasks)
                     await session.commit()
 
                 return True
@@ -185,12 +180,13 @@ class Worker(AbstractWorker):
             * 为失败的任务记录错误信息并通知其他服务
             * 调用注册的回调函数通知任务完成
         """
+        # TODO:
         # 1. 更新任务状态和必要的字段
         # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
         # 3. 确认任务是否已成功完成，并更新相关统计信息
         logger.info(f"任务 {task.id} 完成，结果: {result}")
 
-        task.result = result.model_dump(mode="python")  # 保存原始结果，用户后续评估分析
+        task.result = result.model_dump(mode="json")  # 保存原始结果，用户后续评估分析
         task.child_progress_id = result.id
         try:
             task.status = SimulationTaskStatus(result.status)
@@ -202,8 +198,9 @@ class Worker(AbstractWorker):
         if task.status == SimulationTaskStatus.COMPLETE:
             task.alpha_id = result.alpha
 
-        async with get_db_session(DB_SIMULATION) as session:
-            await session.merge(task)
+        async with get_db_session(Database.SIMULATION) as session:
+            dal: SimulationTaskDAL = SimulationTaskDAL(session)
+            await dal.update_entity_obj(task)
             await session.commit()
             await logger.ainfo(
                 f"更新任务状态成功，任务 ID: {task.id}，状态: {task.status}"
@@ -406,7 +403,7 @@ class Worker(AbstractWorker):
         logger.debug(
             f"开始处理多个模拟任务，任务 ID 列表: {[task.id for task in tasks]}"
         )
-        if self._user_role != ROLE_CONSULTANT:
+        if self._user_role != UserRole.CONSULTANT:
             await logger.aerror("当前用户角色不是顾问，无法处理多个模拟任务")
             return
 
@@ -464,9 +461,9 @@ class Worker(AbstractWorker):
                     task.status = SimulationTaskStatus.RUNNING
                     task.parent_progress_id = progress_id
 
-                async with get_db_session(DB_SIMULATION) as session:
-                    for task in tasks:
-                        await session.merge(task)
+                async with get_db_session(Database.SIMULATION) as session:
+                    dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                    await dal.update_entities_obj(tasks)
                     await session.commit()
                     await logger.ainfo(
                         f"更新多个模拟任务状态成功，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
@@ -540,7 +537,7 @@ class Worker(AbstractWorker):
             # 根据用户角色确定任务批量大小
             scheduled_task_count: int = (
                 MAX_CONSULTANT_SIMULATION_SLOTS
-                if self._user_role == ROLE_CONSULTANT
+                if self._user_role == UserRole.CONSULTANT
                 else 1
             )
 
@@ -557,13 +554,13 @@ class Worker(AbstractWorker):
                 await asyncio.sleep(5)
                 continue
 
-            for task in tasks:
-                task.scheduled_at = datetime.now()
-                task.status = SimulationTaskStatus.SCHEDULED
-
-            async with get_db_session(DB_SIMULATION) as session:
+            # 更新任务状态
+            async with get_db_session(Database.SIMULATION) as session:
+                dal: SimulationTaskDAL = SimulationTaskDAL(session)
                 for task in tasks:
-                    await session.merge(task)
+                    task.scheduled_at = datetime.now()
+                    task.status = SimulationTaskStatus.SCHEDULED
+                await dal.update_entities_obj(tasks)
                 await session.commit()
                 task_info = "\n".join(
                     f"任务 ID: {task.id}, 优先级: {task.priority}, 分组键: {task.settings_group_key}"
@@ -572,9 +569,9 @@ class Worker(AbstractWorker):
                 await logger.ainfo(f"调度器返回任务，任务详情:\n{task_info}")
 
             # 根据用户角色执行不同的任务处理逻辑
-            if self._user_role == ROLE_USER:
+            if self._user_role == UserRole.USER:
                 await self._process_single_simulation_task(tasks[0])
-            elif self._user_role == ROLE_CONSULTANT:
+            elif self._user_role == UserRole.CONSULTANT:
                 await self._process_multi_simulation_task(tasks)
             else:
                 await logger.aerror(f"未知用户角色 {self._user_role}，无法处理任务")
@@ -606,7 +603,21 @@ class Worker(AbstractWorker):
 
         logger.debug("启动工作者")
         self._shutdown_flag = False
-        await self._do_work()
+
+        async with self._client:
+            if not self._client.authentication_info:
+                raise ValueError("Client must be authenticated with valid credentials.")
+
+            if ROLE_CONSULTANT in self._client.authentication_info.permissions:
+                self._user_role = UserRole.CONSULTANT
+            elif ROLE_USER in self._client.authentication_info.permissions:
+                self._user_role = UserRole.USER
+            else:
+                raise ValueError(
+                    "Client must have a valid user role (CONSULTANT or USER)."
+                )
+
+            await self._do_work()
         await logger.ainfo("工作者已停止")
         self._running = False
 
@@ -647,7 +658,10 @@ class Worker(AbstractWorker):
             await logger.aerror("工作者未关闭，无法添加任务完成回调函数")
         self._task_complete_callbacks.append(callback)
         await logger.adebug(
-            f"添加任务完成回调函数 {callback}， 当前回调函数数量 {len(self._task_complete_callbacks)}"
+            (
+                f"添加任务完成回调函数 {callback}, 类型: {type(callback)}, "
+                f"当前回调函数数量 {len(self._task_complete_callbacks)}"
+            )
         )
 
     async def get_current_tasks(self) -> List[SimulationTask]:

@@ -38,6 +38,19 @@ def setup_logging(
         os.makedirs(settings.log_dir)
 
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    formatter = logging.Formatter(log_format)
+
+    # 为特定模块创建日志记录器
+    logger = logging.getLogger(module_name)
+    # 清除之前的处理器，避免重复输出
+    if logger.handlers:
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+
+    # 重置日志级别
+    logger.setLevel(settings.log_level)
+    # 阻止传播到根日志记录器，确保日志只发送到我们配置的处理器
+    logger.propagate = False
 
     # 配置文件日志处理器
     file_handler = RotatingFileHandler(
@@ -47,17 +60,15 @@ def setup_logging(
         encoding="utf-8",
     )
     file_handler.setLevel(settings.log_level)
-    file_handler.setFormatter(logging.Formatter(log_format))
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
-    # 配置标准日志记录器
-    handlers: list[logging.Handler] = [file_handler]
+    # 配置控制台处理器
     if enable_console:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(settings.log_level)
-        console_handler.setFormatter(logging.Formatter(log_format))
-        handlers.append(console_handler)
-
-    logging.basicConfig(level=settings.log_level, encoding="utf-8", handlers=handlers)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
     # 配置 structlog
     structlog.configure(

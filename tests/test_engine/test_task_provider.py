@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
-    DB_SIMULATION,
     Delay,
     InstrumentType,
     Neutralization,
@@ -39,7 +38,7 @@ async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Fixture for creating a database session.
     """
-    async with get_db_session(DB_SIMULATION) as session:
+    async with get_db_session(Database.SIMULATION) as session:
         yield session
 
 

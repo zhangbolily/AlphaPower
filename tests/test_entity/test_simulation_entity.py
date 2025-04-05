@@ -6,7 +6,7 @@
 测试覆盖以下实体类:
 - Base: 基础映射类
 - SimulationTaskStatus: 任务状态枚举
-- SimulationTaskType: 任务类型枚举
+- AlphaType: 任务类型枚举
 - SimulationTask: 主要模拟任务实体
 """
 
@@ -18,7 +18,8 @@ from sqlalchemy import Result, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
-    DB_SIMULATION,
+    AlphaType,
+    Database,
     Decay,
     Delay,
     InstrumentType,
@@ -34,7 +35,6 @@ from alphapower.entity.simulation import (
     Base,
     SimulationTask,
     SimulationTaskStatus,
-    SimulationTaskType,
 )
 from alphapower.internal.db_session import get_db_session
 
@@ -49,7 +49,7 @@ async def fixture_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: SQLAlchemy 异步会话对象。
     """
-    async with get_db_session(DB_SIMULATION) as session:
+    async with get_db_session(Database.SIMULATION) as session:
         yield session
         # 注意：在生产环境测试中可能需要更复杂的数据清理策略
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改
@@ -93,12 +93,12 @@ class TestSimulationTaskEnums:
         assert len(SimulationTaskStatus) == 8, "SimulationTaskStatus 应该有 8 个状态值"
 
     def test_simulation_task_type_enum(self) -> None:
-        """验证 SimulationTaskType 枚举类是否包含所有预期的类型值。"""
-        assert SimulationTaskType.REGULAR.value == "REGULAR"
-        assert SimulationTaskType.SUPER.value == "SUPER"
+        """验证 AlphaType 枚举类是否包含所有预期的类型值。"""
+        assert AlphaType.REGULAR.value == "REGULAR"
+        assert AlphaType.SUPER.value == "SUPER"
 
         # 验证枚举数量
-        assert len(SimulationTaskType) == 2, "SimulationTaskType 应该有 2 个类型值"
+        assert len(AlphaType) == 2, "AlphaType 应该有 2 个类型值"
 
 
 class TestSimulationTask:
@@ -115,7 +115,7 @@ class TestSimulationTask:
         """
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="test_regular",
             status=SimulationTaskStatus.PENDING,
             alpha_id="ALPHA123",
@@ -149,7 +149,7 @@ class TestSimulationTask:
 
         # 验证查询结果包含所有原始字段
         assert db_task is not None
-        assert db_task.type == SimulationTaskType.REGULAR
+        assert db_task.type == AlphaType.REGULAR
         expected_key = (
             f"{Region.CHN.value}_{Delay.ONE.value}_"
             + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
@@ -198,7 +198,7 @@ class TestSimulationTask:
         """
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="regular_value",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_2",
@@ -267,7 +267,7 @@ class TestSimulationTask:
         """
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
-            type=SimulationTaskType.SUPER,
+            type=AlphaType.SUPER,
             regular="lifecycle_regular",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_3",
@@ -324,7 +324,7 @@ class TestSimulationTask:
         """
         # 创建模拟任务
         task: SimulationTask = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="error_regular",
             status=SimulationTaskStatus.PENDING,
             signature="unique_signature_4",
@@ -381,7 +381,7 @@ class TestSimulationTask:
         tasks = []
         for i in range(3):
             task = SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular=f"regular_{i}",
                 status=SimulationTaskStatus.PENDING,
                 signature=f"group_signature_{i}",
@@ -400,7 +400,7 @@ class TestSimulationTask:
 
         # 额外创建一个不同分组的任务
         different_task = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="different_regular",
             status=SimulationTaskStatus.PENDING,
             signature="different_signature",
@@ -446,7 +446,7 @@ class TestSimulationTask:
         """
         # 测试有效参数值
         valid_task = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="valid_params",
             signature="validation_signature",
             decay=10,  # 有效的 decay 值
@@ -479,7 +479,7 @@ class TestSimulationTask:
             match=f"decay 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间",
         ):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="invalid_params",
                 signature="invalid_decay_signature",
                 decay=513,  # 超出有效范围
@@ -501,7 +501,7 @@ class TestSimulationTask:
             match=f"truncation 必须在 {Truncation.MIN.value} 到 {Truncation.MAX.value} 之间",
         ):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="invalid_params",
                 signature="invalid_truncation_signature",
                 truncation=1.5,  # 超出有效范围
@@ -527,7 +527,7 @@ class TestSimulationTask:
         """
         # 创建带有初始标签的任务
         task = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="tag_methods",
             signature="tag_signature",
             tags=["initial", "tags"],
@@ -624,7 +624,7 @@ class TestSimulationTask:
         """
         # 创建基本任务
         task = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="test_settings_key",
             signature="settings_key_signature",
             # 设置参数
@@ -693,7 +693,7 @@ class TestSimulationTask:
         # 测试各个枚举字段的 DEFAULT 值验证
         with pytest.raises(ValueError, match="region 不能使用 DEFAULT 值"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="validator_test",
                 signature="validator_signature",
                 region=Region.DEFAULT,
@@ -709,7 +709,7 @@ class TestSimulationTask:
 
         with pytest.raises(ValueError, match="instrument_type 不能使用 DEFAULT 值"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="validator_test",
                 signature="validator_signature",
                 region=Region.USA,
@@ -725,7 +725,7 @@ class TestSimulationTask:
 
         with pytest.raises(ValueError, match="universe 不能使用 DEFAULT 值"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="validator_test",
                 signature="validator_signature",
                 region=Region.USA,
@@ -741,7 +741,7 @@ class TestSimulationTask:
 
         with pytest.raises(ValueError, match="delay 不能使用 DEFAULT 值"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="validator_test",
                 signature="validator_signature",
                 region=Region.USA,
@@ -757,7 +757,7 @@ class TestSimulationTask:
 
         with pytest.raises(ValueError, match="neutralization 不能使用 DEFAULT 值"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="validator_test",
                 signature="validator_signature",
                 region=Region.USA,
@@ -782,7 +782,7 @@ class TestSimulationTask:
         # 测试区域和证券类型兼容性验证
         with pytest.raises(ValueError, match="区域.*不支持证券类型"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="relationship_test",
                 signature="relationship_signature",
                 region=Region.TWN,
@@ -799,7 +799,7 @@ class TestSimulationTask:
         # 测试选股范围与区域、证券类型兼容性验证
         with pytest.raises(ValueError, match="选股范围.*对证券类型.*和区域.*无效"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="universe_test",
                 signature="universe_signature",
                 region=Region.USA,
@@ -816,7 +816,7 @@ class TestSimulationTask:
         # 测试延迟设置与区域兼容性验证
         with pytest.raises(ValueError, match="延迟设置.*对区域.*无效"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="delay_test",
                 signature="delay_signature",
                 region=Region.GLB,
@@ -833,7 +833,7 @@ class TestSimulationTask:
         # 测试中性化策略与区域和证券类型兼容性验证
         with pytest.raises(ValueError, match="中性化策略.*对证券类型.*和区域.*无效"):
             SimulationTask(
-                type=SimulationTaskType.REGULAR,
+                type=AlphaType.REGULAR,
                 regular="neutralization_test",
                 signature="neutralization_signature",
                 region=Region.USA,
@@ -857,7 +857,7 @@ class TestSimulationTask:
         """
         # 创建基本任务
         task = SimulationTask(
-            type=SimulationTaskType.REGULAR,
+            type=AlphaType.REGULAR,
             regular="event_listener_test",
             signature="listener_signature",
             # 设置参数

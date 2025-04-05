@@ -1,5 +1,6 @@
 __pycache__
 .conda
+.coverage
 .env
 .mypy_cache
 .pytest_cache
@@ -9,5 +10,5 @@ __pycache__
 capture
 db
 demo.py
+dist
 logs
-.coverage

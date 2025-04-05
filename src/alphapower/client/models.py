@@ -1001,7 +1001,7 @@ class SingleSimulationPayload(BaseModel):
         """
         return {
             "type": self.type,
-            "settings": self.settings.dict(by_alias=True),
+            "settings": self.settings.model_dump(by_alias=True),
             "regular": self.regular,
         }
 

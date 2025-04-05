@@ -28,7 +28,6 @@ __all__ = [
     "SimulationBase",
     "SimulationTask",
     "SimulationTaskStatus",
-    "SimulationTaskType",
     "StatsData",
     "Pyramid",
 ]
@@ -71,7 +70,6 @@ from .simulation import Base as SimulationBase
 from .simulation import (
     SimulationTask,
     SimulationTaskStatus,
-    SimulationTaskType,
 )
 
 

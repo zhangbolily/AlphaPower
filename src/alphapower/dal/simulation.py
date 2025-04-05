@@ -227,3 +227,61 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
             query = query.offset(offset)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
+
+    async def find_task_ids_by_filters(
+        self,
+        status: Optional[SimulationTaskStatus] = None,
+        priority: Optional[int] = None,
+        not_in_: Optional[Dict[str, List[int]]] = None,
+        in_: Optional[Dict[str, List[int]]] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        session: Optional[AsyncSession] = None,
+    ) -> List[int]:
+        """
+        根据多个条件过滤任务，返回任务ID列表。
+        支持按状态、优先级等条件进行组合查询。
+        Args:
+            status: 任务状态值。
+            priority: 任务优先级。
+            not_in_: 字典，键为字段名，值为不包含的值列表。
+            in_: 字典，键为字段名，值为包含的值列表。
+            limit: 返回结果的最大数量。
+            offset: 查询结果的偏移量。
+            session: 可选的会话对象，若提供则优先使用。
+        Returns:
+            符合条件的任务ID列表。
+        Raises:
+            ValueError: 如果没有提供任何过滤条件。
+        """
+        actual_session = session or self.session
+        filters = []
+        if status is not None:
+            filters.append(SimulationTask.status == status)
+        if priority is not None:
+            filters.append(SimulationTask.priority == priority)
+        if not_in_ is not None:
+            for key, values in not_in_.items():
+                if hasattr(SimulationTask, key):
+                    column = getattr(SimulationTask, key)
+                    filters.append(column.notin_(values))
+                else:
+                    raise ValueError(f"无效的字段名: {key}")
+        if in_ is not None:
+            for key, values in in_.items():
+                if hasattr(SimulationTask, key):
+                    column = getattr(SimulationTask, key)
+                    filters.append(column.in_(values))
+                else:
+                    raise ValueError(f"无效的字段名: {key}")
+
+        if not filters:
+            raise ValueError("至少需要一个过滤条件")
+
+        query = select(SimulationTask.id).filter(*filters)
+        if limit is not None:
+            query = query.limit(limit)
+        if offset is not None:
+            query = query.offset(offset)
+        result = await actual_session.execute(query)
+        return list(result.scalars().all())

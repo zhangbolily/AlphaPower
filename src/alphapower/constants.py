@@ -138,6 +138,7 @@ class UserRole(Enum):
         USER: 普通用户角色，具有基本操作权限
     """
 
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CONSULTANT = "ROLE_CONSULTANT"  # 顾问角色
     USER = "ROLE_USER"  # 普通用户角色
 

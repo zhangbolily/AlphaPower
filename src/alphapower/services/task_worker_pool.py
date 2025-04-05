@@ -1,6 +1,7 @@
 import asyncio
 
 from alphapower.client import WorldQuantClient, wq_client
+from alphapower.engine.simulation.task.provider import DatabaseTaskProvider
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker_pool import WorkerPool
 from alphapower.internal.logging import setup_logging
@@ -28,10 +29,12 @@ async def task_start_worker_pool(
 
     async def main() -> None:
         try:
-            # 初始化任务调度器
+            provider: DatabaseTaskProvider = DatabaseTaskProvider()
+
             scheduler = PriorityScheduler(
                 task_fetch_size=task_fetch_size,
                 low_priority_threshold=low_priority_threshold,
+                task_provider=provider,
             )
 
             # 创建客户端工厂函数

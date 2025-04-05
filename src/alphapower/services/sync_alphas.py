@@ -19,7 +19,6 @@ from alphapower.client import (
     WorldQuantClient,
     wq_client,
 )
-from alphapower.constants import DB_ALPHAS
 from alphapower.entity import (
     Alpha,
     Classification,
@@ -365,7 +364,7 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
     updated_alphas = 0
 
     async with wq_client:
-        async with get_db_session(DB_ALPHAS) as session:
+        async with get_db_session(Database.ALPHAS) as session:
             try:
                 for cur_time in (
                     start_time + timedelta(days=i)
