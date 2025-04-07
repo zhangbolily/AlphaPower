@@ -44,7 +44,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                 task_ids: List[int] = await dal.find_task_ids_by_filters(
                     status=SimulationTaskStatus.PENDING,
                     priority=priority,
-                    not_in_={
+                    notin_={
                         "id": list(self.committing_scheduled_task_ids)
                         + sampled_task_ids,
                     },
@@ -56,7 +56,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                     pending_task_count: int = await dal.count(
                         status=SimulationTaskStatus.PENDING,
                         priority=priority,
-                        not_in_={
+                        notin_={
                             "id": list(self.committing_scheduled_task_ids)
                             + sampled_task_ids,
                         },

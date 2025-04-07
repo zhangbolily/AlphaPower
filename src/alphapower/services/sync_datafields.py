@@ -26,7 +26,7 @@ from alphapower.client import (
 from alphapower.constants import DB_DATA
 from alphapower.entity import Category, DataField, Dataset
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.utils import setup_logging  # 修复导入
+from alphapower.internal.logging import setup_logging  # 修复导入
 
 from .utils import get_or_create_entity
 

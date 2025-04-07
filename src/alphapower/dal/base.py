@@ -338,7 +338,13 @@ class BaseDAL(Generic[T]):
         result = await actual_session.execute(query)
         return result.rowcount
 
-    async def count(self, session: Optional[AsyncSession] = None, **kwargs: Any) -> int:
+    async def count(
+        self,
+        session: Optional[AsyncSession] = None,
+        in_: Optional[Dict[str, Any]] = None,
+        notin_: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> int:
         """
         按条件统计实体数量。
 
@@ -353,6 +359,12 @@ class BaseDAL(Generic[T]):
         query: Select = select(self.entity_type)
         for key, value in kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
+        if in_:
+            for key, value in in_.items():
+                query = query.where(getattr(self.entity_type, key).in_(value))
+        if notin_:
+            for key, value in notin_.items():
+                query = query.where(getattr(self.entity_type, key).notin_(value))
         result = await actual_session.execute(select(query.exists()))
         return cast(int, result.scalar())
 

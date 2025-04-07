@@ -8,7 +8,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Callable, List
+from typing import Awaitable, Callable, List, Union
 
 from alphapower.entity import SimulationTask
 
@@ -45,6 +45,20 @@ class AbstractWorker(ABC):
         """
         添加任务完成回调函数。
         TODO: 回调函数的入参类型需要确定一下
+
+        :param callback: 回调函数
+        """
+
+    @abstractmethod
+    async def add_heartbeat_callback(
+        self,
+        callback: Union[
+            Callable[["AbstractWorker"], None],
+            Callable[["AbstractWorker"], Awaitable[None]],
+        ],
+    ) -> None:
+        """
+        添加心跳回调函数。
 
         :param callback: 回调函数
         """

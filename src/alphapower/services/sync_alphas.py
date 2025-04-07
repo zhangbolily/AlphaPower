@@ -27,7 +27,7 @@ from alphapower.entity import (
     Setting,
 )
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.utils import setup_logging  # 引入公共方法
+from alphapower.internal.logging import setup_logging  # 引入公共方法
 
 from .utils import create_sample, get_or_create_entity
 

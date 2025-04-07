@@ -22,7 +22,7 @@ from alphapower.client import (
 from alphapower.constants import DB_DATA
 from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.utils import setup_logging
+from alphapower.internal.logging import setup_logging
 from alphapower.internal.wraps import log_time_elapsed  # 引入公共方法
 
 from .utils import get_or_create_entity  # 引入公共方法

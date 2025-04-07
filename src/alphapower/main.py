@@ -9,7 +9,6 @@ Attributes:
 
 import asyncio
 import signal
-import sys
 import types
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -18,10 +17,13 @@ import asyncclick as click  # 替换为 asyncclick
 
 from alphapower.internal.logging import setup_logging
 from alphapower.internal.storage import close_resources
+from alphapower.internal.utils import safe_async_run
 from alphapower.services.sync_alphas import sync_alphas
 from alphapower.services.sync_datafields import sync_datafields
 from alphapower.services.sync_datasets import sync_datasets
-from alphapower.services.task_worker_pool import task_start_worker_pool
+from alphapower.services.task_worker_pool import (
+    task_start_worker_pool,
+)
 
 logger = setup_logging(__name__)
 
@@ -39,15 +41,14 @@ async def handle_exit_signal(signum: int, frame: Optional[types.FrameType]) -> N
     await logger.ainfo(f"接收到信号 {signum}，帧架信息: {frame}")
     await close_resources()
     await logger.ainfo("资源清理完成，程序即将退出。")
-    sys.exit(0)
 
 
 # 注册信号处理函数
 signal.signal(
-    signal.SIGINT, lambda s, f: asyncio.run(handle_exit_signal(s, f))
+    signal.SIGINT, lambda s, f: safe_async_run(handle_exit_signal(s, f))
 )  # 处理 Ctrl+C
 signal.signal(
-    signal.SIGTERM, lambda s, f: asyncio.run(handle_exit_signal(s, f))
+    signal.SIGTERM, lambda s, f: safe_async_run(handle_exit_signal(s, f))
 )  # 处理终止信号
 
 

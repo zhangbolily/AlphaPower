@@ -1,9 +1,9 @@
-from typing import Any, Callable, Coroutine, TypeVar, cast
 import asyncio
 import time
 from functools import wraps
+from typing import Any, Callable, Coroutine, TypeVar, cast
 
-from alphapower.internal.utils import setup_logging
+from alphapower.internal.logging import setup_logging
 
 logger = setup_logging(__name__, enable_console=False)
 

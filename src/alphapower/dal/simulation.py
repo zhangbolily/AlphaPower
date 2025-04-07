@@ -232,7 +232,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         self,
         status: Optional[SimulationTaskStatus] = None,
         priority: Optional[int] = None,
-        not_in_: Optional[Dict[str, List[int]]] = None,
+        notin_: Optional[Dict[str, List[int]]] = None,
         in_: Optional[Dict[str, List[int]]] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
@@ -260,8 +260,8 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
             filters.append(SimulationTask.status == status)
         if priority is not None:
             filters.append(SimulationTask.priority == priority)
-        if not_in_ is not None:
-            for key, values in not_in_.items():
+        if notin_ is not None:
+            for key, values in notin_.items():
                 if hasattr(SimulationTask, key):
                     column = getattr(SimulationTask, key)
                     filters.append(column.notin_(values))

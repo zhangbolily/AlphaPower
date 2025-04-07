@@ -4,9 +4,9 @@
 
 import asyncio
 from functools import wraps
-from typing import Callable, Awaitable, Any
+from typing import Any, Awaitable, Callable
 
-from alphapower.internal.utils import setup_logging
+from alphapower.internal.logging import setup_logging
 
 from .models import RateLimit
 

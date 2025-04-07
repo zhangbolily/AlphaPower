@@ -120,6 +120,7 @@ class WorkerPool(AbstractWorkerPool):
             worker: Worker = Worker(client, dry_run=self._dry_run)
             await worker.set_scheduler(self._scheduler)
             await worker.add_task_complete_callback(self._on_task_completed)
+            await worker.add_heartbeat_callback(self._on_worker_heartbeat)
             # 记录工作者创建时间作为最后活跃时间
             self._worker_last_active[worker] = time.time()
             await logger.adebug(f"成功创建新工作者: {id(worker)}")
@@ -167,6 +168,30 @@ class WorkerPool(AbstractWorkerPool):
             f"任务完成: {task.id}, 状态: {result.status}, "
             f"已处理任务总数: {self._processed_tasks}, 失败任务总数: {self._failed_tasks}"
         )
+
+    async def _on_worker_heartbeat(self, worker: AbstractWorker) -> None:
+        """
+        工作者心跳回调函数。
+
+        更新工作者的最后活跃时间，用于健康状态监控。
+
+        Args:
+            worker: 发送心跳的工作者实例
+        """
+        if worker in self._worker_last_active:
+            # 更新工作者最后活跃时间
+            self._worker_last_active[worker] = time.time()
+
+            # 定期记录心跳信息（避免日志过多，只在调试级别记录）
+            if (
+                logger.isEnabledFor(10)  # DEBUG level
+                and time.time() % 30 < 1  # 每30秒左右记录一次
+            ):
+                await logger.adebug(f"收到工作者 {id(worker)} 心跳")
+        else:
+            await logger.awarning(
+                f"收到未知工作者 {id(worker)} 的心跳，可能是新创建的工作者"
+            )
 
     async def _find_worker_for_task(
         self, task: SimulationTask
@@ -248,7 +273,7 @@ class WorkerPool(AbstractWorkerPool):
         async with self._workers_lock:
             # 停止所有工作者
             stop_tasks: List[Awaitable[None]] = [
-                worker.stop(cancel_tasks=False) for worker in self._workers
+                worker.stop(cancel_tasks=True) for worker in self._workers
             ]
             if stop_tasks:
                 try:

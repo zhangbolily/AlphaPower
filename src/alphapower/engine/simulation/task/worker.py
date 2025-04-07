@@ -117,9 +117,17 @@ class Worker(AbstractWorker):
                 Callable[[SimulationTask, SingleSimulationResultView], Awaitable[None]],
             ]
         ] = []
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._heartbeat_callbacks: List[
+            Union[
+                Callable[["AbstractWorker"], None],
+                Callable[["AbstractWorker"], Awaitable[None]],
+            ]
+        ] = []
         self._scheduler: Optional[AbstractScheduler] = None
         self._shutdown_flag: bool = False
         self._running: bool = False
+        self._run_lock: asyncio.Lock = asyncio.Lock()
         self._is_task_cancel_requested: bool = False
         self._dry_run: bool = dry_run
         self._current_tasks: List[SimulationTask] = []
@@ -143,12 +151,12 @@ class Worker(AbstractWorker):
         """
         # 添加详细的调试日志，便于跟踪取消任务的流程
         logger.debug(
-            f"尝试取消任务，进度 ID: {progress_id}, shutdown: {self._shutdown_flag}, "
+            f"正在判断是否应该取消任务，进度 ID: {progress_id}, shutdown: {self._shutdown_flag}, "
             f"cancel_tasks: {self._is_task_cancel_requested}"
         )
         # 仅在工作者关闭且明确请求取消任务时执行取消操作
         if self._shutdown_flag and self._is_task_cancel_requested:
-            await logger.aerror(f"工作者已关闭，尝试取消任务，进度 ID: {progress_id}")
+            await logger.ainfo(f"工作者已关闭，尝试取消任务，进度 ID: {progress_id}")
             success = await self._client.delete_simulation(progress_id=progress_id)
             if success:
                 await logger.ainfo(f"任务取消成功，进度 ID: {progress_id}")
@@ -162,6 +170,8 @@ class Worker(AbstractWorker):
 
                 return True
             await logger.aerror(f"任务取消失败，进度 ID: {progress_id}")
+
+        logger.debug("任务取消请求未满足条件，跳过取消操作")
         return False
 
     async def _handle_task_completion(
@@ -223,6 +233,44 @@ class Worker(AbstractWorker):
                     f"调用任务完成回调函数失败，任务 ID: {task.id}，错误: {e}"
                 )
 
+    async def _heartbeat(self, name: str) -> None:
+        """心跳方法，用于定期检查工作者的健康状态。
+
+        该方法会调用注册的心跳回调函数，并在工作者关闭时停止执行。
+
+        Args:
+            name: 心跳任务的名称，用于日志记录和调试
+        """
+        await logger.adebug(f"心跳节点 {name} 检查")
+
+        async def _heartbeat_async_task() -> None:
+            """异步心跳检查任务"""
+            for callback in self._heartbeat_callbacks:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        # 如果是异步函数，使用 await 调用
+                        await callback(self)
+                    else:
+                        # 如果是同步函数，直接调用
+                        callback(self)
+                except Exception as e:
+                    await logger.aerror(f"节点 {name} 心跳回调失败，错误: {e}")
+
+        # 创建并启动异步任务
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            await logger.awarning(
+                (
+                    f"心跳节点 {name} 任务已存在，等待完成再启动下一个心跳任务，"
+                    + f"任务协程栈信息: {self._heartbeat_task.get_stack()}"
+                )
+            )
+            await logger.awarning(
+                f"等待节点 {self._heartbeat_task.get_name()} 任务完成"
+            )
+            await self._heartbeat_task
+
+        self._heartbeat_task = asyncio.create_task(_heartbeat_async_task(), name=name)
+
     async def _process_single_simulation_task(self, task: SimulationTask) -> None:
         """处理单个模拟任务。
 
@@ -282,6 +330,8 @@ class Worker(AbstractWorker):
                 # 循环检查任务进度直到完成
                 prev_progress: float = 0.0
                 while True:
+                    #! 4. 心跳检查
+                    await self._heartbeat(name="_process_single_simulation_task")
                     logger.debug(
                         f"检查任务进度，任务 ID: {task.id}, 进度 ID: {progress_id}"
                     )
@@ -474,9 +524,8 @@ class Worker(AbstractWorker):
 
                 prev_progress: float = 0.0
                 while True:
-                    logger.debug(
-                        f"检查多个任务进度，任务 ID 列表: {task_ids_str}, 进度 ID: {progress_id}"
-                    )
+                    #! 5. 心跳检查
+                    await self._heartbeat(name="_process_multi_simulation_task")
                     if await self._cancel_task_if_possible(progress_id, tasks=tasks):
                         await logger.ainfo(
                             f"任务已取消，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
@@ -499,9 +548,17 @@ class Worker(AbstractWorker):
 
                     if isinstance(progress_or_result, SimulationProgressView):
                         progress: float = progress_or_result.progress
+
+                        logger.debug(
+                            (
+                                f"轮询任务进度，任务 ID 列表: {task_ids_str}, "
+                                + f"进度 ID: {progress_id}, 进度: {progress * 100:.2f}%"
+                            )
+                        )
+
                         if progress != prev_progress:
                             await logger.ainfo(
-                                f"多个模拟任务进行中，任务 ID 列表: {task_ids_str}，"
+                                f"多任务模拟进行中，任务 ID 列表: {task_ids_str}，"
                                 + f"进度 ID: {progress_id}，进度: {progress * 100:.2f}%"
                             )
                             prev_progress = progress
@@ -527,7 +584,9 @@ class Worker(AbstractWorker):
             Exception: 当调度器未设置时
             ValueError: 当遇到未知用户角色时
         """
-        logger.debug("开始执行工作循环")
+        await logger.adebug("开始执行工作循环")
+        #! 2. 心跳检查
+        await self._heartbeat(name="_do_work before schedule")
         while not self._shutdown_flag:
             # 验证调度器是否已设置
             if self._scheduler is None:
@@ -568,6 +627,9 @@ class Worker(AbstractWorker):
                 )
                 await logger.ainfo(f"调度器返回任务，任务详情:\n{task_info}")
 
+            #! 3. 心跳检查
+            await self._heartbeat(name="_do_work after schedule")
+
             # 根据用户角色执行不同的任务处理逻辑
             if self._user_role == UserRole.USER:
                 await self._process_single_simulation_task(tasks[0])
@@ -601,6 +663,9 @@ class Worker(AbstractWorker):
             return
         self._running = True
 
+        #! 1. 心跳检查
+        await self._heartbeat(name="run")
+
         logger.debug("启动工作者")
         self._shutdown_flag = False
 
@@ -616,9 +681,10 @@ class Worker(AbstractWorker):
                 raise ValueError(
                     "Client must have a valid user role (CONSULTANT or USER)."
                 )
-
+        async with self._run_lock:
+            await logger.ainfo(f"获取到运行锁，当前锁状态: {self._run_lock.locked()}")
             await self._do_work()
-        await logger.ainfo("工作者已停止")
+        await logger.ainfo(f"工作者主循环已停止，当前锁状态: {self._run_lock.locked()}")
         self._running = False
 
     async def stop(self, cancel_tasks: bool = False) -> None:
@@ -629,11 +695,20 @@ class Worker(AbstractWorker):
         Args:
             cancel_tasks: 如果为True，将尝试取消所有正在执行的任务
         """
-        logger.debug(f"停止工作者，cancel_tasks: {cancel_tasks}")
+        await logger.adebug(f"工作者停止，当前全部状态信息: {self.__dict__}")
+        await logger.ainfo(f"工作者停止，当前状态：{self._running}")
         self._shutdown_flag = True
         self._is_task_cancel_requested = cancel_tasks
+        await logger.adebug(f"等待挂起任务完成，任务信息: {self._post_handler_futures}")
         await asyncio.gather(*self._post_handler_futures)
-        await logger.ainfo("工作者已停止")
+
+        await logger.adebug(
+            f"尝试获取运行锁，等待主循环退出释放锁，当前锁状态: {self._run_lock.locked()}"
+        )
+        async with self._run_lock:
+            await logger.ainfo(f"工作者已停止，当前锁状态: {self._run_lock.locked()}")
+            self._running = False
+            await logger.ainfo("工作者已停止，所有资源已清理")
 
     async def add_task_complete_callback(
         self,
@@ -654,8 +729,8 @@ class Worker(AbstractWorker):
             RuntimeError: 当工作者未关闭时无法添加回调
         """
         logger.debug(f"添加任务完成回调函数: {callback}")
-        if not self._shutdown_flag:
-            await logger.aerror("工作者未关闭，无法添加任务完成回调函数")
+        if self._running:
+            await logger.aerror("工作者正在运行中，无法添加回调函数")
         self._task_complete_callbacks.append(callback)
         await logger.adebug(
             (
@@ -670,3 +745,27 @@ class Worker(AbstractWorker):
         """
         logger.debug(f"获取当前任务，当前任务数量: {len(self._current_tasks)}")
         return self._current_tasks
+
+    async def add_heartbeat_callback(
+        self,
+        callback: Union[
+            Callable[["AbstractWorker"], None],
+            Callable[["AbstractWorker"], Awaitable[None]],
+        ],
+    ) -> None:
+        """添加任务调度回调函数。
+        注册一个将在任务调度时调用的回调函数。支持同步和异步回调函数。
+        Args:
+            callback: 任务调度时的回调函数，接收任务作为参数。
+                     可以是同步函数或异步函数
+        """
+        logger.debug(f"添加任务调度回调函数: {callback}")
+        if self._running:
+            await logger.aerror("工作者正在运行中，无法添加回调函数")
+        self._heartbeat_callbacks.append(callback)
+        await logger.adebug(
+            (
+                f"添加任务调度回调函数 {callback}, 类型: {type(callback)}, "
+                f"当前回调函数数量 {len(self._heartbeat_callbacks)}"
+            )
+        )

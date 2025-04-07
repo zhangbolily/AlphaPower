@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from alphapower.config.settings import DATABASES
 from alphapower.entity import AlphaBase, DataBase, SimulationBase
-from alphapower.internal.utils import setup_logging
+from alphapower.internal.logging import setup_logging
 
 # 配置日志
 logger = setup_logging(__name__)
