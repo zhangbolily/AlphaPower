@@ -37,7 +37,8 @@ def setup_logging(
     if not os.path.exists(settings.log_dir):
         os.makedirs(settings.log_dir)
 
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # 修改标准日志格式
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(module)s.%(funcName)s:%(lineno)d - %(message)s"
     formatter = logging.Formatter(log_format)
 
     # 为特定模块创建日志记录器
@@ -70,14 +71,21 @@ def setup_logging(
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
-    # 配置 structlog
+    # 更新 structlog 配置
     structlog.configure(
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
-            unicode_decoder,  # 添加自定义处理器以支持中文
-            structlog.processors.JSONRenderer(
-                ensure_ascii=False
-            ),  # 确保 JSON 输出支持中文
+            structlog.processors.add_log_level,
+            structlog.processors.CallsiteParameterAdder(
+                parameters={
+                    structlog.processors.CallsiteParameter.FUNC_NAME,
+                    structlog.processors.CallsiteParameter.MODULE,
+                    structlog.processors.CallsiteParameter.LINENO,
+                    structlog.processors.CallsiteParameter.PATHNAME,
+                }
+            ),
+            unicode_decoder,
+            structlog.processors.JSONRenderer(ensure_ascii=False),
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),

@@ -30,8 +30,8 @@ from alphapower.client.raw_api import (
     alpha_check_submission,
     get_alpha_detail,
     get_self_alphas,
+    get_simulation_progress,
 )
-from alphapower.client.raw_api import get_simulation_progress
 
 
 def assert_alpha_check_result(result: Optional[AlphaCheckResultView]) -> None:
@@ -231,6 +231,39 @@ async def test_self_alpha_list(setup_mock_responses: str) -> None:
         assert_alpha_list(result)
         assert rate_limit is not None
         assert isinstance(rate_limit, RateLimit)
+
+
+@pytest.mark.asyncio
+async def test_set_alpha_properties(setup_mock_responses: str) -> None:
+    """
+    测试设置 Alpha 属性的响应
+    """
+    with patch("alphapower.client.raw_api.BASE_URL", new=setup_mock_responses):
+        session: ClientSession = ClientSession()
+
+        from alphapower.client import AlphaPropertiesPayload
+        from alphapower.client.raw_api import set_alpha_properties
+
+        # 创建测试用的属性数据
+        alpha_props = AlphaPropertiesPayload(name="Test Alpha", tags=["test", "demo"])
+
+        alpha_ids = ["regular_alpha_0", "super_alpha_0"]
+
+        for alpha_id in alpha_ids:
+            result, rate_limit = await set_alpha_properties(
+                session, alpha_id, alpha_props
+            )
+
+            assert_alpha_detail(result)
+            assert rate_limit is not None
+            assert isinstance(rate_limit, RateLimit)
+
+            # 验证设置的属性是否正确
+            if result.name:
+                assert result.name == alpha_props.name
+            if result.tags and alpha_props.tags:
+                for tag in alpha_props.tags:
+                    assert tag in result.tags
 
 
 @pytest.mark.asyncio

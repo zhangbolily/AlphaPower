@@ -40,19 +40,19 @@ def exception_handler(func: T) -> T:
                 if e.status == 429 and retry_count < max_retries:
                     retry_count += 1
                     await logger.awarning(
-                        f"请求过于频繁，HTTP 状态码: {e.status}，错误信息: {e.message}。"
+                        f"请求过于频繁，HTTP 状态码: {e.status}，错误信息: {e}。"
                         f"将在 {wait_time} 秒后进行第 {retry_count} 次重试，共 {max_retries} 次。"
                     )
                     await asyncio.sleep(wait_time)
                     continue
                 elif e.status == 429:
                     await logger.aerror(
-                        f"请求过于频繁，已达到最大重试次数 {max_retries}，HTTP 状态码: {e.status}，错误信息: {e.message}",
+                        f"请求过于频繁，已达到最大重试次数 {max_retries}，HTTP 状态码: {e.status}，错误信息: {e}",
                     )
                     raise
                 else:
                     await logger.aerror(
-                        f"请求失败，HTTP 状态码: {e.status}，错误信息: {e.message}",
+                        f"请求失败，HTTP 状态码: {e.status}，错误信息: {e}",
                     )
                     raise
             except Exception as e:

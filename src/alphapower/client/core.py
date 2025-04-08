@@ -4,14 +4,17 @@ WorldQuant AlphaPower Client
 
 import asyncio
 from contextlib import suppress
-from typing import Coroutine, Optional, Union
+from typing import Optional, Tuple, Union
 
 from aiohttp import BasicAuth, ClientSession
 
+from alphapower.internal.logging import setup_logging
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
 
 from .models import (
+    AlphaDetailView,
+    AlphaPropertiesPayload,
     AuthenticationView,
     DataCategoriesListView,
     DataFieldListView,
@@ -43,8 +46,11 @@ from .raw_api import (
     get_all_operators,
     get_self_alphas,
     get_simulation_progress,
+    set_alpha_properties,
 )
 from .utils import rate_limit_handler
+
+logger = setup_logging(__name__)
 
 
 class WorldQuantClient:
@@ -67,7 +73,6 @@ class WorldQuantClient:
         self._is_closed: bool = True
         self._auth: BasicAuth = BasicAuth(username, password)
         self.session: Optional[ClientSession] = None
-        self._auth_task: Optional[Coroutine] = None
         self._refresh_task: Optional[asyncio.Task] = None
         self._usage_count: int = 0
         self._usage_lock: asyncio.Lock = asyncio.Lock()
@@ -77,26 +82,49 @@ class WorldQuantClient:
         """
         后台异步循环刷新会话。
         """
+        self._refresh_task = asyncio.create_task(self._run_session_refresh_loop(expiry))
+
+    async def _run_session_refresh_loop(self, expiry: float) -> None:
+        """定期循环刷新认证会话"""
         while not self._is_closed:
             try:
-                await asyncio.sleep(max(expiry - 60, 0))
-                if self._auth_task is None:
-                    raise RuntimeError("认证任务未初始化")
-                session_info: AuthenticationView = await self._auth_task
-                self.authentication_info = session_info
-                expiry = session_info.token.expiry
+                await self._wait_for_refresh_time(expiry)
+                expiry = await self._perform_session_refresh()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"刷新会话时发生错误: {e}")
+                await logger.aerror(f"刷新会话时发生错误: {e}")
+
+    async def _wait_for_refresh_time(self, expiry: float) -> None:
+        """等待直到接近会话过期时间"""
+        refresh_interval = max(expiry - 60, 0)
+        await logger.ainfo(f"计划在 {refresh_interval} 秒后刷新会话")
+        await asyncio.sleep(refresh_interval)
+
+    async def _perform_session_refresh(self) -> float:
+        """执行实际的会话刷新操作并返回新的过期时间"""
+        old_session = self.session
+        await logger.ainfo("开始刷新会话")
+
+        # 创建新会话并获取认证信息
+        self.session = ClientSession(auth=self._auth)
+        session_info = await authentication(self.session)
+        self.authentication_info = session_info
+
+        # 关闭旧会话
+        if old_session:
+            await old_session.close()
+
+        expiry = session_info.token.expiry
+        await logger.ainfo(f"会话刷新成功，新的过期时间: {expiry}")
+        return expiry
 
     async def initialize(self) -> None:
         """
         初始化客户端会话。
         """
         self.session = ClientSession(auth=self._auth)
-        self._auth_task = authentication(self.session)
-        self.authentication_info = await self._auth_task
+        self.authentication_info = await authentication(self.session)
         self._is_closed = False
         self._refresh_task = asyncio.create_task(
             self._start_refresh_task(self.authentication_info.token.expiry)
@@ -354,6 +382,32 @@ class WorldQuantClient:
             raise RuntimeError("会话未初始化")
 
         resp = await get_self_alphas(self.session, query.to_params())
+        return resp
+
+    @exception_handler
+    @rate_limit_handler
+    async def set_alpha_properties(
+        self,
+        alpha_id: str,
+        properties: AlphaPropertiesPayload,
+    ) -> Tuple[AlphaDetailView, RateLimit]:
+        """
+        更新 Alpha 属性。
+
+        参数:
+        alpha_id (str): Alpha ID。
+        payload (dict): 属性数据。
+
+        返回:
+        bool: 更新是否成功。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        resp = await set_alpha_properties(self.session, alpha_id, properties)
         return resp
 
     # -------------------------------

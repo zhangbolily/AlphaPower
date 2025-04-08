@@ -183,10 +183,7 @@ class WorkerPool(AbstractWorkerPool):
             self._worker_last_active[worker] = time.time()
 
             # 定期记录心跳信息（避免日志过多，只在调试级别记录）
-            if (
-                logger.isEnabledFor(10)  # DEBUG level
-                and time.time() % 30 < 1  # 每30秒左右记录一次
-            ):
+            if logger.isEnabledFor(10):  # DEBUG level
                 await logger.adebug(f"收到工作者 {id(worker)} 心跳")
         else:
             await logger.awarning(

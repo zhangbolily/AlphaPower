@@ -533,18 +533,18 @@ class AlphaPropertiesPayload(BaseModel):
     表示 Alpha 属性主体的类。
     """
 
-    color: str
-    name: str
-    tags: List[str]
-    category: str
-    regular: "AlphaPropertiesPayload.Regular"
-
     class Regular(BaseModel):
         """
         表示 Alpha 属性主体中的常规信息的类。
         """
 
-        description: str
+        description: Optional[str] = None
+
+    color: Optional[str] = None
+    name: Optional[str] = None
+    tags: Optional[List[str]] = None
+    category: Optional[str] = None
+    regular: Regular = Regular()
 
 
 class AlphaCheckResultView(BaseModel):

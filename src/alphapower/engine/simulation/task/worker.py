@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Awaitable, Callable, List, Optional, Union
 
 from alphapower.client import (
+    AlphaPropertiesPayload,
     MultiSimulationPayload,
     MultiSimulationResultView,
     SimulationProgressView,
@@ -216,6 +217,26 @@ class Worker(AbstractWorker):
                 f"更新任务状态成功，任务 ID: {task.id}，状态: {task.status}"
             )
             # 因为这里数据更新是个很低频的操作，每次都提交事务即可
+
+        # 更新完成的因子标签
+        if task.status == SimulationTaskStatus.COMPLETE:
+            async with self._client:
+                try:
+                    await self._client.set_alpha_properties(
+                        alpha_id=result.alpha,
+                        properties=AlphaPropertiesPayload(
+                            tags=task.tags,
+                        ),
+                    )
+                except Exception as e:
+                    await logger.aerror(
+                        f"设置因子属性失败，任务 ID: {task.id}，错误: {e}"
+                    )
+                    return
+                finally:
+                    await logger.ainfo(
+                        f"设置因子属性成功，任务 ID: {task.id}，因子 ID: {result.alpha}"
+                    )
 
         if self._dry_run:
             logger.debug("dry-run: 回调方法不调用。")
@@ -544,6 +565,9 @@ class Worker(AbstractWorker):
                         await logger.ainfo(
                             f"多个模拟任务完成，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
                         )
+                        await self._handle_multi_task_completion(
+                            tasks, progress_or_result
+                        )
                         break
 
                     if isinstance(progress_or_result, SimulationProgressView):
@@ -621,11 +645,8 @@ class Worker(AbstractWorker):
                     task.status = SimulationTaskStatus.SCHEDULED
                 await dal.update_entities_obj(tasks)
                 await session.commit()
-                task_info = "\n".join(
-                    f"任务 ID: {task.id}, 优先级: {task.priority}, 分组键: {task.settings_group_key}"
-                    for task in tasks
-                )
-                await logger.ainfo(f"调度器返回任务，任务详情:\n{task_info}")
+
+            await logger.ainfo(f"调度器返回任务，任务详情: {tasks}")
 
             #! 3. 心跳检查
             await self._heartbeat(name="_do_work after schedule")

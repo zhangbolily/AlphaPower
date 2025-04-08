@@ -228,7 +228,7 @@ async def get_alpha_self_correlations(
 
 async def set_alpha_properties(
     session: aiohttp.ClientSession, alpha_id: str, properties: AlphaPropertiesPayload
-) -> Tuple[Dict[str, Any], RateLimit]:
+) -> Tuple[AlphaDetailView, RateLimit]:
     """
     设置指定 alpha 的属性。
 
@@ -238,12 +238,16 @@ async def set_alpha_properties(
     properties (AlphaPropertiesBody): 要设置的属性数据。
 
     返回:
-    Tuple[Dict[str, Any], RateLimit]: 包含响应数据和速率限制信息的元组。
+    Tuple[AlphaDetailView, RateLimit]: 包含响应数据和速率限制信息的元组。
     """
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}"
-    async with session.patch(url, json=properties) as response:
+    async with session.patch(
+        url, json=properties.model_dump(mode="python")
+    ) as response:
         response.raise_for_status()
-        return await response.json(), RateLimit.from_headers(response.headers)
+        return AlphaDetailView.model_validate(
+            await response.json()
+        ), RateLimit.from_headers(response.headers)
 
 
 async def alpha_check_submission(
