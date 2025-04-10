@@ -3,7 +3,7 @@
 提供对模拟任务及其状态的数据访问操作。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,14 +20,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
     管理模拟任务的CRUD操作，支持按状态、优先级等多种方式查询任务。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 SimulationTaskDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(SimulationTask, session)
+    entity_class: Type[SimulationTask] = SimulationTask
 
     async def find_by_status(
         self, status: Any, session: Optional[AsyncSession] = None

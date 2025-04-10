@@ -29,6 +29,7 @@ from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import (
     Alpha,
     Category,
+    Check,
     Classification,
     Competition,
     DataField,
@@ -37,7 +38,6 @@ from alphapower.entity import (
     Regular,
     ResearchPaper,
     Sample,
-    SampleCheck,
     Setting,
     SimulationTask,
     StatsData,
@@ -63,7 +63,7 @@ class DALRegistry:
         Classification: ClassificationDAL,
         Competition: CompetitionDAL,
         Sample: SampleDAL,
-        SampleCheck: SampleCheckDAL,
+        Check: SampleCheckDAL,
         Dataset: DatasetDAL,
         Category: CategoryDAL,
         DataField: DataFieldDAL,
@@ -96,4 +96,4 @@ class DALRegistry:
             )
 
         dal_class: Type[BaseDAL] = cls._dals[entity_type]
-        return dal_class.create(session=session)
+        return dal_class.create_dal(session=session)

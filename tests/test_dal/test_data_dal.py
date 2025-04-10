@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_DATA, DataFieldType, Delay, Region, Universe
+from alphapower.constants import Database, DataFieldType, Delay, Region, Universe
 from alphapower.dal.data import (
     CategoryDAL,
     DataFieldDAL,
@@ -39,7 +39,7 @@ async def fixture_data_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: SQLAlchemy 异步会话对象。
     """
-    async with get_db_session(DB_DATA) as data_session:
+    async with get_db_session(Database.DATA) as data_session:
         yield data_session
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改
 

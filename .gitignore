@@ -9,6 +9,7 @@ __pycache__
 *.db
 capture
 db
+db_test
 demo.py
 dist
 logs

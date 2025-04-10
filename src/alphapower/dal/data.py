@@ -3,7 +3,7 @@
 提供对数据集、分类、字段等数据实体的访问操作。
 """
 
-from typing import List, Optional
+from typing import List, Optional, Type
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,14 +28,7 @@ class DatasetDAL(EntityDAL[Dataset]):
     管理数据集的CRUD操作，支持按区域、价值、分类等多种方式查询数据集。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 DatasetDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Dataset, session)
+    entity_class: Type[Dataset] = Dataset
 
     async def find_by_dataset_id(
         self, dataset_id: str, session: Optional[AsyncSession] = None
@@ -141,14 +134,7 @@ class CategoryDAL(EntityDAL[Category]):
     管理数据分类的CRUD操作，支持分类层次结构查询和管理。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 CategoryDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Category, session)
+    entity_class: Type[Category] = Category
 
     async def find_by_category_id(
         self, category_id: str, session: Optional[AsyncSession] = None
@@ -209,14 +195,7 @@ class DataFieldDAL(EntityDAL[DataField]):
     管理数据字段的CRUD操作，支持按类型、覆盖率等多种方式查询字段。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 DataFieldDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(DataField, session)
+    entity_class: Type[DataField] = DataField
 
     async def find_by_field_id(
         self, field_id: str, session: Optional[AsyncSession] = None
@@ -293,14 +272,7 @@ class StatsDataDAL(EntityDAL[StatsData]):
     管理统计数据的CRUD操作，支持按数据集和字段查询统计信息。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 StatsDataDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(StatsData, session)
+    entity_class: Type[StatsData] = StatsData
 
     async def find_by_dataset_id(
         self, dataset_id: int, session: Optional[AsyncSession] = None
@@ -340,14 +312,7 @@ class ResearchPaperDAL(EntityDAL[ResearchPaper]):
     管理研究论文的CRUD操作，支持按类型查询论文。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 ResearchPaperDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(ResearchPaper, session)
+    entity_class: Type[ResearchPaper] = ResearchPaper
 
     async def find_by_type(
         self, paper_type: str, session: Optional[AsyncSession] = None
@@ -372,14 +337,7 @@ class PyramidDAL(EntityDAL[Pyramid]):
     管理金字塔模型的CRUD操作，支持按区域和分类查询。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 PyramidDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Pyramid, session)
+    entity_class: Type[Pyramid] = Pyramid
 
     async def find_by_region(
         self, region: Region, session: Optional[AsyncSession] = None

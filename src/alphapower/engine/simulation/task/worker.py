@@ -166,7 +166,7 @@ class Worker(AbstractWorker):
                     dal: SimulationTaskDAL = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.CANCELLED
-                    await dal.update_entities_obj(tasks)
+                    await dal.update_all(tasks)
                     await session.commit()
 
                 return True
@@ -191,7 +191,7 @@ class Worker(AbstractWorker):
             * 为失败的任务记录错误信息并通知其他服务
             * 调用注册的回调函数通知任务完成
         """
-        # TODO:
+        # TODO: 更新流程
         # 1. 更新任务状态和必要的字段
         # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
         # 3. 确认任务是否已成功完成，并更新相关统计信息
@@ -211,7 +211,7 @@ class Worker(AbstractWorker):
 
         async with get_db_session(Database.SIMULATION) as session:
             dal: SimulationTaskDAL = SimulationTaskDAL(session)
-            await dal.update_entity_obj(task)
+            await dal.update(task)
             await session.commit()
             await logger.ainfo(
                 f"更新任务状态成功，任务 ID: {task.id}，状态: {task.status}"
@@ -534,7 +534,7 @@ class Worker(AbstractWorker):
 
                 async with get_db_session(Database.SIMULATION) as session:
                     dal: SimulationTaskDAL = SimulationTaskDAL(session)
-                    await dal.update_entities_obj(tasks)
+                    await dal.update_all(tasks)
                     await session.commit()
                     await logger.ainfo(
                         f"更新多个模拟任务状态成功，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
@@ -643,7 +643,7 @@ class Worker(AbstractWorker):
                 for task in tasks:
                     task.scheduled_at = datetime.now()
                     task.status = SimulationTaskStatus.SCHEDULED
-                await dal.update_entities_obj(tasks)
+                await dal.update_all(tasks)
                 await session.commit()
 
             await logger.ainfo(f"调度器返回任务，任务详情: {tasks}")

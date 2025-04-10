@@ -9,6 +9,7 @@
 - DALRegistry: DAL注册中心
 """
 
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 import pytest
@@ -17,10 +18,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
     AlphaType,
+    Color,
     Database,
     Delay,
+    Grade,
     InstrumentType,
+    Neutralization,
     Region,
+    Stage,
+    Status,
+    Switch,
+    UnitHandling,
     Universe,
 )
 from alphapower.dal.alphas import AlphaDAL, RegularDAL, SettingDAL
@@ -58,7 +66,7 @@ async def fixture_dal(alphas_session: AsyncSession) -> BaseDAL:
     Returns:
         BaseDAL: 初始化好的数据访问层实例。
     """
-    return BaseDAL.create(Setting, alphas_session)
+    return BaseDAL.create_dal(Setting, alphas_session)
 
 
 class TestBaseDAL:
@@ -90,6 +98,13 @@ class TestBaseDAL:
             region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
+            decay=5,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
         )
         dal.session.add(setting)
         await dal.session.flush()
@@ -152,6 +167,12 @@ class TestBaseDAL:
             universe=Universe.TOPSP500,
             delay=Delay.ONE,
             decay=7,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
         )
 
         # 验证创建结果
@@ -190,12 +211,18 @@ class TestBaseDAL:
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
             decay=5,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
         )
         alphas_session.add(setting)
         await alphas_session.flush()
 
         # 执行更新
-        updated_setting = await setting_dal.update(
+        updated_setting = await setting_dal.update_by_id(
             setting.id,
             universe=Universe.TOP1000,
             delay=Delay.ZERO,
@@ -243,7 +270,7 @@ class TestBaseDAL:
         regular_id = regular.id
 
         # 执行删除
-        result = await regular_dal.delete(regular_id)
+        result = await regular_dal.delete_by_id(regular_id)
         assert result is True
 
         # 验证删除结果
@@ -251,7 +278,7 @@ class TestBaseDAL:
         assert db_regular is None
 
         # 测试删除不存在的实体
-        result = await regular_dal.delete(-1)
+        result = await regular_dal.delete_by_id(-1)
         assert result is False
 
     async def test_find_by(self, alphas_session: AsyncSession) -> None:
@@ -271,18 +298,39 @@ class TestBaseDAL:
             region=Region.CHN,
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
+            decay=5,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
         )
         setting2 = Setting(
             instrument_type=InstrumentType.EQUITY,
             region=Region.USA,
             universe=Universe.TOPSP500,
             delay=Delay.ONE,
+            decay=5,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
         )
         setting3 = Setting(
             instrument_type=InstrumentType.CRYPTO,
             region=Region.GLB,
             universe=Universe.TOP50,
             delay=Delay.ONE,
+            decay=5,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
         )
         alphas_session.add_all([setting1, setting2, setting3])
         await alphas_session.flush()
@@ -323,12 +371,30 @@ class TestBaseDAL:
             type=AlphaType.REGULAR,
             author="user1",
             name="测试Alpha1",
+            favorite=False,
+            hidden=False,
+            color=Color.NONE,
+            grade=Grade.DEFAULT,
+            stage=Stage.DEFAULT,
+            status=Status.DEFAULT,
+            date_created=datetime.now(),
+            settings_id=1,
+            regular_id=1,
         )
         alpha2: Alpha = Alpha(
             alpha_id="TEST002",
             type=AlphaType.REGULAR,
             author="user2",
             name="测试Alpha2",
+            favorite=False,
+            hidden=False,
+            color=Color.NONE,
+            grade=Grade.DEFAULT,
+            stage=Stage.DEFAULT,
+            status=Status.DEFAULT,
+            date_created=datetime.now(),
+            settings_id=1,
+            regular_id=1,
         )
         alphas_session.add_all([alpha1, alpha2])
         await alphas_session.flush()
@@ -367,7 +433,7 @@ class TestBaseDAL:
         # 执行批量更新
         filter_kwargs = {"description": "批量更新测试"}
         update_kwargs = {"description": "已更新", "operator_count": 10}
-        updated_count = await regular_dal.update_by_query(filter_kwargs, update_kwargs)
+        updated_count = await regular_dal.update_by_filter(filter_kwargs, update_kwargs)
 
         # 验证更新结果
         assert updated_count >= 3
@@ -399,7 +465,7 @@ class TestBaseDAL:
         await alphas_session.flush()
 
         # 执行批量删除
-        deleted_count = await regular_dal.delete_by(description="批量删除测试")
+        deleted_count = await regular_dal.delete_by_filter(description="批量删除测试")
         assert deleted_count >= 3
 
         # 验证删除结果
@@ -449,6 +515,15 @@ class TestBaseDAL:
                 type=AlphaType.REGULAR,
                 author=f"author_{i}",
                 name=f"查询测试_{i}",
+                favorite=False,
+                hidden=False,
+                color=Color.NONE,
+                grade=Grade.DEFAULT,
+                stage=Stage.DEFAULT,
+                status=Status.DEFAULT,
+                date_created=datetime.now(),
+                settings_id=1,
+                regular_id=1,
             )
             for i in range(1, 4)
         ]
@@ -473,29 +548,173 @@ class TestBaseDAL:
             alphas_session: 数据库会话对象。
         """
         # 测试使用实体类型和会话创建
-        dal1 = BaseDAL.create(Setting, alphas_session)
+        dal1 = BaseDAL.create_dal(Setting, alphas_session)
         assert isinstance(dal1, BaseDAL)
         assert dal1.entity_type is Setting
         assert dal1.session is alphas_session
 
         # 测试只使用会话创建（对于子类）
-        dal2 = SettingDAL.create(alphas_session)
+        dal2 = SettingDAL.create_dal(session=alphas_session)
         assert isinstance(dal2, SettingDAL)
         assert dal2.entity_type is Setting
         assert dal2.session is alphas_session
 
         # 测试参数顺序交换
-        dal3 = BaseDAL.create(session=alphas_session, entity_type=Setting)
+        dal3 = BaseDAL.create_dal(session=alphas_session, entity_type=Setting)
         assert isinstance(dal3, BaseDAL)
         assert dal3.entity_type is Setting
 
         # 测试错误情况 - 缺少会话
         with pytest.raises(ValueError):
-            BaseDAL.create(Setting)
+            BaseDAL.create_dal(Setting)
 
         # 测试错误情况 - 缺少实体类型
         with pytest.raises(ValueError):
-            BaseDAL.create(alphas_session)
+            BaseDAL.create_dal(session=alphas_session)
+
+    async def test_upsert(self, alphas_session: AsyncSession) -> None:
+        """测试 upsert 方法。
+
+        验证 upsert 方法是否能够正确插入或更新实体。
+
+        Args:
+            alphas_session: 数据库会话对象。
+        """
+        setting_dal = SettingDAL(alphas_session)
+
+        # 插入新实体
+        setting = Setting(
+            instrument_type=InstrumentType.EQUITY,
+            region=Region.USA,
+            universe=Universe.TOPSP500,
+            delay=Delay.ONE,
+            decay=7,
+            truncation=0.5,
+            visualization=True,
+            neutralization=Neutralization.SECTOR,
+            pasteurization=Switch.ON,
+            unit_handling=UnitHandling.VERIFY,
+            nan_handling=Switch.OFF,
+        )
+        upserted_setting = await setting_dal.upsert(setting)
+        assert upserted_setting.id is not None
+
+        # 更新已有实体
+        upserted_setting.decay = 10
+        updated_setting = await setting_dal.upsert(upserted_setting)
+        assert updated_setting.decay == 10
+
+    async def test_upsert_by_unique_key(self, alphas_session: AsyncSession) -> None:
+        """测试 upsert_by_unique_key 方法。
+
+        验证 upsert_by_unique_key 方法是否能够根据唯一键插入或更新实体。
+
+        Args:
+            alphas_session: 数据库会话对象。
+        """
+        alpha_dal = AlphaDAL(alphas_session)
+
+        # 插入新实体
+        alpha = Alpha(
+            alpha_id="UNIQUE001",
+            type=AlphaType.REGULAR,
+            author="user1",
+            name="测试Alpha",
+            favorite=False,
+            hidden=False,
+            color=Color.NONE,
+            grade=Grade.DEFAULT,
+            stage=Stage.DEFAULT,
+            status=Status.DEFAULT,
+            date_created=datetime.now(),
+            settings_id=1,
+            regular_id=1,
+        )
+        upserted_alpha = await alpha_dal.upsert_by_unique_key(alpha, "alpha_id")
+        assert upserted_alpha.id is not None
+
+        # 更新已有实体
+        upserted_alpha.name = "更新后的Alpha"
+        updated_alpha = await alpha_dal.upsert_by_unique_key(upserted_alpha, "alpha_id")
+        assert updated_alpha.name == "更新后的Alpha"
+
+    async def test_bulk_upsert(self, alphas_session: AsyncSession) -> None:
+        """测试 bulk_upsert 方法。
+
+        验证 bulk_upsert 方法是否能够批量插入或更新实体。
+
+        Args:
+            alphas_session: 数据库会话对象。
+        """
+        setting_dal = SettingDAL(alphas_session)
+
+        # 插入新实体
+        settings = [
+            Setting(
+                instrument_type=InstrumentType.EQUITY,
+                region=Region.USA,
+                universe=Universe.TOPSP500,
+                delay=Delay.ONE,
+                decay=i,
+                truncation=0.5,
+                visualization=True,
+                neutralization=Neutralization.SECTOR,
+                pasteurization=Switch.ON,
+                unit_handling=UnitHandling.VERIFY,
+                nan_handling=Switch.OFF,
+            )
+            for i in range(1, 4)
+        ]
+        upserted_settings = await setting_dal.bulk_upsert(settings)
+        assert len(upserted_settings) == 3
+
+        # 更新已有实体
+        for setting in upserted_settings:
+            setting.decay = 10
+        updated_settings = await setting_dal.bulk_upsert(upserted_settings)
+        assert all(s.decay == 10 for s in updated_settings)
+
+    async def test_bulk_upsert_by_unique_key(
+        self, alphas_session: AsyncSession
+    ) -> None:
+        """测试 bulk_upsert_by_unique_key 方法。
+
+        验证 bulk_upsert_by_unique_key 方法是否能够根据唯一键批量插入或更新实体。
+
+        Args:
+            alphas_session: 数据库会话对象。
+        """
+        alpha_dal = AlphaDAL(alphas_session)
+
+        # 插入新实体
+        alphas = [
+            Alpha(
+                alpha_id=f"UNIQUE_BULK_{i}",
+                type=AlphaType.REGULAR,
+                author=f"user{i}",
+                name=f"测试Alpha{i}",
+                favorite=False,
+                hidden=False,
+                color=Color.NONE,
+                grade=Grade.DEFAULT,
+                stage=Stage.DEFAULT,
+                status=Status.DEFAULT,
+                date_created=datetime.now(),
+                settings_id=1,
+                regular_id=1,
+            )
+            for i in range(1, 4)
+        ]
+        upserted_alphas = await alpha_dal.bulk_upsert_by_unique_key(alphas, "alpha_id")
+        assert len(upserted_alphas) == 3
+
+        # 更新已有实体
+        for alpha in upserted_alphas:
+            alpha.name = "批量更新后的Alpha"
+        updated_alphas = await alpha_dal.bulk_upsert_by_unique_key(
+            upserted_alphas, "alpha_id"
+        )
+        assert all(a.name == "批量更新后的Alpha" for a in updated_alphas)
 
 
 class TestDALFactory:
@@ -510,13 +729,13 @@ class TestDALFactory:
             alphas_session: 数据库会话对象。
         """
         # 创建 AlphaDAL 实例
-        dal = DALFactory.create_dal(AlphaDAL, alphas_session)
-        assert isinstance(dal, AlphaDAL)
-        assert dal.session is alphas_session
-        assert dal.entity_type is Alpha
+        alpha_dal = DALFactory.create_dal(AlphaDAL, alphas_session)
+        assert isinstance(alpha_dal, AlphaDAL)
+        assert alpha_dal.session is alphas_session
+        assert alpha_dal.entity_type is Alpha
 
         # 创建 RegularDAL 实例
-        dal = DALFactory.create_dal(RegularDAL, alphas_session)
-        assert isinstance(dal, RegularDAL)
-        assert dal.session is alphas_session
-        assert dal.entity_type is Regular
+        regular_dal = DALFactory.create_dal(RegularDAL, alphas_session)
+        assert isinstance(regular_dal, RegularDAL)
+        assert regular_dal.session is alphas_session
+        assert regular_dal.entity_type is Regular

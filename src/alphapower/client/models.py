@@ -1,13 +1,11 @@
 # pylint: disable=C0302
-"""This module contains the data models for the AlphaPower API.
+"""AlphaPower API 的数据模型。
 
-This module defines the data structures used for interacting with the AlphaPower API.
-It includes models for Alpha metrics, classifications, competitions, simulations,
-data categories, and other related entities.
+本模块定义了与 AlphaPower API 交互使用的数据结构。
+包括 Alpha 指标、分类、竞赛、模拟、数据类别和其他相关实体的模型。
 
 Attributes:
-    All classes in this module are Pydantic models that handle data validation,
-    serialization, and deserialization.
+    本模块中的所有类都是 Pydantic 模型，负责数据验证、序列化和反序列化。
 """
 
 from datetime import datetime
@@ -16,17 +14,27 @@ from typing import Any, Dict, List, Optional
 from multidict import CIMultiDictProxy
 from pydantic import AliasChoices, BaseModel, Field, RootModel
 
-from alphapower.constants import AlphaType
+from alphapower.constants import (
+    AlphaType,
+    Delay,
+    InstrumentType,
+    Neutralization,
+    Region,
+    RegularLanguage,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 
 
 class PyramidView(BaseModel):
-    """表示金字塔模型的类。
+    """金字塔模型。
 
-    这个类用于表示金字塔模型的基本信息，包括名称和乘数。
+    表示金字塔模型的基本信息，包括名称和乘数。
 
     Attributes:
-        name (str): 金字塔的名称。
-        multiplier (float): 金字塔的乘数值。
+        name: 金字塔的名称。
+        multiplier: 金字塔的乘数值。
     """
 
     name: str
@@ -34,13 +42,13 @@ class PyramidView(BaseModel):
 
 
 class ClassificationView(BaseModel):
-    """表示分类信息的类。
+    """分类信息。
 
-    这个类用于表示分类的基本信息，包括ID和名称。
+    表示分类的基本信息，包括ID和名称。
 
     Attributes:
-        id (str): 分类的唯一标识符。
-        name (str): 分类的名称。
+        id: 分类的唯一标识符。
+        name: 分类的名称。
     """
 
     id: str
@@ -48,13 +56,13 @@ class ClassificationView(BaseModel):
 
 
 class CompetitionView(BaseModel):
-    """表示竞赛信息的类。
+    """竞赛信息。
 
-    这个类用于表示竞赛的基本信息，包括ID和名称。
+    表示竞赛的基本信息，包括ID和名称。
 
     Attributes:
-        id (str): 竞赛的唯一标识符。
-        name (str): 竞赛的名称。
+        id: 竞赛的唯一标识符。
+        name: 竞赛的名称。
     """
 
     id: str
@@ -62,14 +70,14 @@ class CompetitionView(BaseModel):
 
 
 class RegularView(BaseModel):
-    """表示常规信息的类。
+    """常规信息。
 
-    这个类用于表示常规Alpha信息，包括代码、描述和操作符计数。
+    表示常规Alpha信息，包括代码、描述和操作符计数。
 
     Attributes:
-        code (str): Alpha或策略的代码。
-        description (Optional[str]): Alpha或策略的描述。默认为None。
-        operator_count (Optional[int]): Alpha中使用的操作符数量。默认为None。
+        code: Alpha或策略的代码。
+        description: Alpha或策略的描述，可选。
+        operator_count: Alpha中使用的操作符数量，可选。
     """
 
     code: str
@@ -80,14 +88,14 @@ class RegularView(BaseModel):
 
 
 class TableSchema(BaseModel):
-    """表示记录的模式。
+    """表格模式。
 
-    这个类用于描述表格数据的结构，包括名称、标题和属性列表。
+    描述表格数据的结构，包括名称、标题和属性列表。
 
     Attributes:
-        name (str): 模式的名称。
-        title (str): 模式的标题。
-        properties (List[TableSchema.Property]): 模式包含的属性列表。
+        name: 模式的名称。
+        title: 模式的标题。
+        properties: 模式包含的属性列表。
     """
 
     name: str
@@ -95,14 +103,14 @@ class TableSchema(BaseModel):
     properties: List["TableSchema.Property"]
 
     class Property(BaseModel):
-        """表示模式中的一个属性。
+        """模式属性。
 
-        这个嵌套类用于描述模式中的单个属性，包括名称、标题和类型。
+        描述模式中的单个属性，包括名称、标题和类型。
 
         Attributes:
-            name (str): 属性的名称。
-            title (str): 属性的标题。
-            type (str): 属性的数据类型。
+            name: 属性的名称。
+            title: 属性的标题。
+            type: 属性的数据类型。
         """
 
         name: str
@@ -111,24 +119,41 @@ class TableSchema(BaseModel):
 
 
 class SimulationSettingsView(BaseModel):
-    """
-    表示模拟的设置。
+    """模拟设置。
+
+    包含模拟运行的各种配置参数。
+
+    Attributes:
+        nan_handling: NaN值处理方式，可选。
+        instrument_type: 工具类型，可选。
+        delay: 延迟天数，可选。
+        universe: 股票范围，可选。
+        truncation: 截断值，可选。
+        unit_handling: 单位处理方式，可选。
+        test_period: 测试周期，可选。
+        pasteurization: 巴氏杀菌法（数据处理方式），可选。
+        region: 地区，可选。
+        language: 编程语言，可选。
+        decay: 衰减值，可选。
+        neutralization: 中性化处理方式，可选。
+        visualization: 是否可视化，可选。
+        max_trade: 最大交易限制，可选。
     """
 
-    nan_handling: Optional[str] = Field(
+    nan_handling: Optional[Switch] = Field(
         None,
         validation_alias=AliasChoices("nanHandling", "nan_handling"),
         serialization_alias="nanHandling",
     )
-    instrument_type: Optional[str] = Field(
+    instrument_type: Optional[InstrumentType] = Field(
         None,
         validation_alias=AliasChoices("instrumentType", "instrument_type"),
         serialization_alias="instrumentType",
     )
-    delay: Optional[int] = None
-    universe: Optional[str] = None
+    delay: Optional[Delay] = Delay.DEFAULT
+    universe: Optional[Universe] = None
     truncation: Optional[float] = None
-    unit_handling: Optional[str] = Field(
+    unit_handling: Optional[UnitHandling] = Field(
         None,
         validation_alias=AliasChoices("unitHandling", "unit_handling"),
         serialization_alias="unitHandling",
@@ -138,13 +163,13 @@ class SimulationSettingsView(BaseModel):
         validation_alias=AliasChoices("testPeriod", "test_period"),
         serialization_alias="testPeriod",
     )
-    pasteurization: Optional[str] = None
-    region: Optional[str] = None
-    language: Optional[str] = None
+    pasteurization: Optional[Switch] = None
+    region: Optional[Region] = None
+    language: Optional[RegularLanguage] = None
     decay: Optional[int] = None
-    neutralization: Optional[str] = None
+    neutralization: Optional[Neutralization] = None
     visualization: Optional[bool] = None
-    max_trade: Optional[str] = Field(
+    max_trade: Optional[Switch] = Field(
         None,
         validation_alias=AliasChoices("maxTrade", "max_trade"),
         serialization_alias="maxTrade",
@@ -152,8 +177,19 @@ class SimulationSettingsView(BaseModel):
 
 
 class SelfAlphaListQueryParams(BaseModel):
-    """
-    表示 Alpha 列表查询参数的类。
+    """Alpha列表查询参数。
+
+    定义查询用户自己的Alpha列表时使用的参数。
+
+    Attributes:
+        hidden: 是否隐藏，可选。
+        limit: 返回结果数量限制，可选。
+        offset: 结果偏移量，可选。
+        order: 排序方式，可选。
+        status_eq: 状态等于过滤，可选。
+        status_ne: 状态不等于过滤，可选。
+        date_created_gt: 创建日期大于，可选。
+        date_created_lt: 创建日期小于，可选。
     """
 
     hidden: Optional[bool] = None
@@ -174,8 +210,12 @@ class SelfAlphaListQueryParams(BaseModel):
     )
 
     def to_params(self) -> dict:
-        """
-        将查询参数转换为字典格式。
+        """将查询参数转换为字典格式。
+
+        将对象的属性转换为API查询参数的字典格式。
+
+        Returns:
+            查询参数字典。
         """
         params = {}
         if self.hidden is not None:
@@ -198,8 +238,23 @@ class SelfAlphaListQueryParams(BaseModel):
 
 
 class AlphaCheckItemView(BaseModel):
-    """
-    表示 Alpha 检查项的类。
+    """Alpha检查项。
+
+    表示对Alpha进行检查的单个项目结果。
+
+    Attributes:
+        name: 检查项名称。
+        result: 检查结果。
+        limit: 限制值，可选。
+        value: 实际值，可选。
+        date: 检查日期，可选。
+        competitions: 相关竞赛列表，可选。
+        message: 检查消息，可选。
+        year: 检查年份，可选。
+        pyramids: 金字塔列表，可选。
+        start_date: 起始日期，可选。
+        end_date: 结束日期，可选。
+        multiplier: 乘数，可选。
     """
 
     name: str
@@ -221,8 +276,27 @@ class AlphaCheckItemView(BaseModel):
 
 
 class AlphaSampleView(BaseModel):
-    """
-    表示 Alpha 样本数据的类。
+    """Alpha样本数据。
+
+    表示Alpha在某个样本集上的性能数据。
+
+    Attributes:
+        pnl: 盈亏值，可选。
+        book_size: 账簿规模，可选。
+        long_count: 多头数量，可选。
+        short_count: 空头数量，可选。
+        turnover: 周转率，可选。
+        returns: 回报率，可选。
+        drawdown: 回撤，可选。
+        margin: 利润率，可选。
+        sharpe: 夏普比率，可选。
+        fitness: 适应度，可选。
+        start_date: 开始日期，可选。
+        checks: 检查项列表，可选。
+        self_correlation: 自相关性，可选。
+        prod_correlation: 生产相关性，可选。
+        os_is_sharpe_ratio: 样本外-样本内夏普比率，可选。
+        pre_close_sharpe_ratio: 收盘前夏普比率，可选。
     """
 
     pnl: Optional[float] = None
@@ -264,8 +338,38 @@ class AlphaSampleView(BaseModel):
 
 
 class AlphaView(BaseModel):
-    """
-    表示 Alpha 实体的类。
+    """Alpha实体。
+
+    表示完整的Alpha信息，包括基本数据和性能指标。
+
+    Attributes:
+        id: Alpha的唯一标识符。
+        type: Alpha类型。
+        author: Alpha作者。
+        settings: 模拟设置。
+        regular: 常规信息。
+        date_created: 创建日期，可选。
+        date_submitted: 提交日期，可选。
+        date_modified: 修改日期，可选。
+        name: Alpha名称，可选，默认为空字符串。
+        favorite: 是否为收藏，默认为False。
+        hidden: 是否隐藏，默认为False。
+        color: 颜色代码，可选。
+        category: 类别，可选。
+        tags: 标签列表，可选。
+        classifications: 分类列表，可选。
+        grade: 等级，可选。
+        stage: 阶段，可选。
+        status: 状态，可选。
+        in_sample: 样本内性能，可选。
+        out_sample: 样本外性能，可选。
+        train: 训练集性能，可选。
+        test: 测试集性能，可选。
+        prod: 生产环境性能，可选。
+        competitions: 相关竞赛，可选。
+        themes: 主题列表，可选。
+        pyramids: 金字塔列表，可选。
+        team: 团队名称，可选。
     """
 
     id: str
@@ -282,7 +386,7 @@ class AlphaView(BaseModel):
     date_modified: Optional[datetime] = Field(
         default=None, validation_alias=AliasChoices("dateModified", "date_modified")
     )
-    name: str = ""
+    name: Optional[str] = ""
     favorite: bool = False
     hidden: bool = False
     color: Optional[str] = None
@@ -308,8 +412,15 @@ class AlphaView(BaseModel):
 
 
 class SelfAlphaListView(BaseModel):
-    """
-    表示 Alpha 列表的类。
+    """Alpha列表。
+
+    表示用户自己的Alpha列表信息，包含分页数据。
+
+    Attributes:
+        count: Alpha总数。
+        next: 下一页链接，可选。
+        previous: 上一页链接，可选。
+        results: Alpha列表。
     """
 
     count: int
@@ -319,8 +430,40 @@ class SelfAlphaListView(BaseModel):
 
 
 class AlphaDetailView(BaseModel):
-    """
-    表示 Alpha 详细信息的类。
+    """Alpha详情。
+
+    表示单个Alpha的详细信息，包括各种性能指标和配置。
+
+    Attributes:
+        id: Alpha的唯一标识符。
+        type: Alpha类型。
+        author: Alpha作者。
+        settings: 模拟设置。
+        regular: 常规信息，可选。
+        selection: 选择规则，可选。
+        combo: 组合规则，可选。
+        date_created: 创建日期，可选。
+        date_submitted: 提交日期，可选。
+        date_modified: 修改日期，可选。
+        name: Alpha名称，可选。
+        favorite: 是否为收藏，默认为False。
+        hidden: 是否隐藏，默认为False。
+        color: 颜色代码，可选。
+        category: 类别，可选。
+        tags: 标签列表，可选。
+        classifications: 分类列表，可选。
+        grade: 等级，可选。
+        stage: 阶段，可选。
+        status: 状态，可选。
+        in_sample: 样本内详细性能，可选。
+        out_sample: 样本外详细性能，可选。
+        train: 训练集详细性能，可选。
+        test: 测试集详细性能，可选。
+        prod: 生产环境详细性能，可选。
+        competitions: 相关竞赛，可选。
+        themes: 主题列表，可选。
+        pyramids: 金字塔列表，可选。
+        team: 团队名称，可选。
     """
 
     id: str
@@ -364,8 +507,29 @@ class AlphaDetailView(BaseModel):
     team: Optional[str] = None
 
     class Sample(BaseModel):
-        """
-        表示 Alpha 样本详细信息的类。
+        """Alpha样本详细信息。
+
+        表示Alpha在特定样本集上的详细性能数据。
+
+        Attributes:
+            investability_constrained: 可投资性受限的性能，可选。
+            risk_neutralized: 风险中性化后的性能，可选。
+            pnl: 盈亏值，可选。
+            book_size: 账簿规模，可选。
+            long_count: 多头数量，可选。
+            short_count: 空头数量，可选。
+            turnover: 周转率，可选。
+            returns: 回报率，可选。
+            drawdown: 回撤，可选。
+            margin: 利润率，可选。
+            sharpe: 夏普比率，可选。
+            fitness: 适应度，可选。
+            start_date: 开始日期，可选。
+            checks: 检查项列表，可选。
+            self_correlation: 自相关性，可选。
+            prod_correlation: 生产相关性，可选。
+            os_is_sharpe_ratio: 样本外-样本内夏普比率，可选。
+            pre_close_sharpe_ratio: 收盘前夏普比率，可选。
         """
 
         investability_constrained: Optional[AlphaSampleView] = Field(
@@ -433,8 +597,23 @@ class AlphaDetailView(BaseModel):
 
 
 class AlphaYearlyStatsRecordView(BaseModel):
-    """
-    表示 Alpha 年度统计记录的类。
+    """Alpha年度统计记录。
+
+    表示Alpha在特定年份的性能统计数据。
+
+    Attributes:
+        year: 年份。
+        pnl: 盈亏值。
+        book_size: 账簿规模。
+        long_count: 多头数量。
+        short_count: 空头数量。
+        turnover: 周转率。
+        sharpe: 夏普比率。
+        returns: 回报率。
+        drawdown: 回撤。
+        margin: 利润率。
+        fitness: 适应度。
+        stage: 阶段。
     """
 
     year: int
@@ -461,8 +640,13 @@ class AlphaYearlyStatsRecordView(BaseModel):
 
 
 class AlphaYearlyStatsView(BaseModel):
-    """
-    表示 Alpha 年度统计的类。
+    """Alpha年度统计。
+
+    表示Alpha的年度性能统计数据集合。
+
+    Attributes:
+        table_schema: 表格模式。
+        records: 年度统计记录列表。
     """
 
     table_schema: TableSchema = Field(
@@ -473,8 +657,13 @@ class AlphaYearlyStatsView(BaseModel):
 
 
 class AlphaPnLRecordView(BaseModel):
-    """
-    表示 Alpha 盈亏记录的类。
+    """Alpha盈亏记录。
+
+    表示Alpha在特定日期的盈亏数据。
+
+    Attributes:
+        date: 日期。
+        pnl: 盈亏值。
     """
 
     date: datetime
@@ -482,8 +671,13 @@ class AlphaPnLRecordView(BaseModel):
 
 
 class AlphaPnLView(BaseModel):
-    """
-    表示 Alpha 盈亏的类。
+    """Alpha盈亏视图。
+
+    表示Alpha的盈亏数据集合。
+
+    Attributes:
+        table_schema: 表格模式。
+        records: 盈亏记录列表。
     """
 
     table_schema: TableSchema = Field(
@@ -494,8 +688,22 @@ class AlphaPnLView(BaseModel):
 
 
 class AlphaCorrelationRecordView(BaseModel):
-    """
-    表示 Alpha 相关性记录的类。
+    """Alpha相关性记录。
+
+    表示Alpha与其他Alpha的相关性数据。
+
+    Attributes:
+        id: Alpha唯一标识符。
+        name: Alpha名称。
+        instrument_type: 工具类型。
+        region: 地区。
+        universe: 股票范围。
+        correlation: 相关性值。
+        sharpe: 夏普比率。
+        returns: 回报率。
+        turnover: 周转率。
+        fitness: 适应度。
+        margin: 利润率。
     """
 
     id: str
@@ -515,8 +723,15 @@ class AlphaCorrelationRecordView(BaseModel):
 
 
 class AlphaCorrelationsView(BaseModel):
-    """
-    表示 Alpha 相关性的类。
+    """Alpha相关性视图。
+
+    表示Alpha之间的相关性数据集合。
+
+    Attributes:
+        table_schema: 表格模式。
+        records: 相关性记录二维列表。
+        min: 最小相关性值，可选，默认为0.0。
+        max: 最大相关性值，可选，默认为0.0。
     """
 
     table_schema: TableSchema = Field(
@@ -529,13 +744,25 @@ class AlphaCorrelationsView(BaseModel):
 
 
 class AlphaPropertiesPayload(BaseModel):
-    """
-    表示 Alpha 属性主体的类。
+    """Alpha属性更新载荷。
+
+    用于更新Alpha属性的请求体。
+
+    Attributes:
+        color: 颜色代码，可选。
+        name: Alpha名称，可选。
+        tags: 标签列表，可选。
+        category: 类别，可选。
+        regular: 常规信息。
     """
 
     class Regular(BaseModel):
-        """
-        表示 Alpha 属性主体中的常规信息的类。
+        """常规信息。
+
+        表示Alpha常规信息的更新内容。
+
+        Attributes:
+            description: Alpha描述，可选。
         """
 
         description: Optional[str] = None
@@ -548,8 +775,13 @@ class AlphaPropertiesPayload(BaseModel):
 
 
 class AlphaCheckResultView(BaseModel):
-    """
-    表示 Alpha 检查结果的类。
+    """Alpha检查结果。
+
+    表示对Alpha的检查结果，包括样本内和样本外数据。
+
+    Attributes:
+        in_sample: 样本内检查结果，可选。
+        out_sample: 样本外检查结果，可选。
     """
 
     in_sample: Optional["AlphaCheckResultView.Sample"] = Field(
@@ -560,8 +792,14 @@ class AlphaCheckResultView(BaseModel):
     )
 
     class Sample(BaseModel):
-        """
-        表示 Alpha 检查结果样本的类。
+        """样本检查结果。
+
+        表示特定样本集上的检查结果数据。
+
+        Attributes:
+            checks: 检查项列表，可选。
+            self_correlated: 自相关性数据，可选。
+            prod_correlated: 与生产环境相关性数据，可选。
         """
 
         checks: Optional[List[AlphaCheckItemView]] = None
@@ -578,344 +816,495 @@ class AlphaCheckResultView(BaseModel):
 
 
 class RateLimit:
-    """
-    表示 API 的速率限制信息。
+    """API速率限制。
+
+    表示API的速率限制信息，包括限制数量、剩余请求数和重置时间。
+
+    Attributes:
+        limit: 请求限制数量。
+        remaining: 剩余可用请求数。
+        reset: 限制重置时间（秒）。
     """
 
     def __init__(self, limit: int, remaining: int, reset: int) -> None:
+        """初始化速率限制实例。
+
+        Args:
+            limit: 请求限制数量。
+            remaining: 剩余可用请求数。
+            reset: 限制重置时间（秒）。
+        """
         self.limit: int = limit
         self.remaining: int = remaining
         self.reset: int = reset
 
     @classmethod
     def from_headers(cls, headers: CIMultiDictProxy[str]) -> "RateLimit":
-        """
-        从响应头中创建 RateLimit 实例。
-        :param headers: 响应头
-        :return: RateLimit 实例
-        """
+        """从响应头创建速率限制实例。
 
+        从HTTP响应头中提取速率限制信息，创建RateLimit实例。
+
+        Args:
+            headers: HTTP响应头。
+
+        Returns:
+            RateLimit实例。
+        """
         limit: int = int(headers.get("RateLimit-Limit", 0))
         remaining: int = int(headers.get("RateLimit-Remaining", 0))
         reset: int = int(headers.get("RateLimit-Reset", 0))
         return cls(limit, remaining, reset)
 
     def __str__(self) -> str:
+        """返回速率限制的字符串表示。
+
+        Returns:
+            速率限制的字符串表示。
+        """
         return f"RateLimit(limit={self.limit}, remaining={self.remaining}, reset={self.reset})"
 
 
 class DataCategoriesView(BaseModel):
-    """
-    数据类别视图模型
-    表示数据类别的详细信息，包括子类别和统计信息
+    """数据类别。
+
+    表示数据类别的详细信息，包括子类别和统计信息。
+
+    Attributes:
+        id: 类别的唯一标识符。
+        name: 类别名称。
+        dataset_count: 数据集数量。
+        field_count: 字段数量。
+        alpha_count: Alpha数量。
+        user_count: 用户数量。
+        value_score: 价值评分。
+        region: 所属区域。
+        children: 子类别列表，默认为空列表。
     """
 
-    id: str  # 类别的唯一标识符
-    name: str  # 类别名称
+    id: str
+    name: str
     dataset_count: int = Field(
         validation_alias=AliasChoices("datasetCount", "dataset_count"),
         serialization_alias="datasetCount",
-    )  # 数据集数量
+    )
     field_count: int = Field(
         validation_alias=AliasChoices("fieldCount", "field_count"),
         serialization_alias="fieldCount",
-    )  # 字段数量
+    )
     alpha_count: int = Field(
         validation_alias=AliasChoices("alphaCount", "alpha_count"),
         serialization_alias="alphaCount",
-    )  # Alpha 数量
+    )
     user_count: int = Field(
         validation_alias=AliasChoices("userCount", "user_count"),
         serialization_alias="userCount",
-    )  # 用户数量
+    )
     value_score: float = Field(
         validation_alias=AliasChoices("valueScore", "value_score"),
         serialization_alias="valueScore",
-    )  # 价值评分
-    region: str  # 所属区域
-    children: List["DataCategoriesView"] = []  # 子类别列表
+    )
+    region: str
+    children: List["DataCategoriesView"] = []
 
 
 class DataCategoriesListView(RootModel):
-    """
-    数据类别列表视图模型
-    表示数据类别的集合
+    """数据类别列表。
+
+    表示数据类别的集合。
+
+    Attributes:
+        root: 数据类别列表，可选。
     """
 
-    root: Optional[List[DataCategoriesView]] = None  # 数据类别列表
+    root: Optional[List[DataCategoriesView]] = None
 
 
 class DataSetsQueryParams(BaseModel):
-    """
-    数据集查询参数模型
-    用于定义查询数据集时的参数
+    """数据集查询参数。
+
+    定义查询数据集时使用的参数。
+
+    Attributes:
+        category: 数据类别，可选。
+        delay: 延迟天数，可选。
+        instrumentType: 工具类型，可选。
+        limit: 返回结果数量限制，可选。
+        offset: 结果偏移量，可选。
+        region: 区域，可选。
+        universe: 股票范围，可选。
     """
 
-    category: Optional[str] = None  # 数据类别
-    delay: Optional[int] = None  # 延迟时间
-    instrumentType: Optional[str] = None  # 仪器类型
-    limit: Optional[int] = None  # 查询结果限制数量
-    offset: Optional[int] = None  # 查询结果偏移量
-    region: Optional[str] = None  # 区域
-    universe: Optional[str] = None  # 宇宙（范围）
+    category: Optional[str] = None
+    delay: Optional[int] = None
+    instrumentType: Optional[str] = None
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+    region: Optional[str] = None
+    universe: Optional[str] = None
 
     def to_params(self) -> Dict[str, Any]:
-        """
-        转换为查询参数字典
-        :return: 查询参数字典
+        """转换为查询参数字典。
+
+        将对象的属性转换为API查询参数的字典格式。
+
+        Returns:
+            查询参数字典。
         """
         params = self.model_dump(mode="python")
         return params
 
 
 class DataCategoryView(BaseModel):
-    """
-    数据类别视图模型
-    表示单个数据类别的基本信息
+    """数据类别基础信息。
+
+    表示单个数据类别的基本信息。
+
+    Attributes:
+        id: 类别的唯一标识符。
+        name: 类别名称。
     """
 
-    id: str  # 类别的唯一标识符
-    name: str  # 类别名称
+    id: str
+    name: str
 
 
 class DatasetView(BaseModel):
-    """
-    数据集视图模型
-    表示数据集的详细信息
+    """数据集视图。
+
+    表示数据集的详细信息。
+
+    Attributes:
+        id: 数据集的唯一标识符。
+        name: 数据集名称。
+        description: 数据集描述。
+        category: 数据集所属主类别。
+        subcategory: 数据集所属子类别。
+        region: 所属区域。
+        delay: 延迟天数。
+        universe: 股票范围。
+        coverage: 覆盖范围。
+        value_score: 价值评分。
+        user_count: 用户数量。
+        alpha_count: Alpha数量。
+        field_count: 字段数量。
+        themes: 主题列表。
+        research_papers: 相关研究论文列表。
+        pyramid_multiplier: 金字塔乘数，可选。
     """
 
-    id: str  # 数据集的唯一标识符
-    name: str  # 数据集名称
-    description: str  # 数据集描述
-    category: DataCategoryView  # 数据集所属类别
-    subcategory: DataCategoryView  # 数据集所属子类别
-    region: str  # 所属区域
-    delay: int  # 延迟时间
-    universe: str  # 宇宙（范围）
-    coverage: str  # 覆盖范围
+    id: str
+    name: str
+    description: str
+    category: DataCategoryView
+    subcategory: DataCategoryView
+    region: str
+    delay: int
+    universe: str
+    coverage: str
     value_score: float = Field(
         validation_alias=AliasChoices("valueScore", "value_score"),
         serialization_alias="valueScore",
-    )  # 价值评分
+    )
     user_count: int = Field(
         validation_alias=AliasChoices("userCount", "user_count"),
         serialization_alias="userCount",
-    )  # 用户数量
+    )
     alpha_count: int = Field(
         validation_alias=AliasChoices("alphaCount", "alpha_count"),
         serialization_alias="alphaCount",
-    )  # Alpha 数量
+    )
     field_count: int = Field(
         validation_alias=AliasChoices("fieldCount", "field_count"),
         serialization_alias="fieldCount",
-    )  # 字段数量
-    themes: List[str]  # 主题列表
+    )
+    themes: List[str]
     research_papers: List["ResearchPaperView"] = Field(
         validation_alias=AliasChoices("researchPapers", "research_papers"),
         serialization_alias="researchPapers",
-    )  # 相关研究论文
+    )
     pyramid_multiplier: Optional[float] = Field(
         validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
         serialization_alias="pyramidMultiplier",
-    )  # 金字塔乘数
+    )
 
 
 class DatasetListView(BaseModel):
-    """
-    数据集列表视图模型
-    表示数据集的集合
+    """数据集列表。
+
+    表示数据集的集合，包含分页信息。
+
+    Attributes:
+        count: 数据集总数。
+        results: 数据集列表，默认为空列表。
     """
 
-    count: int  # 数据集总数
-    results: List[DatasetView] = []  # 数据集列表
+    count: int
+    results: List[DatasetView] = []
 
 
 class DatasetDataView(BaseModel):
-    """
-    数据集详细视图模型
-    表示数据集的详细统计信息
+    """数据集详细数据。
+
+    表示数据集的详细统计信息。
+
+    Attributes:
+        region: 所属区域。
+        delay: 延迟天数。
+        universe: 股票范围。
+        coverage: 覆盖范围。
+        value_score: 价值评分。
+        user_count: 用户数量。
+        alpha_count: Alpha数量。
+        field_count: 字段数量。
+        themes: 主题列表。
+        pyramid_multiplier: 金字塔乘数，可选。
     """
 
-    region: str  # 所属区域
-    delay: int  # 延迟时间
-    universe: str  # 宇宙（范围）
-    coverage: str  # 覆盖范围
+    region: str
+    delay: int
+    universe: str
+    coverage: str
     value_score: float = Field(
         validation_alias=AliasChoices("valueScore", "value_score"),
         serialization_alias="valueScore",
-    )  # 价值评分
+    )
     user_count: int = Field(
         validation_alias=AliasChoices("userCount", "user_count"),
         serialization_alias="userCount",
-    )  # 用户数量
+    )
     alpha_count: int = Field(
         validation_alias=AliasChoices("alphaCount", "alpha_count"),
         serialization_alias="alphaCount",
-    )  # Alpha 数量
+    )
     field_count: int = Field(
         validation_alias=AliasChoices("fieldCount", "field_count"),
         serialization_alias="fieldCount",
-    )  # 字段数量
-    themes: List[str]  # 主题列表
+    )
+    themes: List[str]
     pyramid_multiplier: Optional[float] = Field(
         validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
         serialization_alias="pyramidMultiplier",
-    )  # 金字塔乘数
+    )
 
 
 class ResearchPaperView(BaseModel):
-    """
-    研究论文视图模型
-    表示研究论文的基本信息
+    """研究论文。
+
+    表示研究论文的基本信息。
+
+    Attributes:
+        type: 论文类型。
+        title: 论文标题。
+        url: 论文链接。
     """
 
-    type: str  # 论文类型
-    title: str  # 论文标题
-    url: str  # 论文链接
+    type: str
+    title: str
+    url: str
 
 
 class DatasetDetailView(BaseModel):
-    """
-    数据集详细信息模型
-    包含数据集的基本信息和详细数据
+    """数据集详细信息。
+
+    表示数据集的完整详细信息，包括基础信息和各类数据。
+
+    Attributes:
+        name: 数据集名称。
+        description: 数据集描述。
+        category: 数据集所属主类别。
+        subcategory: 数据集所属子类别。
+        data: 数据集详细数据列表。
+        research_papers: 相关研究论文列表。
     """
 
-    name: str  # 数据集名称
-    description: str  # 数据集描述
-    category: DataCategoryView  # 数据集所属类别
-    subcategory: DataCategoryView  # 数据集所属子类别
-    data: List[DatasetDataView]  # 数据集详细数据
+    name: str
+    description: str
+    category: DataCategoryView
+    subcategory: DataCategoryView
+    data: List[DatasetDataView]
     research_papers: List[ResearchPaperView] = Field(
         validation_alias=AliasChoices("researchPapers", "research_papers"),
         serialization_alias="researchPapers",
-    )  # 相关研究论文
+    )
 
 
 class DataFieldItemView(BaseModel):
-    """
-    数据字段项视图模型
-    表示单个数据字段的详细信息
+    """数据字段项。
+
+    表示单个数据字段的详细信息。
+
+    Attributes:
+        region: 所属区域。
+        delay: 延迟天数。
+        universe: 股票范围。
+        coverage: 覆盖范围。
+        user_count: 用户数量。
+        alpha_count: Alpha数量。
+        themes: 主题列表。
     """
 
-    region: str  # 所属区域
-    delay: int  # 延迟时间
-    universe: str  # 宇宙（范围）
-    coverage: str  # 覆盖范围
+    region: str
+    delay: int
+    universe: str
+    coverage: str
     user_count: int = Field(
         validation_alias=AliasChoices("userCount", "user_count"),
         serialization_alias="userCount",
-    )  # 用户数量
+    )
     alpha_count: int = Field(
         validation_alias=AliasChoices("alphaCount", "alpha_count"),
         serialization_alias="alphaCount",
-    )  # Alpha 数量
-    themes: List[str]  # 主题列表
+    )
+    themes: List[str]
 
 
 class DataFieldDatasetView(BaseModel):
-    """
-    数据字段数据集视图模型
-    表示数据字段所属的数据集的基本信息
+    """数据字段所属数据集。
+
+    表示数据字段所属的数据集的基本信息。
+
+    Attributes:
+        id: 数据集的唯一标识符。
+        name: 数据集名称。
     """
 
-    id: str  # 数据集的唯一标识符
-    name: str  # 数据集名称
+    id: str
+    name: str
 
 
 class DatasetDataFieldsView(BaseModel):
-    """
-    数据集字段视图模型
-    表示数据集的字段信息
+    """数据集字段信息。
+
+    表示数据集的字段信息，包括字段所属的数据集和分类。
+
+    Attributes:
+        dataset: 数据字段所属数据集。
+        category: 数据字段所属主类别。
+        subcategory: 数据字段所属子类别。
+        description: 数据字段描述。
+        type: 数据字段类型。
+        data: 数据字段详细信息列表。
     """
 
-    dataset: DataFieldDatasetView  # 数据字段所属数据集
-    category: DataCategoryView  # 数据字段所属类别
-    subcategory: DataCategoryView  # 数据字段所属子类别
-    description: str  # 数据字段描述
-    type: str  # 数据字段类型
-    data: List[DataFieldItemView]  # 数据字段详细信息
+    dataset: DataFieldDatasetView
+    category: DataCategoryView
+    subcategory: DataCategoryView
+    description: str
+    type: str
+    data: List[DataFieldItemView]
 
 
 class DataFieldView(BaseModel):
-    """
-    数据字段模型
-    表示单个数据字段的详细信息
+    """数据字段。
+
+    表示单个数据字段的完整信息。
+
+    Attributes:
+        id: 数据字段的唯一标识符。
+        description: 数据字段描述。
+        dataset: 数据字段所属数据集。
+        category: 数据字段所属主类别。
+        subcategory: 数据字段所属子类别。
+        region: 所属区域。
+        delay: 延迟天数。
+        universe: 股票范围。
+        type: 数据字段类型。
+        coverage: 覆盖范围。
+        user_count: 用户数量。
+        alpha_count: Alpha数量。
+        themes: 主题列表。
+        pyramid_multiplier: 金字塔乘数，可选。
     """
 
-    id: str  # 数据字段的唯一标识符
-    description: str  # 数据字段描述
-    dataset: DataFieldDatasetView  # 数据字段所属数据集
-    category: DataCategoryView  # 数据字段所属类别
-    subcategory: DataCategoryView  # 数据字段所属子类别
-    region: str  # 所属区域
-    delay: int  # 延迟时间
-    universe: str  # 宇宙（范围）
-    type: str  # 数据字段类型
-    coverage: str  # 覆盖范围
+    id: str
+    description: str
+    dataset: DataFieldDatasetView
+    category: DataCategoryView
+    subcategory: DataCategoryView
+    region: str
+    delay: int
+    universe: str
+    type: str
+    coverage: str
     user_count: int = Field(
         validation_alias=AliasChoices("userCount", "user_count"),
         serialization_alias="userCount",
-    )  # 用户数量
+    )
     alpha_count: int = Field(
         validation_alias=AliasChoices("alphaCount", "alpha_count"),
         serialization_alias="alphaCount",
-    )  # Alpha 数量
-    themes: List[str]  # 主题列表
+    )
+    themes: List[str]
     pyramid_multiplier: Optional[float] = Field(
         validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
         serialization_alias="pyramidMultiplier",
-    )  # 金字塔乘数
+    )
 
 
 class DataFieldListView(BaseModel):
-    """
-    数据字段列表视图模型
-    表示数据字段的集合
+    """数据字段列表。
+
+    表示数据字段的集合，包含分页信息。
+
+    Attributes:
+        count: 数据字段总数。
+        results: 数据字段列表，默认为空列表。
     """
 
-    count: int  # 数据字段总数
-    results: List[DataFieldView] = []  # 数据字段列表
+    count: int
+    results: List[DataFieldView] = []
 
 
 class GetDataFieldsQueryParams(BaseModel):
-    """
-    获取数据字段查询参数模型
-    用于定义查询数据字段时的参数
+    """数据字段查询参数。
+
+    定义查询数据字段时使用的参数。
+
+    Attributes:
+        dataset_id: 数据集ID。
+        delay: 延迟天数，可选。
+        instrument_type: 工具类型，可选。
+        limit: 返回结果数量限制，可选。
+        offset: 结果偏移量，可选。
+        region: 区域，可选。
+        universe: 股票范围，可选。
     """
 
-    dataset_id: str = Field(
-        validation_alias=AliasChoices("dataset.id", "dataset_id")
-    )  # 数据集 ID
-    delay: Optional[int] = None  # 延迟时间
+    dataset_id: str = Field(validation_alias=AliasChoices("dataset.id", "dataset_id"))
+    delay: Optional[int] = None
     instrument_type: Optional[str] = Field(
         validation_alias=AliasChoices("instrumentType", "instrument_type")
-    )  # 仪器类型
-    limit: Optional[int] = None  # 查询结果限制数量
-    offset: Optional[int] = None  # 查询结果偏移量
-    region: Optional[str] = None  # 区域
-    universe: Optional[str] = None  # 宇宙（范围）
+    )
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+    region: Optional[str] = None
+    universe: Optional[str] = None
 
     def to_params(self) -> Dict[str, Any]:
-        """
-        转换为查询参数字典
-        :return: 查询参数字典
+        """转换为查询参数字典。
+
+        将对象的属性转换为API查询参数的字典格式。
+
+        Returns:
+            查询参数字典。
         """
         params = self.model_dump(mode="python")
         return params
 
 
 class Operator(BaseModel):
-    """
-    操作符类，表示单个操作符的详细信息。
+    """操作符。
 
-    属性:
-        name: 操作符名称
-        category: 操作符类别
-        scope: 操作符作用范围
-        definition: 操作符定义
-        description: 操作符描述
-        documentation: 操作符文档链接
-        level: 操作符级别
+    表示单个操作符的详细信息。
+
+    Attributes:
+        name: 操作符名称。
+        category: 操作符类别。
+        scope: 操作符作用范围。
+        definition: 操作符定义。
+        description: 操作符描述。
+        documentation: 操作符文档链接。
+        level: 操作符级别。
     """
 
     name: str
@@ -928,27 +1317,44 @@ class Operator(BaseModel):
 
 
 class Operators(BaseModel):
-    """
-    操作符集合类，包含多个操作符。
+    """操作符集合。
 
-    属性:
-        operators: 操作符列表
+    包含多个操作符组成的列表。
+
+    Attributes:
+        operators: 操作符列表。
     """
 
     operators: List[Operator]
 
 
 class SimulationProgressView(BaseModel):
-    """
-    表示模拟的进度。
+    """模拟进度。
+
+    表示模拟的当前进度。
+
+    Attributes:
+        progress: 进度值，范围0-1。
     """
 
     progress: float
 
 
 class SingleSimulationResultView(BaseModel):
-    """
-    表示单次模拟的结果。
+    """单次模拟结果。
+
+    表示单个Alpha模拟的结果信息。
+
+    Attributes:
+        id: 模拟结果的唯一标识符。
+        type: Alpha类型。
+        status: 模拟状态。
+        message: 模拟消息，可选。
+        location: 错误位置信息，可选。
+        settings: 模拟设置，可选。
+        regular: 常规代码，可选。
+        alpha: Alpha标识符，可选。
+        parent: 父Alpha标识符，可选。
     """
 
     id: str
@@ -962,8 +1368,15 @@ class SingleSimulationResultView(BaseModel):
     parent: Optional[str] = None
 
     class ErrorLocation(BaseModel):
-        """
-        表示模拟中错误的位置。
+        """错误位置。
+
+        表示模拟中出现错误的具体位置。
+
+        Attributes:
+            line: 行号，可选。
+            start: 开始位置，可选。
+            end: 结束位置，可选。
+            property: 相关属性，可选。
         """
 
         line: Optional[int] = None
@@ -973,8 +1386,15 @@ class SingleSimulationResultView(BaseModel):
 
 
 class MultiSimulationResultView(BaseModel):
-    """
-    表示多次模拟的结果。
+    """多次模拟结果。
+
+    表示多个Alpha模拟的结果信息。
+
+    Attributes:
+        children: 子模拟结果ID列表。
+        status: 模拟状态。
+        type: Alpha类型。
+        settings: 模拟设置，可选。
     """
 
     children: List[str]
@@ -984,8 +1404,14 @@ class MultiSimulationResultView(BaseModel):
 
 
 class SingleSimulationPayload(BaseModel):
-    """
-    表示单次模拟的请求。
+    """单次模拟请求载荷。
+
+    表示发起单次模拟的请求内容。
+
+    Attributes:
+        type: Alpha类型。
+        settings: 模拟设置。
+        regular: 常规代码。
     """
 
     type: str
@@ -993,11 +1419,12 @@ class SingleSimulationPayload(BaseModel):
     regular: str
 
     def to_params(self) -> Dict[str, Any]:
-        """
-        将模拟请求转换为参数字典。
+        """转换为参数字典。
 
-        返回:
-            Dict[str, Any]: 参数字典。
+        将模拟请求转换为API参数字典格式。
+
+        Returns:
+            参数字典。
         """
         return {
             "type": self.type,
@@ -1007,25 +1434,40 @@ class SingleSimulationPayload(BaseModel):
 
 
 class MultiSimulationPayload(RootModel):
-    """
-    表示多次模拟的请求。
+    """多次模拟请求载荷。
+
+    表示发起多次模拟的请求内容列表。
+
+    Attributes:
+        root: 单次模拟请求列表。
     """
 
     root: List[SingleSimulationPayload]
 
     def to_params(self) -> List[Any]:
-        """
-        将模拟请求转换为参数字典的列表。
+        """转换为参数列表。
 
-        返回:
-            List[Any]: 参数字典的列表。
+        将多次模拟请求转换为API参数列表格式。
+
+        Returns:
+            参数字典的列表。
         """
         return [s.to_params() for s in self.root]
 
 
 class SelfSimulationActivitiesView(BaseModel):
-    """
-    表示自模拟活动。
+    """模拟活动统计。
+
+    表示用户的模拟活动统计信息，包括不同时间段的数据。
+
+    Attributes:
+        yesterday: 昨日活动统计。
+        current: 当前时间段活动统计。
+        previous: 上一时间段活动统计。
+        ytd: 年度至今活动统计。
+        total: 总体活动统计。
+        records: 活动记录集合。
+        type: 活动类型。
     """
 
     yesterday: "SelfSimulationActivitiesView.Period"
@@ -1037,8 +1479,14 @@ class SelfSimulationActivitiesView(BaseModel):
     type: str
 
     class Period(BaseModel):
-        """
-        表示模拟活动中的一个时间段。
+        """活动时间段。
+
+        表示特定时间段的活动统计数据。
+
+        Attributes:
+            start: 开始时间。
+            end: 结束时间。
+            value: 活动值。
         """
 
         start: str
@@ -1046,8 +1494,13 @@ class SelfSimulationActivitiesView(BaseModel):
         value: float
 
     class Records(BaseModel):
-        """
-        表示模拟活动的记录。
+        """活动记录集合。
+
+        表示活动的详细记录集合。
+
+        Attributes:
+            table_schema: 表格模式。
+            records: 记录列表。
         """
 
         table_schema: TableSchema = Field(
@@ -1058,13 +1511,14 @@ class SelfSimulationActivitiesView(BaseModel):
 
 
 class AuthenticationView(BaseModel):
-    """
-    表示身份验证视图的主类，包含用户信息、令牌和权限。
+    """身份验证视图。
 
-    属性:
-        user: 用户信息
-        token: 令牌信息
-        permissions: 权限列表
+    表示身份验证的详细信息，包含用户信息、令牌和权限。
+
+    Attributes:
+        user: 用户信息。
+        token: 令牌信息。
+        permissions: 权限列表。
     """
 
     user: "AuthenticationView.User"
@@ -1072,15 +1526,23 @@ class AuthenticationView(BaseModel):
     permissions: List[str]
 
     class User(BaseModel):
-        """
-        表示用户信息的嵌套类。
+        """用户信息。
+
+        表示已认证用户的基本信息。
+
+        Attributes:
+            id: 用户的唯一标识符。
         """
 
         id: str
 
     class Token(BaseModel):
-        """
-        表示令牌信息的嵌套类。
+        """令牌信息。
+
+        表示身份验证令牌的详细信息。
+
+        Attributes:
+            expiry: 令牌过期时间戳。
         """
 
         expiry: float

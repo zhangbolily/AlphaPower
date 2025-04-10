@@ -381,7 +381,7 @@ class TestClassificationDAL:
         assert classification.classification_id == "CRUD_TEST"
 
         # 测试更新
-        updated = await classification_dal.update(
+        updated = await classification_dal.update_by_id(
             classification.id, name="更新后的分类"
         )
         assert updated is not None
@@ -389,7 +389,7 @@ class TestClassificationDAL:
         assert updated.classification_id == "CRUD_TEST"  # 未修改的字段保持不变
 
         # 测试删除
-        result = await classification_dal.delete(classification.id)
+        result = await classification_dal.delete_by_id(classification.id)
         assert result is True
 
         # 验证删除结果
@@ -442,12 +442,14 @@ class TestCompetitionDAL:
         assert competition.competition_id == "COMP_CRUD_TEST"
 
         # 测试更新
-        updated = await competition_dal.update(competition.id, name="更新后的比赛")
+        updated = await competition_dal.update_by_id(
+            competition.id, name="更新后的比赛"
+        )
         assert updated is not None
         assert updated.name == "更新后的比赛"
 
         # 测试删除
-        result = await competition_dal.delete(competition.id)
+        result = await competition_dal.delete_by_id(competition.id)
         assert result is True
 
         # 验证删除结果
@@ -501,12 +503,12 @@ class TestSampleDAL:
         assert sample.id is not None
 
         # 测试更新
-        updated = await sample_dal.update(sample.id, sharpe=2.0, drawdown=0.1)
+        updated = await sample_dal.update_by_id(sample.id, sharpe=2.0, drawdown=0.1)
         assert updated is not None
         assert updated.sharpe == 2.0
 
         # 测试删除
-        result = await sample_dal.delete(sample.id)
+        result = await sample_dal.delete_by_id(sample.id)
         assert result is True
 
         # 验证删除结果
@@ -533,13 +535,13 @@ class TestSampleCheckDAL:
         assert sample_check.id is not None
 
         # 测试更新
-        updated = await sample_check_dal.update(
+        updated = await sample_check_dal.update_by_id(
             sample_check.id, result="不通过", message="测试信息"
         )
         assert updated is not None
 
         # 测试删除
-        result = await sample_check_dal.delete(sample_check.id)
+        result = await sample_check_dal.delete_by_id(sample_check.id)
         assert result is True
 
         # 验证删除结果

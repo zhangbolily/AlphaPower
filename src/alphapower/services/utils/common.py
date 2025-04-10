@@ -47,6 +47,7 @@ async def get_or_create_entity(
     if entity is None:
         entity = model(**{unique_field: data.id, "name": data.name})  # 类型为 T
         session.add(entity)
+        await session.commit()
     return entity
 
 
@@ -68,6 +69,7 @@ async def get_or_create_category(
     if category is None:
         category = Category(name=category_name)
         session.add(category)
+        await session.commit()
     return category
 
 
@@ -91,6 +93,7 @@ async def get_or_create_subcategory(
     if subcategory is None:
         subcategory = Category(name=subcategory_name)
         session.add(subcategory)
+        await session.commit()
     return subcategory
 
 

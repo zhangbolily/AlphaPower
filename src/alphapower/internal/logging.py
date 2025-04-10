@@ -2,8 +2,10 @@
 日志模块
 """
 
+import asyncio
 import logging
 import os
+import threading
 from logging.handlers import RotatingFileHandler
 from typing import Any, Mapping, MutableMapping
 
@@ -24,6 +26,30 @@ def unicode_decoder(
     return event_dict
 
 
+def add_coroutine_id(
+    _: Any, __: str, event_dict: MutableMapping[str, Any]
+) -> Mapping[str, Any]:
+    """
+    添加当前协程ID到日志事件中。
+
+    如果当前是在协程中运行，则添加协程ID；否则添加线程ID。
+    """
+    try:
+        # 尝试获取当前协程的任务
+        task = asyncio.current_task()
+        if task:
+            # 如果是协程，添加协程ID
+            event_dict["coroutine_id"] = id(task)
+        else:
+            # 如果不是协程，添加线程ID
+            event_dict["thread_id"] = threading.get_ident()
+    except RuntimeError:
+        # 如果不在事件循环中运行，添加线程ID
+        event_dict["thread_id"] = threading.get_ident()
+
+    return event_dict
+
+
 def setup_logging(
     module_name: str, enable_console: bool = True
 ) -> structlog.stdlib.BoundLogger:
@@ -38,7 +64,10 @@ def setup_logging(
         os.makedirs(settings.log_dir)
 
     # 修改标准日志格式
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(module)s.%(funcName)s:%(lineno)d - %(message)s"
+    log_format = (
+        "%(asctime)s - %(name)s - %(levelname)s - "
+        "%(module)s.%(funcName)s:%(lineno)d - %(message)s"
+    )
     formatter = logging.Formatter(log_format)
 
     # 为特定模块创建日志记录器
@@ -84,6 +113,7 @@ def setup_logging(
                     structlog.processors.CallsiteParameter.PATHNAME,
                 }
             ),
+            add_coroutine_id,  # 添加协程ID处理器
             unicode_decoder,
             structlog.processors.JSONRenderer(ensure_ascii=False),
         ],

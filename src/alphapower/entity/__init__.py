@@ -17,7 +17,7 @@ __all__ = [
     "alphas_classifications",
     "alphas_competitions",
     "Sample",
-    "SampleCheck",
+    "Check",
     "Setting",
     "DataBase",
     "Category",
@@ -43,11 +43,11 @@ from .alphas import (
 )
 from .alphas import Base as AlphaBase
 from .alphas import (
+    Check,
     Classification,
     Competition,
     Regular,
     Sample,
-    SampleCheck,
     Setting,
     alphas_classifications,
     alphas_competitions,

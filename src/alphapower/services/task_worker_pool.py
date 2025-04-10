@@ -32,6 +32,9 @@ async def task_start_worker_pool(
         worker_timeout (int): 工作者健康检查超时时间（秒）。
         task_fetch_size (int): 每次从任务提供者获取的任务数量。
         low_priority_threshold (int): 低优先级任务提升阈值。
+    
+    # TODO(Ball Chang): 新增定时主动垃圾回收机制，提高长时间运行的稳定性
+    # TODO(Ball Chang): 优化日志格式，输出内容紧凑高效，日志级别配置合理
     """
 
     # 创建一个事件来控制优雅关闭

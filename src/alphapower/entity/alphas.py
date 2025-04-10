@@ -2,9 +2,25 @@
 alphas.py
 
 定义了与 Alpha 模型相关的数据库实体类、中间表和设置类。
+
+模块功能：
+- 提供 Alpha 策略的核心数据模型，包括分类、比赛、样本、设置等。
+- 支持 Alpha 策略的多对多关系映射。
+- 提供标签管理的便捷方法。
+
+模块结构：
+- Base: 所有 ORM 模型类的基础类。
+- Classification: Alpha 分类表。
+- Competition: Alpha 比赛表。
+- SampleCheck: Alpha 样本检查表。
+- Sample: Alpha 样本表。
+- Setting: Alpha 设置表。
+- Regular: Alpha 规则表。
+- Alpha: Alpha 主表。
 """
 
-from typing import Any
+from datetime import datetime
+from typing import Any, List, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -19,7 +35,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship, validates
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    MappedColumn,
+    mapped_column,
+    relationship,
+    validates,
+)
 
 from alphapower.constants import (
     AlphaType,
@@ -30,6 +53,7 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Stage,
     Status,
     Switch,
@@ -49,81 +73,123 @@ class Base(AsyncAttrs, DeclarativeBase):
 class Classification(Base):
     """Alpha 分类表，存储 Alpha 的分类信息。
 
-    该类定义了 Alpha 的分类系统，用于对 Alpha 进行分类管理。
-
     Attributes:
-        id: 主键ID。
-        classification_id: 唯一的分类标识符。
-        name: 分类名称。
+        id (int): 主键ID。
+        classification_id (str): 唯一的分类标识符。
+        name (str): 分类名称。
     """
 
     __tablename__ = "classifications"
 
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    classification_id = mapped_column(String, nullable=False, unique=True)  # 分类 ID
-    name = mapped_column(String)  # 分类名称
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    classification_id: MappedColumn[str] = mapped_column(
+        String, nullable=False, unique=True
+    )
+    name: MappedColumn[str] = mapped_column(String)
 
 
 class Competition(Base):
-    """Alpha 比赛表，存储 Alpha 的比赛信息。"""
+    """Alpha 比赛表，存储 Alpha 的比赛信息。
+
+    Attributes:
+        id (int): 主键ID。
+        competition_id (str): 唯一的比赛标识符。
+        name (str): 比赛名称。
+    """
 
     __tablename__ = "competitions"
 
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    competition_id = mapped_column(String, nullable=False, unique=True)  # 比赛 ID
-    name = mapped_column(String)  # 比赛名称
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    competition_id: MappedColumn[str] = mapped_column(
+        String, nullable=False, unique=True
+    )
+    name: MappedColumn[str] = mapped_column(String)
 
 
-class SampleCheck(Base):
-    """Alpha 样本检查表，存储样本检查的结果和相关信息。"""
+class Check(Base):
+    """Alpha 样本检查表，存储样本检查的结果和相关信息。
 
-    __tablename__ = "sample_checks"
+    Attributes:
+        id (int): 主键ID。
+        sample_id (int): 外键连接到 Sample 表。
+        name (str): 检查名称。
+        result (str): 检查结果。
+        message (Optional[str]): 消息。
+        limit (Optional[float]): 限制。
+        value (Optional[float]): 值。
+        date (Optional[datetime]): 日期。
+        competitions (Optional[str]): 比赛。
+    """
 
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name = mapped_column(String)  # 检查名称
-    result = mapped_column(String)  # 检查结果
-    message = mapped_column(String, nullable=True)  # 消息
-    limit = mapped_column(Float, nullable=True)  # 限制
-    value = mapped_column(Float, nullable=True)  # 值
-    date = mapped_column(DateTime, nullable=True)  # 日期
-    competitions = mapped_column(String, nullable=True)  # 比赛
+    __tablename__ = "checks"
+
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sample_id: MappedColumn[int] = mapped_column(
+        Integer, ForeignKey("samples.id"), nullable=False
+    )
+    name: MappedColumn[str] = mapped_column(String)
+    result: MappedColumn[str] = mapped_column(String)
+    message: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    limit: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    value: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    date: MappedColumn[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    competitions: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class Sample(Base):
-    """Alpha 样本表，存储样本的各种统计信息。"""
+    """Alpha 样本表，存储样本的各种统计信息。
+
+    Attributes:
+        id (int): 主键ID。
+        long_count (Optional[int]): 多头数量。
+        short_count (Optional[int]): 空头数量。
+        pnl (Optional[float]): 盈亏。
+        book_size (Optional[float]): 账簿大小。
+        turnover (Optional[float]): 换手率。
+        returns (Optional[float]): 收益。
+        drawdown (Optional[float]): 回撤。
+        margin (Optional[float]): 保证金。
+        sharpe (Optional[float]): 夏普比率。
+        fitness (Optional[float]): 适应度。
+        self_correration (Optional[float]): 自相关。
+        prod_correration (Optional[float]): 生产相关。
+        os_is_sharpe_ratio (Optional[float]): OS-IS 夏普比率。
+        pre_close_sharpe_ratio (Optional[float]): 收盘前夏普比率。
+        start_date (datetime): 开始日期。
+        checks (List[Check]): 样本检查的关系字段。
+    """
 
     __tablename__ = "samples"
 
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-
-    # 整型字段
-    long_count = mapped_column(Integer, nullable=True)  # 多头数量
-    short_count = mapped_column(Integer, nullable=True)  # 空头数量
-
-    # 浮点数字段
-    pnl = mapped_column(Float, nullable=True)  # 盈亏
-    book_size = mapped_column(Float, nullable=True)  # 账簿大小
-    turnover = mapped_column(Float, nullable=True)  # 换手率
-    returns = mapped_column(Float, nullable=True)  # 收益
-    drawdown = mapped_column(Float, nullable=True)  # 回撤
-    margin = mapped_column(Float, nullable=True)  # 保证金
-    sharpe = mapped_column(Float, nullable=True)  # 夏普比率
-    fitness = mapped_column(Float, nullable=True)  # 适应度
-    self_correration = mapped_column(Float, nullable=True)  # 自相关
-    prod_correration = mapped_column(Float, nullable=True)  # 生产相关
-    os_is_sharpe_ratio = mapped_column(Float, nullable=True)  # OS-IS 夏普比率
-    pre_close_sharpe_ratio = mapped_column(Float, nullable=True)  # 收盘前夏普比率
-
-    # 日期时间字段
-    start_date = mapped_column(DateTime)  # 开始日期
-
-    # 外键和关系
-    checks_id = mapped_column(
-        Integer, ForeignKey("sample_checks.id")
-    )  # 外键连接到 SampleCheck 表
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    long_count: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
+    short_count: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
+    pnl: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    book_size: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    turnover: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    returns: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    drawdown: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    margin: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    sharpe: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    fitness: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    self_correration: MappedColumn[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    prod_correration: MappedColumn[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    os_is_sharpe_ratio: MappedColumn[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    pre_close_sharpe_ratio: MappedColumn[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    start_date: MappedColumn[datetime] = mapped_column(DateTime)
     checks = relationship(
-        "SampleCheck", backref="alpha_samples"
-    )  # 定义 checks 字段的关系
+        "Check",
+        backref="sample",  # 定义一对多关系，样本检查属于某个样本
+        cascade="all, delete-orphan",
+    )
 
 
 class Setting(Base):
@@ -133,73 +199,79 @@ class Setting(Base):
     其他影响 Alpha 性能的参数。
 
     Attributes:
-        id: 主键ID。
-        instrument_type: 使用的金融工具类型。
-        region: Alpha 应用的市场区域。
-        universe: Alpha 选用的股票范围。
-        delay: 信号延迟时间（单位：天）。
-        decay: 信号衰减参数。
-        neutralization: 中性化方法，用于控制风险暴露。
-        truncation: 截断阈值，控制异常值影响。
-        pasteurization: 巴氏化处理方法。
-        unit_handling: 单位处理方式。
-        nan_handling: NaN 值处理方式。
-        language: 编程语言。
-        visualization: 是否启用可视化。
-        test_period: 测试周期。
-        max_trade: 最大交易量。
+        id (int): 主键ID。
+        instrument_type (InstrumentType): 使用的金融工具类型。
+        region (Region): Alpha 应用的市场区域。
+        universe (Universe): Alpha 选用的股票范围。
+        delay (Delay): 信号延迟时间（单位：天）。
+        decay (int): 信号衰减参数。
+        neutralization (Neutralization): 中性化方法，用于控制风险暴露。
+        truncation (float): 截断阈值，控制异常值影响。
+        pasteurization (Switch): 巴氏化处理方法。
+        unit_handling (UnitHandling): 单位处理方式。
+        nan_handling (Switch): NaN 值处理方式。
+        language (RegularLanguage): 编程语言。
+        visualization (bool): 是否启用可视化。
+        test_period (Optional[str]): 测试周期。
+        max_trade (Optional[Switch]): 最大交易量。
     """
 
     __tablename__ = "settings"
 
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-
-    # 字符串字段
-    language = mapped_column(String)  # 编程语言
-    test_period = mapped_column(String, nullable=True)  # 测试周期
-
-    # 数值字段
-    decay = mapped_column(Integer)  # 信号衰减参数
-    truncation = mapped_column(Float)  # 截断阈值，控制异常值影响
-
-    # 布尔字段
-    visualization = mapped_column(Boolean)  # 是否启用可视化
-
-    # 枚举字段
-    instrument_type = mapped_column(
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    language: MappedColumn[RegularLanguage] = mapped_column(
+        Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
+    )
+    test_period: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    decay: MappedColumn[int] = mapped_column(Integer, nullable=False)
+    truncation: MappedColumn[float] = mapped_column(Float, nullable=False)
+    visualization: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    instrument_type: MappedColumn[InstrumentType] = mapped_column(
         Enum(InstrumentType), nullable=False, default=InstrumentType.DEFAULT
-    )  # 使用的金融工具类型
-    region = mapped_column(
+    )
+    region: MappedColumn[Region] = mapped_column(
         Enum(Region), nullable=False, default=Region.DEFAULT
-    )  # Alpha 应用的市场区域
-    universe = mapped_column(
+    )
+    universe: MappedColumn[Universe] = mapped_column(
         Enum(Universe), nullable=False, default=Universe.DEFAULT
-    )  # Alpha 选用的股票范围
-    delay = mapped_column(
+    )
+    delay: MappedColumn[Delay] = mapped_column(
         Enum(Delay), nullable=False, default=Delay.DEFAULT
-    )  # 信号延迟时间（单位：天）
-    neutralization = mapped_column(
+    )
+    neutralization: MappedColumn[Neutralization] = mapped_column(
         Enum(Neutralization), nullable=False, default=Neutralization.DEFAULT
-    )  # 中性化方法
-    pasteurization = mapped_column(
+    )
+    pasteurization: MappedColumn[Switch] = mapped_column(
         Enum(Switch), nullable=False, default=Switch.DEFAULT
-    )  # 巴氏化处理方法
-    unit_handling = mapped_column(
+    )
+    unit_handling: MappedColumn[UnitHandling] = mapped_column(
         Enum(UnitHandling), nullable=False, default=UnitHandling.DEFAULT
-    )  # 单位处理方式
-    nan_handling = mapped_column(
+    )
+    nan_handling: MappedColumn[Switch] = mapped_column(
         Enum(Switch), nullable=False, default=Switch.DEFAULT
-    )  # NaN 值处理方式
-    max_trade = mapped_column(
+    )
+    max_trade: MappedColumn[Optional[Switch]] = mapped_column(
         Enum(Switch), nullable=True, default=Switch.DEFAULT
-    )  # 最大交易量
+    )
 
-    # 验证方法
     @validates("decay")
     def validate_decay(self, key: str, value: int) -> int:
-        """验证 decay 字段的值是否在有效范围内"""
-        if value is not None and not (Decay.MIN.value <= value <= Decay.MAX.value):
-            raise ValueError(f"{key} 必须在 {Decay.MIN} 到 {Decay.MAX} 之间")
+        """验证 decay 字段的值是否在有效范围内
+
+        Args:
+            key: 字段名称
+            value: 要验证的值
+
+        Returns:
+            int: 验证通过的值
+
+        Raises:
+            ValueError: 当值不在有效范围内时抛出
+        """
+        if value and not (Decay.MIN.value <= value <= Decay.MAX.value):
+            raise ValueError(
+                f"{key} 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间"
+            )
         return value
 
 
@@ -209,18 +281,18 @@ class Regular(Base):
     该类定义了 Alpha 的规则相关信息，包括规则代码、描述和操作符统计。
 
     Attributes:
-        id: 主键ID。
-        code: 规则代码。
-        description: 规则描述。
-        operator_count: 规则中的操作符数量。
+        id (int): 主键ID。
+        code (str): 规则代码。
+        description (Optional[str]): 规则描述。
+        operator_count (int): 操作符数量。
     """
 
     __tablename__ = "regulars"
 
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-    code = mapped_column(String)  # 规则代码
-    description = mapped_column(String, nullable=True)  # 描述
-    operator_count = mapped_column(Integer)  # 操作符数量
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: MappedColumn[str] = mapped_column(String)
+    description: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    operator_count: MappedColumn[int] = mapped_column(Integer)
 
 
 class Alpha(Base):
@@ -229,99 +301,117 @@ class Alpha(Base):
     该类是系统的核心实体，定义了 Alpha 策略的所有关键属性和关联关系。
 
     Attributes:
-        id: 主键ID。
-        alpha_id: 唯一的 Alpha 标识符。
-        type: Alpha 类型。
-        author: Alpha 创建者。
-        settings_id: Alpha 设置的外键ID。
-        regular_id: Alpha 规则的外键ID。
-        date_created: Alpha 创建日期。
-        date_submitted: Alpha 提交日期。
-        date_modified: Alpha 修改日期。
-        name: Alpha 名称。
-        favorite: 是否收藏。
-        hidden: 是否隐藏。
-        color: Alpha 颜色。
-        category: Alpha 类别。
-        tags: Alpha 标签。
-        classifications: Alpha 的分类信息。
-        grade: Alpha 等级。
-        stage: Alpha 阶段。
-        status: Alpha 状态。
-        in_sample_id: 样本内的外键ID。
-        out_sample_id: 样本外的外键ID。
-        train_id: 训练样本的外键ID。
-        test_id: 测试样本的外键ID。
-        prod_id: 生产样本的外键ID。
-        competitions: Alpha 的比赛信息。
-        themes: Alpha 主题。
-        pyramids: Alpha 金字塔。
-        team: Alpha 团队。
+        id (int): 主键ID。
+        alpha_id (str): 唯一的 Alpha 标识符。
+        type (AlphaType): Alpha 类型。
+        author (str): Alpha 创建者。
+        settings_id (int): Alpha 设置的外键ID。
+        regular_id (int): Alpha 规则的外键ID。
+        date_created (datetime): Alpha 创建日期。
+        date_submitted (Optional[datetime]): Alpha 提交日期。
+        date_modified (Optional[datetime]): Alpha 修改日期。
+        name (Optional[str]): Alpha 名称。
+        favorite (bool): 是否收藏。
+        hidden (bool): 是否隐藏。
+        color (Color): Alpha 颜色。
+        category (Optional[str]): Alpha 类别。
+        tags (List[str]): Alpha 标签。
+        classifications (List[Classification]): Alpha 的分类信息。
+        grade (Grade): Alpha 等级。
+        stage (Stage): Alpha 阶段。
+        status (Status): Alpha 状态。
+        in_sample_id (Optional[int]): 样本内的外键ID。
+        out_sample_id (Optional[int]): 样本外的外键ID。
+        train_id (Optional[int]): 训练样本的外键ID。
+        test_id (Optional[int]): 测试样本的外键ID。
+        prod_id (Optional[int]): 生产样本的外键ID。
+        competitions (List[Competition]): Alpha 的比赛信息。
+        themes (Optional[str]): Alpha 主题。
+        pyramids (Optional[str]): Alpha 金字塔。
+        team (Optional[str]): Alpha 团队。
     """
 
     __tablename__ = "alphas"
 
-    # 主键
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
-
-    # 字符串字段
-    alpha_id = mapped_column(String, nullable=False, unique=True)  # Alpha ID
-    author = mapped_column(String)  # 作者
-    name = mapped_column(String, nullable=True)  # 名称
-    category = mapped_column(String, nullable=True)  # 类别
-    _tags = mapped_column(String, name="tags")  # 标签，存储为逗号分隔的字符串
-    themes = mapped_column(String, nullable=True)  # 主题
-    pyramids = mapped_column(String, nullable=True)  # 金字塔
-    team = mapped_column(String, nullable=True)  # 团队
-
-    # 布尔字段
-    favorite = mapped_column(Boolean)  # 收藏
-    hidden = mapped_column(Boolean)  # 隐藏
-
-    # 枚举字段
-    type = mapped_column(
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alpha_id: MappedColumn[str] = mapped_column(String, nullable=False, unique=True)
+    author: MappedColumn[str] = mapped_column(String, nullable=False)
+    name: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    category: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    _tags: MappedColumn[Optional[str]] = mapped_column(String, name="tags")
+    themes: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    pyramids: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    team: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    favorite: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    hidden: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    type: MappedColumn[AlphaType] = mapped_column(
         Enum(AlphaType), nullable=False, default=AlphaType.DEFAULT
-    )  # Alpha 类型
-    color = mapped_column(Enum(Color), nullable=False, default=Color.NONE)  # 颜色
-    grade = mapped_column(Enum(Grade), nullable=False, default=Grade.DEFAULT)  # 等级
-    stage = mapped_column(Enum(Stage), nullable=False, default=Stage.DEFAULT)  # 阶段
-    status = mapped_column(Enum(Status), nullable=False, default=Status.DEFAULT)  # 状态
-
-    # 日期时间字段
-    date_created = mapped_column(DateTime)  # 创建日期
-    date_submitted = mapped_column(DateTime, nullable=True)  # 提交日期
-    date_modified = mapped_column(DateTime, nullable=True)  # 修改日期
-
-    # 外键和关系
-    settings_id = mapped_column(Integer, ForeignKey("settings.id"))  # 设置 ID
-    settings = relationship("Setting", backref="alphas")
-    regular_id = mapped_column(Integer, ForeignKey("regulars.id"))  # 规则 ID
-    regular = relationship("Regular", backref="alphas")
-    in_sample_id = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
-    )  # 样本内 ID
-    in_sample = relationship(
-        "Sample", foreign_keys=[in_sample_id], backref="alphas_inSample"
     )
-    out_sample_id = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
-    )  # 样本外 ID
-    out_sample = relationship(
-        "Sample", foreign_keys=[out_sample_id], backref="alphas_outSample"
+    color: MappedColumn[Color] = mapped_column(
+        Enum(Color), nullable=False, default=Color.NONE
     )
-    train_id = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
-    )  # 训练 ID
-    train = relationship("Sample", foreign_keys=[train_id], backref="alphas_train")
-    test_id = mapped_column(Integer, ForeignKey("samples.id"), nullable=True)  # 测试 ID
-    test = relationship("Sample", foreign_keys=[test_id], backref="alphas_test")
-    prod_id = mapped_column(Integer, ForeignKey("samples.id"), nullable=True)  # 生产 ID
-    prod = relationship("Sample", foreign_keys=[prod_id], backref="alphas_prod")
-    classifications = relationship(
-        "Classification", secondary="alpha_classification", backref="alphas"
+    grade: MappedColumn[Grade] = mapped_column(
+        Enum(Grade), nullable=False, default=Grade.DEFAULT
     )
-    competitions = relationship(
-        "Competition", secondary="alpha_competition", backref="alphas"
+    stage: MappedColumn[Stage] = mapped_column(
+        Enum(Stage), nullable=False, default=Stage.DEFAULT
+    )
+    status: MappedColumn[Status] = mapped_column(
+        Enum(Status), nullable=False, default=Status.DEFAULT
+    )
+    date_created: MappedColumn[datetime] = mapped_column(DateTime, nullable=False)
+    date_submitted: MappedColumn[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    date_modified: MappedColumn[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    settings_id: MappedColumn[int] = mapped_column(
+        Integer, ForeignKey("settings.id"), nullable=False
+    )
+    settings: Mapped["Setting"] = relationship("Setting", backref="alphas")
+    regular_id: MappedColumn[int] = mapped_column(
+        Integer, ForeignKey("regulars.id"), nullable=False
+    )
+    regular: Mapped["Regular"] = relationship("Regular", backref="alphas")
+    in_sample_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer, ForeignKey("samples.id"), nullable=True
+    )
+    in_sample: Mapped["Sample"] = relationship(
+        "Sample", foreign_keys=[in_sample_id], uselist=False, backref="alphas_in_sample"
+    )
+    out_sample_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer, ForeignKey("samples.id"), nullable=True
+    )
+    out_sample: Mapped["Sample"] = relationship(
+        "Sample",
+        foreign_keys=[out_sample_id],
+        uselist=False,
+        backref="alphas_out_sample",
+    )
+    train_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer, ForeignKey("samples.id"), nullable=True
+    )
+    train: Mapped["Sample"] = relationship(
+        "Sample", foreign_keys=[train_id], uselist=False, backref="alphas_train"
+    )
+    test_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer, ForeignKey("samples.id"), nullable=True
+    )
+    test: Mapped["Sample"] = relationship(
+        "Sample", foreign_keys=[test_id], uselist=False, backref="alphas_test"
+    )
+    prod_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer, ForeignKey("samples.id"), nullable=True
+    )
+    prod: Mapped["Sample"] = relationship(
+        "Sample", foreign_keys=[prod_id], uselist=False, backref="alphas_prod"
+    )
+    classifications: Mapped[List["Classification"]] = relationship(
+        "Classification", secondary="alpha_classification", backref="alphas", cascade=""
+    )
+    competitions: Mapped[List["Competition"]] = relationship(
+        "Competition", secondary="alpha_competition", backref="alphas", cascade=""
     )
 
     def __init__(self, **kwargs: Any) -> None:
@@ -330,15 +420,9 @@ class Alpha(Base):
         Args:
             **kwargs: 包含所有模型属性的关键字参数。
         """
-        # 处理 tags 属性 (如果存在)
         tags = kwargs.pop("tags", None)
-
-        # 调用父类的 __init__ 处理其他属性
         super().__init__(**kwargs)
-
-        # 手动设置 _tags 属性
         if tags is not None:
-            # 过滤空标签，并使用逗号连接
             self._tags = ",".join(
                 filter(
                     None,
@@ -347,19 +431,26 @@ class Alpha(Base):
             )
 
     @hybrid_property
-    def tags(self) -> list:
-        """获取标签列表"""
+    def tags(self) -> List[str]:
+        """获取标签列表
+
+        Returns:
+            List[str]: 标签字符串列表
+        """
         if self._tags is None:
             return []
         return [tag.strip() for tag in self._tags.split(",") if tag.strip()]
 
     @tags.setter  # type: ignore[no-redef]
-    def tags(self, value: list) -> None:
-        """设置标签列表"""
+    def tags(self, value: Optional[List[str]]) -> None:
+        """设置标签列表
+
+        Args:
+            value: 标签字符串列表
+        """
         if value is None:
             self._tags = None
         else:
-            # 过滤空标签，并使用逗号连接
             self._tags = ",".join(
                 filter(
                     None,
@@ -371,7 +462,11 @@ class Alpha(Base):
             )
 
     def add_tag(self, tag: str) -> None:
-        """添加单个标签到标签列表"""
+        """添加单个标签到标签列表
+
+        Args:
+            tag: 要添加的标签
+        """
         if not tag or not tag.strip():
             return
 
@@ -381,7 +476,11 @@ class Alpha(Base):
             self.tags = current_tags  # type: ignore[method-assign]
 
     def remove_tag(self, tag: str) -> None:
-        """从标签列表中移除单个标签"""
+        """从标签列表中移除单个标签
+
+        Args:
+            tag: 要移除的标签
+        """
         if not tag or not tag.strip() or not self.tags:
             return
 
@@ -391,7 +490,6 @@ class Alpha(Base):
             self.tags = current_tags  # type: ignore[method-assign]
 
 
-# 中间表，用于表示 Alphas 和 Classifications 之间的多对多关系
 alphas_classifications = Table(
     "alpha_classification",
     Base.metadata,
@@ -404,7 +502,7 @@ alphas_classifications = Table(
     ),
 )
 
-# 中间表，用于表示 Alphas 和 Competitions 之间的多对多关系
+
 alphas_competitions = Table(
     "alpha_competition",
     Base.metadata,

@@ -195,3 +195,6 @@ async def test_create_multi_simulation(client: WorldQuantClient) -> None:
             assert progress_or_result.alpha is not None
     elif progress_or_result.status == "FAILED":
         pass
+
+
+# TODO(Ball Chang): 修复无法通过的测试用例，提升测试覆盖率

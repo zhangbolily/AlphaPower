@@ -41,11 +41,11 @@ from alphapower.constants import (
 from alphapower.entity import (
     Alpha,
     AlphaBase,
+    Check,
     Classification,
     Competition,
     Regular,
     Sample,
-    SampleCheck,
     Setting,
     alphas_classifications,
     alphas_competitions,
@@ -264,7 +264,7 @@ class TestSampleCheck:
             session: 数据库会话对象。
         """
         now: datetime.datetime = datetime.datetime.now()
-        sample_check: SampleCheck = SampleCheck(
+        sample_check: Check = Check(
             name="mean_exposure_check",
             result="PASS",
             limit=0.05,
@@ -277,9 +277,9 @@ class TestSampleCheck:
         await session.flush()
 
         result: Result = await session.execute(
-            select(SampleCheck).where(SampleCheck.name == "mean_exposure_check")
+            select(Check).where(Check.name == "mean_exposure_check")
         )
-        db_sample_check: Optional[SampleCheck] = result.scalars().first()
+        db_sample_check: Optional[Check] = result.scalars().first()
 
         assert db_sample_check is not None
         assert db_sample_check.name == "mean_exposure_check"
@@ -304,7 +304,7 @@ class TestSample:
             session: 数据库会话对象。
         """
         # 先创建一个 SampleCheck 用于建立关联关系
-        sample_check: SampleCheck = SampleCheck(name="basic_check", result="PASS")
+        sample_check: Check = Check(name="basic_check", result="PASS")
         session.add(sample_check)
         await session.flush()
 

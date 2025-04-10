@@ -3,7 +3,7 @@ Alpha数据访问层模块
 提供对Alpha模型及其相关实体的数据访问操作。
 """
 
-from typing import List, Optional
+from typing import List, Optional, Type
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,11 +12,11 @@ from sqlalchemy.sql.expression import Select
 from alphapower.dal.base import EntityDAL
 from alphapower.entity.alphas import (
     Alpha,
+    Check,
     Classification,
     Competition,
     Regular,
     Sample,
-    SampleCheck,
     Setting,
 )
 
@@ -28,14 +28,7 @@ class AlphaDAL(EntityDAL[Alpha]):
     实现了Alpha实体的查询和管理功能，包括按ID、作者、状态等多种方式查询。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 AlphaDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Alpha, session)
+    entity_class: Type[Alpha] = Alpha
 
     async def find_by_alpha_id(
         self, alpha_id: str, session: Optional[AsyncSession] = None
@@ -153,14 +146,7 @@ class SettingDAL(EntityDAL[Setting]):
     管理Alpha相关的设置信息，支持通用的CRUD操作。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 SettingDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Setting, session)
+    entity_class: Type[Setting] = Setting
 
 
 class RegularDAL(EntityDAL[Regular]):
@@ -170,14 +156,7 @@ class RegularDAL(EntityDAL[Regular]):
     管理Alpha规则相关的数据访问，包括规则查询和代码分析。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 RegularDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Regular, session)
+    entity_class: Type[Regular] = Regular
 
     async def find_similar_code(
         self, code_fragment: str, session: Optional[AsyncSession] = None
@@ -207,14 +186,7 @@ class ClassificationDAL(EntityDAL[Classification]):
     管理Alpha分类相关的数据访问，支持通过ID查询分类信息。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 ClassificationDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Classification, session)
+    entity_class: Type[Classification] = Classification
 
     async def find_by_classification_id(
         self, classification_id: str, session: Optional[AsyncSession] = None
@@ -241,14 +213,7 @@ class CompetitionDAL(EntityDAL[Competition]):
     管理比赛相关的数据访问，支持通过ID查询比赛信息。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 CompetitionDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Competition, session)
+    entity_class: Type[Competition] = Competition
 
     async def find_by_competition_id(
         self, competition_id: str, session: Optional[AsyncSession] = None
@@ -273,14 +238,7 @@ class SampleDAL(EntityDAL[Sample]):
     管理样本数据的访问，包括性能指标分析和查询。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 SampleDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(Sample, session)
+    entity_class: Type[Sample] = Sample
 
     async def find_by_performance(
         self, min_sharpe: float, session: Optional[AsyncSession] = None
@@ -303,18 +261,11 @@ class SampleDAL(EntityDAL[Sample]):
         return list(result.scalars().all())
 
 
-class SampleCheckDAL(EntityDAL[SampleCheck]):
+class SampleCheckDAL(EntityDAL[Check]):
     """
     SampleCheck 数据访问层类，提供对 SampleCheck 实体的特定操作。
 
     管理样本检查记录，支持通用的CRUD操作。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 SampleCheckDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
-        super().__init__(SampleCheck, session)
+    entity_class: Type[Check] = Check
