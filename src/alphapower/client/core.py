@@ -4,7 +4,7 @@ WorldQuant AlphaPower Client
 
 import asyncio
 from contextlib import suppress
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from aiohttp import BasicAuth, ClientSession
 
@@ -16,6 +16,7 @@ from .models import (
     AlphaDetailView,
     AlphaPropertiesPayload,
     AuthenticationView,
+    CompetitionListView,
     DataCategoriesListView,
     DataFieldListView,
     DatasetDataFieldsView,
@@ -34,6 +35,7 @@ from .models import (
     SingleSimulationResultView,
 )
 from .raw_api import (
+    alpha_fetch_competitions,
     authentication,
     create_multi_simulation,
     create_single_simulation,
@@ -227,7 +229,7 @@ class WorldQuantClient:
     # Simulation-related methods
     # -------------------------------
     @exception_handler
-    async def create_single_simulation(
+    async def simulation_create_single(
         self, payload: SingleSimulationPayload
     ) -> tuple[bool, str, float]:
         """
@@ -251,7 +253,7 @@ class WorldQuantClient:
         return success, progress_id, retry_after
 
     @exception_handler
-    async def create_multi_simulation(
+    async def simulation_create_multi(
         self, payload: MultiSimulationPayload
     ) -> tuple[bool, str, float]:
         """
@@ -275,7 +277,7 @@ class WorldQuantClient:
         return success, progress_id, retry_after
 
     @exception_handler
-    async def delete_simulation(self, progress_id: str) -> bool:
+    async def simulation_delete(self, progress_id: str) -> bool:
         """
         删除模拟。
 
@@ -295,7 +297,7 @@ class WorldQuantClient:
         return True
 
     @exception_handler
-    async def get_single_simulation_progress(
+    async def simulation_get_progress_single(
         self, progress_id: str
     ) -> tuple[bool, Union[SingleSimulationResultView, SimulationProgressView], float]:
         """
@@ -324,7 +326,7 @@ class WorldQuantClient:
         return finished, progress_or_result, retry_after
 
     @exception_handler
-    async def get_multi_simulation_progress(
+    async def simulation_get_progress_multi(
         self, progress_id: str
     ) -> tuple[bool, Union[MultiSimulationResultView, SimulationProgressView], float]:
         """
@@ -354,7 +356,7 @@ class WorldQuantClient:
         return finished, progress_or_result, retry_after
 
     @exception_handler
-    async def get_multi_simulation_child_result(
+    async def simulation_get_child_result(
         self, child_progress_id: str
     ) -> tuple[bool, SingleSimulationResultView]:
         """
@@ -384,7 +386,7 @@ class WorldQuantClient:
     # -------------------------------
     @exception_handler
     @rate_limit_handler
-    async def get_self_alphas(
+    async def alpha_get_self_list(
         self, query: SelfAlphaListQueryParams
     ) -> tuple[SelfAlphaListView, RateLimit]:
         """
@@ -407,7 +409,7 @@ class WorldQuantClient:
 
     @exception_handler
     @rate_limit_handler
-    async def set_alpha_properties(
+    async def alpha_update_properties(
         self,
         alpha_id: str,
         properties: AlphaPropertiesPayload,
@@ -431,11 +433,30 @@ class WorldQuantClient:
         resp = await set_alpha_properties(self.session, alpha_id, properties)
         return resp
 
+    @exception_handler
+    async def alpha_fetch_competitions(
+        self, params: Optional[Dict[str, Any]] = None
+    ) -> CompetitionListView:
+        """
+        获取 Alpha 竞赛列表。
+
+        返回:
+        CompetitionListView: 竞赛列表视图。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        resp = await alpha_fetch_competitions(self.session, params=params)
+        return resp
+
     # -------------------------------
     # Data-related methods
     # -------------------------------
     @exception_handler
-    async def get_data_categories(self) -> DataCategoriesListView:
+    async def data_get_categories(self) -> DataCategoriesListView:
         """
         获取数据类别。
 
@@ -453,7 +474,7 @@ class WorldQuantClient:
 
     @exception_handler
     @rate_limit_handler
-    async def get_datasets(
+    async def data_get_datasets(
         self, query: DataSetsQueryParams
     ) -> Optional[DatasetListView]:
         """
@@ -476,7 +497,9 @@ class WorldQuantClient:
 
     @exception_handler
     @rate_limit_handler
-    async def get_dataset_detail(self, dataset_id: str) -> Optional[DatasetDetailView]:
+    async def data_get_dataset_detail(
+        self, dataset_id: str
+    ) -> Optional[DatasetDetailView]:
         """
         获取数据集详情。
 
@@ -496,7 +519,7 @@ class WorldQuantClient:
         return resp
 
     @exception_handler
-    async def get_data_field_detail(self, data_field_id: str) -> DatasetDataFieldsView:
+    async def data_get_field_detail(self, data_field_id: str) -> DatasetDataFieldsView:
         """
         获取数据字段详情。
 
@@ -517,7 +540,7 @@ class WorldQuantClient:
 
     @exception_handler
     @rate_limit_handler
-    async def get_data_fields_in_dataset(
+    async def data_get_fields_in_dataset(
         self, query: GetDataFieldsQueryParams
     ) -> Optional[DataFieldListView]:
         """
@@ -542,7 +565,7 @@ class WorldQuantClient:
     # Other utility methods
     # -------------------------------
     @exception_handler
-    async def get_all_operators(self) -> Operators:
+    async def operators_get_all(self) -> Operators:
         """
         获取所有操作符。
 

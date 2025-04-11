@@ -14,7 +14,7 @@ from structlog.stdlib import BoundLogger
 from alphapower.client import (
     AlphaView,
     ClassificationView,
-    CompetitionView,
+    CompetitionRefView,
     RegularView,
     SelfAlphaListQueryParams,
     SelfAlphaListView,
@@ -133,8 +133,8 @@ async def create_alpha_classifications(
     return entity_objs
 
 
-async def create_alpha_competitions(
-    competitions_data: Optional[List[CompetitionView]],
+async def query_alpha_competitions(
+    competitions_data: Optional[List[CompetitionRefView]],
 ) -> List[Competition]:
     """
     创建或获取 AlphaCompetition 实例列表。
@@ -148,22 +148,19 @@ async def create_alpha_competitions(
     if competitions_data is None:
         return []
 
-    entity_objs: List[Competition] = []
+    competition_ids: List[str] = [
+        competition.id for competition in competitions_data if competition.id
+    ]
 
     async with get_db_session(Database.ALPHAS) as session:
         # 使用 DALFactory 创建 DAL 实例
         competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL, session)
 
-        for data in competitions_data:
-            competition = Competition(
-                competition_id=data.id,
-                name=data.name,
-            )
-
-            competition = await competition_dal.upsert_by_unique_key(
-                competition, "competition_id"
-            )
-            entity_objs.append(competition)
+        entity_objs: List[Competition] = await competition_dal.find_by(
+            in_={"competition_id": competition_ids}
+        )
+        if not entity_objs:
+            raise ValueError("没有找到任何比赛数据，请检查比赛数据是否正确。")
 
     return entity_objs
 
@@ -211,9 +208,8 @@ def create_alphas(
         train=create_sample(alpha_data.train),
         test=create_sample(alpha_data.test),
         prod=create_sample(alpha_data.prod),
-        # TODO(Ball Chang): 这里的分类和比赛数据需要重新设计
-        # competitions=competitions,
-        # classifications=classifications,
+        competitions=competitions,
+        classifications=classifications,
         themes=",".join(alpha_data.themes) if alpha_data.themes else None,
         # TODO(Ball Chang): pyramids 字段需要重新设计
         # pyramids=",".join(alpha_data.pyramids) if alpha_data.pyramids else None,
@@ -262,7 +258,7 @@ async def fetch_last_sync_time_range(
                 order="dateCreated",
             )
 
-            alphas_data_result: SelfAlphaListView = await client.get_self_alphas(
+            alphas_data_result: SelfAlphaListView = await client.alpha_get_self_list(
                 query=query_params
             )
 
@@ -307,6 +303,41 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
     async with get_db_session(Database.ALPHAS) as session:
         alpha_dal: AlphaDAL = AlphaDAL(session)
 
+        # 收集所有 competitions 和 classifications 的 ID
+        competition_ids: List[str] = [
+            competition.id
+            for alpha_data in alphas_results
+            if alpha_data.competitions
+            for competition in alpha_data.competitions
+            if competition.id
+        ]
+        classification_ids: List[str] = [
+            classification.id
+            for alpha_data in alphas_results
+            if alpha_data.classifications
+            for classification in alpha_data.classifications
+            if classification.id
+        ]
+
+        # 批量查询 competitions 和 classifications
+        competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL, session)
+        classification_dal: ClassificationDAL = DALFactory.create_dal(
+            ClassificationDAL, session
+        )
+
+        competitions_dict: dict[str, Competition] = {
+            competition.competition_id: competition
+            for competition in await competition_dal.find_by(
+                in_={"competition_id": competition_ids}
+            )
+        }
+        classifications_dict: dict[str, Classification] = {
+            classification.classification_id: classification
+            for classification in await classification_dal.find_by(
+                in_={"classification_id": classification_ids}
+            )
+        }
+
         for alpha_data in alphas_results:
             if exit_event.is_set():
                 await file_logger.awarning(
@@ -317,15 +348,19 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
 
             settings: Setting = create_alphas_settings(alpha_data)
             regular: Regular = create_alphas_regular(alpha_data.regular)
-            # TODO(Ball Chang): 这里的分类和比赛数据需要重新设计
-            # classifications: List[Classification] = await create_alpha_classifications(
-            #     alpha_data.classifications
-            # )
-            # competitions: List[Competition] = await create_alpha_competitions(
-            #     alpha_data.competitions
-            # )
-            classifications: List[Classification] = []
-            competitions: List[Competition] = []
+
+            # 填充 classifications 和 competitions 字段
+            classifications: List[Classification] = [
+                classifications_dict[classification.id]
+                for classification in alpha_data.classifications or []
+                if classification.id in classifications_dict
+            ]
+            competitions: List[Competition] = [
+                competitions_dict[competition.id]
+                for competition in alpha_data.competitions or []
+                if competition.id in competitions_dict
+            ]
+
             alpha: Alpha = create_alphas(
                 alpha_data, settings, regular, classifications, competitions
             )
@@ -378,7 +413,7 @@ async def process_alphas_for_date(
             date_created_lt=end_time.isoformat(),
         )
         alphas_data_result: Any
-        alphas_data_result, _ = await client.get_self_alphas(query=query_params)
+        alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
 
         if alphas_data_result.count < 10000:
             # 使用正确的异步日志方法
@@ -478,7 +513,7 @@ async def process_alphas_pages(
         )
 
         alphas_data_result: Any
-        alphas_data_result, _ = await client.get_self_alphas(query=query_params)
+        alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
 
         if not alphas_data_result.results:
             break

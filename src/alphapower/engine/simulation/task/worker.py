@@ -158,7 +158,7 @@ class Worker(AbstractWorker):
         # 仅在工作者关闭且明确请求取消任务时执行取消操作
         if self._shutdown_flag and self._is_task_cancel_requested:
             await logger.ainfo(f"工作者已关闭，尝试取消任务，进度 ID: {progress_id}")
-            success = await self._client.delete_simulation(progress_id=progress_id)
+            success = await self._client.simulation_delete(progress_id=progress_id)
             if success:
                 await logger.ainfo(f"任务取消成功，进度 ID: {progress_id}")
 
@@ -222,7 +222,7 @@ class Worker(AbstractWorker):
         if task.status == SimulationTaskStatus.COMPLETE:
             async with self._client:
                 try:
-                    await self._client.set_alpha_properties(
+                    await self._client.alpha_update_properties(
                         alpha_id=result.alpha,
                         properties=AlphaPropertiesPayload(
                             tags=task.tags,
@@ -331,7 +331,7 @@ class Worker(AbstractWorker):
                     f"发送创建单个模拟任务请求，任务 ID: {task.id}, 请求体: {payload}"
                 )
                 success, progress_id, retry_after = (
-                    await self._client.create_single_simulation(payload=payload)
+                    await self._client.simulation_create_single(payload=payload)
                 )
 
                 # 处理创建失败的情况
@@ -363,7 +363,7 @@ class Worker(AbstractWorker):
                         break
 
                     finished, progress_or_result, retry_after = (
-                        await self._client.get_single_simulation_progress(
+                        await self._client.simulation_get_progress_single(
                             progress_id=progress_id
                         )
                     )
@@ -433,7 +433,7 @@ class Worker(AbstractWorker):
             async with self._client:
                 try:
                     success, result = (
-                        await self._client.get_multi_simulation_child_result(
+                        await self._client.simulation_get_child_result(
                             child_progress_id=child_id,
                         )
                     )
@@ -515,7 +515,7 @@ class Worker(AbstractWorker):
                     f"发送创建多个模拟任务请求，任务 ID 列表: {task_ids_str}, 请求体: {payload}"
                 )
                 success, progress_id, retry_after = (
-                    await self._client.create_multi_simulation(payload=payload)
+                    await self._client.simulation_create_multi(payload=payload)
                 )
 
                 if not success:
@@ -554,7 +554,7 @@ class Worker(AbstractWorker):
                         break
 
                     finished, progress_or_result, retry_after = (
-                        await self._client.get_multi_simulation_progress(
+                        await self._client.simulation_get_progress_multi(
                             progress_id=progress_id
                         )
                     )

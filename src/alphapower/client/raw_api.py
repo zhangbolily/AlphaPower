@@ -22,6 +22,7 @@ from alphapower.constants import (
     ENDPOINT_ALPHA_YEARLY_STATS,
     ENDPOINT_ALPHAS,
     ENDPOINT_AUTHENTICATION,
+    ENDPOINT_COMPETITIONS,
     ENDPOINT_DATA_CATEGORIES,
     ENDPOINT_DATA_FIELDS,
     ENDPOINT_DATA_SETS,
@@ -38,6 +39,7 @@ from .models import (
     AlphaPropertiesPayload,
     AlphaYearlyStatsView,
     AuthenticationView,
+    CompetitionListView,
     DataCategoriesListView,
     DataFieldListView,
     DatasetDataFieldsView,
@@ -284,6 +286,25 @@ async def alpha_check_submission(
                 AlphaCheckResultView.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
+
+
+async def alpha_fetch_competitions(
+    session: aiohttp.ClientSession, params: Optional[Dict[str, Any]] = None
+) -> CompetitionListView:
+    """
+    获取当前用户的 alpha 竞赛列表。
+
+    参数:
+    session (aiohttp.ClientSession): 用于发送 HTTP 请求的会话对象。
+    params (Optional[Dict[str, Any]]): 查询参数。
+
+    返回:
+    CompetitionListView: 包含 alpha 竞赛列表的对象。
+    """
+    url: str = f"{BASE_URL}/{ENDPOINT_COMPETITIONS}"
+    async with session.get(url, params=params) as response:
+        response.raise_for_status()
+        return CompetitionListView.model_validate(await response.json())
 
 
 async def fetch_dataset_data_fields(

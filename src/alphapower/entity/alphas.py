@@ -20,9 +20,10 @@ alphas.py
 """
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -47,6 +48,8 @@ from sqlalchemy.orm import (
 from alphapower.constants import (
     AlphaType,
     Color,
+    CompetitionScoring,
+    CompetitionStatus,
     Decay,
     Delay,
     Grade,
@@ -99,11 +102,165 @@ class Competition(Base):
 
     __tablename__ = "competitions"
 
+    def __init__(
+        self,
+        universities: Optional[List[str]] = None,
+        countries: Optional[List[str]] = None,
+        excluded_countries: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> None:
+        """初始化比赛对象
+
+        Args:
+            universities: 大学列表
+            countries: 国家列表
+        """
+        super().__init__(**kwargs)
+        self.universities = universities
+        self.countries = countries
+        self.excluded_countries = excluded_countries
+
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     competition_id: MappedColumn[str] = mapped_column(
         String, nullable=False, unique=True
     )
     name: MappedColumn[str] = mapped_column(String)
+    description: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    _universities: MappedColumn[Optional[str]] = mapped_column(
+        String, nullable=True, name="universities"
+    )
+    _countries: MappedColumn[Optional[str]] = mapped_column(
+        String, nullable=True, name="countries"
+    )
+    _excluded_countries: MappedColumn[Optional[str]] = mapped_column(
+        String, nullable=True, name="excluded_countries"
+    )
+    status: MappedColumn[CompetitionStatus] = mapped_column(
+        Enum(CompetitionStatus), nullable=False
+    )
+    team_based: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    start_date: MappedColumn[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    end_date: MappedColumn[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sign_up_start_date: MappedColumn[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    sign_up_end_date: MappedColumn[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    sign_up_date: MappedColumn[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    team: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    scoring: MappedColumn[CompetitionScoring] = mapped_column(
+        Enum(CompetitionScoring), nullable=False
+    )
+    leaderboard: MappedColumn[Optional[Dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
+    prize_board: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    university_board: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    submissions: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    faq: MappedColumn[str] = mapped_column(String)
+    progress: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+
+    @hybrid_property
+    def universities(self) -> List[str]:
+        """获取大学列表
+
+        Returns:
+            List[str]: 大学字符串列表
+        """
+        if self._universities is None:
+            return []
+        return [university.strip() for university in self._universities.split(",")]
+
+    @universities.setter  # type: ignore[no-redef]
+    def universities(self, value: Optional[List[str]]) -> None:
+        """设置大学列表
+
+        Args:
+            value: 大学字符串列表
+        """
+        if value is None:
+            self._universities = None
+        else:
+            self._universities = ",".join(
+                filter(
+                    None,
+                    [
+                        (
+                            university.strip()
+                            if isinstance(university, str)
+                            else str(university)
+                        )
+                        for university in value
+                    ],
+                )
+            )
+
+    @hybrid_property
+    def countries(self) -> List[str]:
+        """获取国家列表
+
+        Returns:
+            List[str]: 国家字符串列表
+        """
+        if self._countries is None:
+            return []
+        return [country.strip() for country in self._countries.split(",")]
+
+    @countries.setter  # type: ignore[no-redef]
+    def countries(self, value: Optional[List[str]]) -> None:
+        """设置国家列表
+
+        Args:
+            value: 国家字符串列表
+        """
+        if value is None:
+            self._countries = None
+        else:
+            self._countries = ",".join(
+                filter(
+                    None,
+                    [
+                        country.strip() if isinstance(country, str) else str(country)
+                        for country in value
+                    ],
+                )
+            )
+
+    @hybrid_property
+    def excluded_countries(self) -> List[str]:
+        """获取排除的国家列表
+
+        Returns:
+            List[str]: 排除的国家字符串列表
+        """
+        if self._excluded_countries is None:
+            return []
+        return [country.strip() for country in self._excluded_countries.split(",")]
+
+    @excluded_countries.setter  # type: ignore[no-redef]
+    def excluded_countries(self, value: Optional[List[str]]) -> None:
+        """设置排除的国家列表
+
+        Args:
+            value: 排除的国家字符串列表
+        """
+        if value is None:
+            self._excluded_countries = None
+        else:
+            self._excluded_countries = ",".join(
+                filter(
+                    None,
+                    [
+                        country.strip() if isinstance(country, str) else str(country)
+                        for country in value
+                    ],
+                )
+            )
 
 
 class Check(Base):

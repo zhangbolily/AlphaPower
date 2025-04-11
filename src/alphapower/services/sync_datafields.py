@@ -126,11 +126,11 @@ async def fetch_datafields(
     """
     file_logger.debug("[任务 %d] 开始获取数据字段，参数: %s", task_id, query_params)
     try:
-        return await client.get_data_fields_in_dataset(query=query_params)
+        return await client.data_get_fields_in_dataset(query=query_params)
     except ClientError as e:  # Catch specific client errors
         file_logger.warning("[任务 %d] 获取数据字段时出错: %s，正在重试...", task_id, e)
         try:
-            return await client.get_data_fields_in_dataset(query=query_params)
+            return await client.data_get_fields_in_dataset(query=query_params)
         except ClientError as retry_e:  # Catch specific client errors on retry
             file_logger.error(
                 "[任务 %d] 重试获取数据字段时再次出错: %s", task_id, retry_e

@@ -62,7 +62,7 @@ async def test_create_single_simulation(client: WorldQuantClient) -> None:
     success: bool
     progress_id: str
     retry_after: float
-    success, progress_id, retry_after = await client.create_single_simulation(
+    success, progress_id, retry_after = await client.simulation_create_single(
         simulation_data
     )
     assert success
@@ -74,7 +74,7 @@ async def test_create_single_simulation(client: WorldQuantClient) -> None:
         finished: bool
         progress_or_result: SingleSimulationResultView | SimulationProgressView
         finished, progress_or_result, retry_after = (
-            await client.get_single_simulation_progress(progress_id)
+            await client.simulation_get_progress_single(progress_id)
         )
         if finished:
             assert isinstance(progress_or_result, SingleSimulationResultView)
@@ -153,7 +153,7 @@ async def test_create_multi_simulation(client: WorldQuantClient) -> None:
     success: bool
     progress_id: str
     retry_after: float
-    success, progress_id, retry_after = await client.create_multi_simulation(
+    success, progress_id, retry_after = await client.simulation_create_multi(
         simulation_data
     )
     assert success
@@ -167,7 +167,7 @@ async def test_create_multi_simulation(client: WorldQuantClient) -> None:
     )
     while True:
         finished, progress_or_result, retry_after = (
-            await client.get_multi_simulation_progress(progress_id)
+            await client.simulation_get_progress_multi(progress_id)
         )
         if finished:
             assert isinstance(progress_or_result, MultiSimulationResultView)
@@ -183,7 +183,7 @@ async def test_create_multi_simulation(client: WorldQuantClient) -> None:
     if progress_or_result.status == "COMPLETE":
         for child_progress_id in progress_or_result.children:
             finished, progress_or_result = (
-                await client.get_multi_simulation_child_result(child_progress_id)
+                await client.simulation_get_child_result(child_progress_id)
             )
             assert isinstance(progress_or_result, SingleSimulationResultView)
             assert progress_or_result.id is not None

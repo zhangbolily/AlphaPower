@@ -42,7 +42,7 @@ async def fetch_dataset_detail(
     logger.debug("[任务 %d] 开始获取数据集详情: %s", task_id, dataset_id)
     for attempt in range(2):  # 尝试两次
         try:
-            return await client.get_dataset_detail(dataset_id)  # 假设为异步函数
+            return await client.data_get_dataset_detail(dataset_id)  # 假设为异步函数
         except Exception as e:
             logger.warning(
                 "[任务 %d] 获取数据集详情时出错: %s，尝试第 %d 次重试...",
@@ -220,7 +220,7 @@ async def process_datasets_concurrently(
     async def process_with_semaphore(params: DataSetsQueryParams, task_id: int) -> int:
         async with semaphore:
             logger.debug("[任务 %d] 开始处理查询参数: %s", task_id, params)
-            datasets_response: DatasetListView = await client.get_datasets(params)
+            datasets_response: DatasetListView = await client.data_get_datasets(params)
             if not datasets_response or not datasets_response.results:
                 logger.info("[任务 %d] 没有更多数据集。", task_id)
                 return 0
@@ -293,7 +293,7 @@ async def sync_datasets(
                 count_query_params: DataSetsQueryParams = DataSetsQueryParams(
                     limit=1, offset=0, region=region, universe=universe, delay=delay
                 )
-                datasets_response: DatasetListView = await wq_client.get_datasets(
+                datasets_response: DatasetListView = await wq_client.data_get_datasets(
                     count_query_params
                 )
                 total_count = datasets_response.count  # 数据集总数

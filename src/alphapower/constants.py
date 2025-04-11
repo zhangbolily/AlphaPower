@@ -112,6 +112,7 @@ ENDPOINT_ALPHA_PNL: Final[Callable[[str], str]] = (
 ENDPOINT_ALPHA_SELF_CORRELATIONS: Final[Callable[[str, str], str]] = (
     lambda alpha_id, correlation_type: f"alphas/{alpha_id}/correlations/{correlation_type}"
 )
+ENDPOINT_COMPETITIONS: Final[str] = "competitions"  # 竞赛端点
 
 # 模拟端点
 ENDPOINT_SIMULATION: Final[str] = "simulations"
@@ -710,6 +711,36 @@ class CheckType(Enum):
     POWER_POOL_CORRELATION = "POWER_POOL_CORRELATION"
     UNITS = "UNITS"
     IS_LADDER_SHARPE = "IS_LADDER_SHARPE"
+
+
+class CompetitionStatus(Enum):
+    """竞赛状态枚举。
+    定义了系统中可能使用的竞赛状态。
+
+    Attributes:
+        DEFAULT: 默认值，无实际意义
+        EXCLUDED: 排除
+        ACCEPTED: 接受
+    """
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    EXCLUDED = "EXCLUDED"  # 排除
+    ACCEPTED = "ACCEPTED"  # 接受
+
+
+class CompetitionScoring(Enum):
+    """竞赛评分枚举。
+    定义了系统中可能使用的竞赛评分方式。
+
+    Attributes:
+        DEFAULT: 默认值，无实际意义
+        CHALLENGE: 挑战赛
+        PERFORMANCE: 性能赛
+    """
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    CHALLENGE = "CHALLENGE"  # 挑战赛
+    PERFORMANCE = "PERFORMANCE"  # 性能赛
 
 
 # -----------------------------------------------------------------------------

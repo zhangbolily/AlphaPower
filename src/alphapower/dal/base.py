@@ -209,7 +209,7 @@ class BaseDAL(Generic[T]):
         await self.session.flush()
         return entity
 
-    async def create_all(self, entities: List[T]) -> List[T]:
+    async def bulk_create(self, entities: List[T]) -> List[T]:
         """
         批量创建实体对象。
 

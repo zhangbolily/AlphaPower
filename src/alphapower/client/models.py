@@ -17,6 +17,8 @@ from pydantic import AliasChoices, BaseModel, Field, RootModel
 from alphapower.constants import (
     AlphaType,
     Color,
+    CompetitionScoring,
+    CompetitionStatus,
     Delay,
     Grade,
     InstrumentType,
@@ -62,7 +64,111 @@ class ClassificationView(BaseModel):
 class CompetitionView(BaseModel):
     """竞赛信息。
 
-    表示竞赛的基本信息，包括ID和名称。
+    表示竞赛的详细信息，包括ID、名称、状态、团队信息、日期范围等。
+
+    Attributes:
+        id: 竞赛的唯一标识符。
+        name: 竞赛的名称。
+        description: 竞赛的描述，可选。
+        universities: 参与的大学列表，可选。
+        countries: 参与的国家列表，可选。
+        excluded_countries: 排除的国家列表，可选。
+        status: 竞赛的状态。
+        team_based: 是否基于团队。
+        start_date: 竞赛开始日期，可选。
+        end_date: 竞赛结束日期，可选。
+        sign_up_start_date: 报名开始日期，可选。
+        sign_up_end_date: 报名结束日期，可选。
+        sign_up_date: 报名日期，可选。
+        team: 团队信息，可选。
+        scoring: 评分方式。
+        leaderboard: 排行榜信息，可选。
+        prize_board: 是否有奖品板。
+        university_board: 是否有大学板。
+        submissions: 是否允许提交。
+        faq: 常见问题链接。
+        progress: 竞赛进度，可选。
+    """
+
+    class Leaderboard(BaseModel):
+        """
+        排行榜信息。
+        """
+
+        rank: int
+        user: str
+        power_pool_alphas: int = Field(
+            default=0,
+            validation_alias=AliasChoices("powerPoolAlphas", "power_pool_alphas"),
+        )
+        merged_pnl_score: float = Field(
+            default=0.0,
+            validation_alias=AliasChoices("mergedPNLScore", "merged_pnl_score"),
+        )
+        before_cost_score: float = Field(
+            default=0.0,
+            validation_alias=AliasChoices("beforeCostScore", "before_cost_score"),
+        )
+        after_cost_score: float = Field(
+            default=0.0,
+            validation_alias=AliasChoices("afterCostScore", "after_cost_score"),
+        )
+        is_score: float = Field(
+            default=0.0, validation_alias=AliasChoices("isScore", "is_score")
+        )
+        university: Optional[str] = None
+        country: Optional[str] = None
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    universities: Optional[List[str]] = None
+    countries: Optional[List[str]] = None
+    excluded_countries: Optional[List[str]] = Field(
+        default=None,
+        validation_alias=AliasChoices("excludedCountries", "excluded_countries"),
+    )
+    status: CompetitionStatus
+    team_based: bool = Field(
+        default=False, validation_alias=AliasChoices("teamBased", "team_based")
+    )
+    start_date: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("startDate", "start_date")
+    )
+    end_date: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("endDate", "end_date")
+    )
+    sign_up_start_date: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("signUpStartDate", "sign_up_start_date"),
+    )
+    sign_up_end_date: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("signUpEndDate", "sign_up_end_date")
+    )
+    sign_up_date: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("signUpDate", "sign_up_date")
+    )
+    team: Optional[str] = None
+    scoring: CompetitionScoring
+    leaderboard: Optional[Leaderboard] = None
+    prize_board: bool = Field(
+        default=False, validation_alias=AliasChoices("prizeBoard", "prize_board")
+    )
+    university_board: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("universityBoard", "university_board"),
+    )
+    submissions: bool = Field(
+        default=False, validation_alias=AliasChoices("submissions", "submissions")
+    )
+    faq: str
+    progress: Optional[float] = None
+
+
+class CompetitionRefView(BaseModel):
+    """竞赛引用。
+
+    表示与Alpha相关的竞赛信息。
 
     Attributes:
         id: 竞赛的唯一标识符。
@@ -71,6 +177,24 @@ class CompetitionView(BaseModel):
 
     id: str
     name: str
+
+
+class CompetitionListView(BaseModel):
+    """竞赛列表。
+
+    表示竞赛的基本信息列表，包括分页数据。
+
+    Attributes:
+        count: 竞赛总数。
+        next: 下一页链接，可选。
+        previous: 上一页链接，可选。
+        results: 竞赛列表。
+    """
+
+    count: int
+    next: Optional[str]
+    previous: Optional[str]
+    results: List[CompetitionView]
 
 
 class RegularView(BaseModel):
@@ -266,7 +390,7 @@ class AlphaCheckItemView(BaseModel):
     limit: Optional[float] = None
     value: Optional[float] = None
     date: Optional[datetime] = None
-    competitions: Optional[List[CompetitionView]] = None
+    competitions: Optional[List[CompetitionRefView]] = None
     message: Optional[str] = None
     year: Optional[int] = None
     pyramids: Optional[List[PyramidView]] = None
@@ -409,7 +533,7 @@ class AlphaView(BaseModel):
     train: Optional[AlphaSampleView] = None
     test: Optional[AlphaSampleView] = None
     prod: Optional[AlphaSampleView] = None
-    competitions: Optional[List[CompetitionView]] = None
+    competitions: Optional[List[CompetitionRefView]] = None
     themes: Optional[List[str]] = None
     pyramids: Optional[List[PyramidView]] = None
     team: Optional[str] = None
@@ -505,7 +629,7 @@ class AlphaDetailView(BaseModel):
     train: Optional["AlphaDetailView.Sample"] = None
     test: Optional["AlphaDetailView.Sample"] = None
     prod: Optional["AlphaDetailView.Sample"] = None
-    competitions: Optional[List[CompetitionView]] = None
+    competitions: Optional[List[CompetitionRefView]] = None
     themes: Optional[List[str]] = None
     pyramids: Optional[List[PyramidView]] = None
     team: Optional[str] = None

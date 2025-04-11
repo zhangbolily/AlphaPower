@@ -14,8 +14,10 @@ from alphapower.client import (
     AlphaCheckResultView,
     AlphaCorrelationsView,
     AlphaDetailView,
+    AlphaPropertiesPayload,
     AlphaView,
     ClassificationView,
+    CompetitionListView,
     CompetitionView,
     MultiSimulationResultView,
     PyramidView,
@@ -28,9 +30,11 @@ from alphapower.client import (
 )
 from alphapower.client.raw_api import (
     alpha_check_submission,
+    alpha_fetch_competitions,
     get_alpha_detail,
     get_self_alphas,
     get_simulation_progress,
+    set_alpha_properties,
 )
 
 
@@ -241,9 +245,6 @@ async def test_set_alpha_properties(setup_mock_responses: str) -> None:
     with patch("alphapower.client.raw_api.BASE_URL", new=setup_mock_responses):
         session: ClientSession = ClientSession()
 
-        from alphapower.client import AlphaPropertiesPayload
-        from alphapower.client.raw_api import set_alpha_properties
-
         # 创建测试用的属性数据
         alpha_props = AlphaPropertiesPayload(name="Test Alpha", tags=["test", "demo"])
 
@@ -315,3 +316,30 @@ async def test_simulation_result(setup_mock_responses: str) -> None:
             assert finished is True
             assert retry_after == 0.0
             assert_single_simulation_result(result)
+
+
+@pytest.mark.asyncio
+async def test_alpha_competitions(setup_mock_responses: str) -> None:
+    """
+    测试 Alpha Competitions 的响应
+    """
+    with patch("alphapower.client.raw_api.BASE_URL", new=setup_mock_responses):
+        session: ClientSession = ClientSession()
+
+        result: CompetitionListView = await alpha_fetch_competitions(session)
+
+        assert isinstance(result, CompetitionListView)
+        assert isinstance(result.count, int)
+        if result.results:
+            assert all(isinstance(comp, CompetitionView) for comp in result.results)
+        for comp in result.results:
+            assert isinstance(comp.id, str)
+            assert isinstance(comp.name, str)
+            if comp.start_date:
+                assert isinstance(comp.start_date, datetime)
+            if comp.end_date:
+                assert isinstance(comp.end_date, datetime)
+            if comp.status:
+                assert isinstance(comp.status, str)
+            if comp.description:
+                assert isinstance(comp.description, str)
