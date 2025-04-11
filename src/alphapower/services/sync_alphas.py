@@ -1,6 +1,17 @@
 """
-同步因子数据的模块。
-该模块提供了从 AlphaPower API 同步因子数据到数据库的功能。
+同步因子数据模块。
+
+该模块提供了从 AlphaPower API 同步因子数据到数据库的功能，支持全量和增量同步。
+主要功能包括：
+1. 获取因子数据并处理（支持并行分片处理）。
+2. 将因子数据插入或更新到数据库。
+3. 支持因子分类和竞赛数据的关联处理。
+4. 提供日志记录，支持调试、信息、警告和错误级别的日志输出。
+
+模块特点：
+- 使用异步 IO 提高数据同步效率。
+- 支持通过信号处理器优雅地终止同步操作。
+- 提供详细的日志记录，便于问题排查和性能监控。
 """
 
 import asyncio
@@ -38,6 +49,7 @@ from alphapower.entity import (
 from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import setup_logging
 
+from .sync_competition import competition_data_expire_check, sync_competition
 from .utils import create_sample
 
 # 配置日志
@@ -46,7 +58,6 @@ file_logger: BoundLogger = setup_logging(__name__, enable_console=False)
 
 # TODO(Ball Chang): 支持全量和增量同步，努力提高数据同步并发度和写入性能
 # TODO(Ball Chang): 找一个好的解决方案来判断因子回测配置是否相同
-# TODO(Ball Chang): 整理重复的公共逻辑，放到同一个模块里管理
 
 # 全局事件，用于通知所有协程终止操作
 exit_event: asyncio.Event = asyncio.Event()
@@ -57,26 +68,37 @@ def create_alphas_settings(alpha_data: AlphaView) -> Setting:
     创建 AlphaSettings 实例。
 
     Args:
-        alpha_data: 包含因子设置信息的数据对象
+        alpha_data (AlphaView): 包含因子设置信息的数据对象。
 
     Returns:
-        Setting: 创建的因子设置实例
+        Setting: 创建的因子设置实例。
+
+    Raises:
+        AttributeError: 如果 alpha_data 中缺少必要的字段。
+
+    说明:
+        该函数将 AlphaView 中的设置信息提取并转换为 Setting 实例。
+        主要用于因子数据的标准化处理。
     """
-    return Setting(
-        instrument_type=alpha_data.settings.instrument_type,
-        region=alpha_data.settings.region,
-        universe=alpha_data.settings.universe,
-        delay=alpha_data.settings.delay,
-        decay=alpha_data.settings.decay,
-        neutralization=alpha_data.settings.neutralization,
-        truncation=alpha_data.settings.truncation,
-        pasteurization=alpha_data.settings.pasteurization,
-        unit_handling=alpha_data.settings.unit_handling,
-        nan_handling=alpha_data.settings.nan_handling,
-        language=alpha_data.settings.language,
-        visualization=alpha_data.settings.visualization,
-        test_period=getattr(alpha_data.settings, "test_period", None),
-    )
+    try:
+        return Setting(
+            # 提取因子设置中的各个字段
+            instrument_type=alpha_data.settings.instrument_type,
+            region=alpha_data.settings.region,
+            universe=alpha_data.settings.universe,
+            delay=alpha_data.settings.delay,
+            decay=alpha_data.settings.decay,
+            neutralization=alpha_data.settings.neutralization,
+            truncation=alpha_data.settings.truncation,
+            pasteurization=alpha_data.settings.pasteurization,
+            unit_handling=alpha_data.settings.unit_handling,
+            nan_handling=alpha_data.settings.nan_handling,
+            language=alpha_data.settings.language,
+            visualization=alpha_data.settings.visualization,
+            test_period=getattr(alpha_data.settings, "test_period", None),  # 可选字段
+        )
+    except AttributeError as e:
+        raise AttributeError(f"因子数据缺少必要字段: {e}") from e
 
 
 def create_alphas_regular(regular: RegularView) -> Regular:
@@ -84,15 +106,19 @@ def create_alphas_regular(regular: RegularView) -> Regular:
     创建 AlphaRegular 实例。
 
     Args:
-        regular: AlphaView.Regular 对象，包含因子规则的详细信息。
+        regular (RegularView): 包含因子规则详细信息的对象。
 
     Returns:
-        Regular: 创建的因子规则实例
+        Regular: 创建的因子规则实例。
+
+    说明:
+        该函数将 RegularView 中的规则信息提取并转换为 Regular 实例。
+        主要用于因子规则的标准化处理。
     """
     return Regular(
-        code=regular.code,
-        description=getattr(regular, "description", None),
-        operator_count=regular.operator_count,
+        code=regular.code,  # 因子规则代码
+        description=getattr(regular, "description", None),  # 可选描述
+        operator_count=regular.operator_count,  # 操作符数量
     )
 
 
@@ -103,10 +129,14 @@ async def create_alpha_classifications(
     创建或获取 Classification 实例列表。
 
     Args:
-        classifications_data: 分类数据列表。
+        classifications_data (Optional[List[ClassificationView]]): 分类数据列表。
 
     Returns:
         List[Classification]: Classification 实例列表。
+
+    说明:
+        该函数会根据分类数据创建或更新数据库中的分类记录。
+        如果分类数据为空，则返回空列表。
     """
     if classifications_data is None:
         return []
@@ -121,10 +151,11 @@ async def create_alpha_classifications(
 
         for data in classifications_data:
             classification = Classification(
-                classification_id=data.id,
-                name=data.name,
+                classification_id=data.id,  # 分类唯一标识
+                name=data.name,  # 分类名称
             )
 
+            # 根据唯一键插入或更新分类记录
             classification = await classification_dal.upsert_by_unique_key(
                 classification, "classification_id"
             )
@@ -140,10 +171,18 @@ async def query_alpha_competitions(
     创建或获取 AlphaCompetition 实例列表。
 
     Args:
-        competitions_data: 比赛数据列表。
+        competitions_data (Optional[List[CompetitionRefView]]): 比赛数据列表。
 
     Returns:
         List[Competition]: Competition 实例列表。
+
+    Raises:
+        ValueError: 如果未找到任何比赛数据。
+        RuntimeError: 如果数据库查询失败。
+
+    说明:
+        该函数会根据比赛数据查询数据库中的比赛记录。
+        如果未找到任何比赛记录，则抛出异常。
     """
     if competitions_data is None:
         return []
@@ -152,15 +191,20 @@ async def query_alpha_competitions(
         competition.id for competition in competitions_data if competition.id
     ]
 
-    async with get_db_session(Database.ALPHAS) as session:
-        # 使用 DALFactory 创建 DAL 实例
-        competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL, session)
+    try:
+        async with get_db_session(Database.ALPHAS) as session:
+            # 使用 DALFactory 创建 DAL 实例
+            competition_dal: CompetitionDAL = DALFactory.create_dal(
+                CompetitionDAL, session
+            )
 
-        entity_objs: List[Competition] = await competition_dal.find_by(
-            in_={"competition_id": competition_ids}
-        )
-        if not entity_objs:
-            raise ValueError("没有找到任何比赛数据，请检查比赛数据是否正确。")
+            entity_objs: List[Competition] = await competition_dal.find_by(
+                in_={"competition_id": competition_ids}
+            )
+            if not entity_objs:
+                raise ValueError("没有找到任何比赛数据，请检查比赛数据是否正确。")
+    except Exception as e:
+        raise RuntimeError(f"查询比赛数据时发生错误: {e}") from e
 
     return entity_objs
 
@@ -176,45 +220,48 @@ def create_alphas(
     创建 Alpha 实例。
 
     Args:
-        alpha_data: AlphaView 对象，包含因子详细信息。
-        settings: AlphaSettings 实例。
-        regular: AlphaRegular 实例。
-        classifications: Classification 实例列表。
-        competitions: AlphaCompetition 实例列表。
+        alpha_data (AlphaView): 包含因子详细信息的对象。
+        settings (Setting): 因子设置实例。
+        regular (Regular): 因子规则实例。
+        classifications (List[Classification]): 分类实例列表。
+        competitions (List[Competition]): 比赛实例列表。
 
     Returns:
         Alpha: 创建的 Alpha 实例。
+
+    说明:
+        该函数将因子数据、设置、规则、分类和比赛信息整合为一个 Alpha 实例。
+        主要用于因子数据的标准化处理。
     """
     return Alpha(
-        alpha_id=alpha_data.id,
-        type=alpha_data.type,
-        author=alpha_data.author,
-        settings=settings,
-        regular=regular,
-        date_created=alpha_data.date_created,
-        date_submitted=getattr(alpha_data, "date_submitted", None),
-        date_modified=alpha_data.date_modified,
-        name=getattr(alpha_data, "name", None),
-        favorite=alpha_data.favorite,
-        hidden=alpha_data.hidden,
-        color=alpha_data.color if alpha_data.color else Color.NONE,
-        category=getattr(alpha_data, "category", None),
-        tags=alpha_data.tags,
-        grade=alpha_data.grade if alpha_data.grade else Grade.DEFAULT,
-        stage=alpha_data.stage,
-        status=alpha_data.status,
-        in_sample=create_sample(alpha_data.in_sample),
-        out_sample=create_sample(alpha_data.out_sample),
-        train=create_sample(alpha_data.train),
-        test=create_sample(alpha_data.test),
-        prod=create_sample(alpha_data.prod),
-        competitions=competitions,
-        classifications=classifications,
-        themes=",".join(alpha_data.themes) if alpha_data.themes else None,
+        alpha_id=alpha_data.id,  # 因子唯一标识
+        type=alpha_data.type,  # 因子类型
+        author=alpha_data.author,  # 作者信息
+        settings=settings,  # 因子设置
+        regular=regular,  # 因子规则
+        date_created=alpha_data.date_created,  # 创建日期
+        date_submitted=getattr(alpha_data, "date_submitted", None),  # 提交日期（可选）
+        date_modified=alpha_data.date_modified,  # 修改日期
+        name=getattr(alpha_data, "name", None),  # 因子名称（可选）
+        favorite=alpha_data.favorite,  # 是否收藏
+        hidden=alpha_data.hidden,  # 是否隐藏
+        color=alpha_data.color if alpha_data.color else Color.NONE,  # 因子颜色
+        category=getattr(alpha_data, "category", None),  # 因子类别（可选）
+        tags=alpha_data.tags,  # 因子标签
+        grade=alpha_data.grade if alpha_data.grade else Grade.DEFAULT,  # 因子等级
+        stage=alpha_data.stage,  # 因子阶段
+        status=alpha_data.status,  # 因子状态
+        in_sample=create_sample(alpha_data.in_sample),  # 样本内数据
+        out_sample=create_sample(alpha_data.out_sample),  # 样本外数据
+        train=create_sample(alpha_data.train),  # 训练数据
+        test=create_sample(alpha_data.test),  # 测试数据
+        prod=create_sample(alpha_data.prod),  # 生产数据
+        competitions=competitions,  # 关联的比赛
+        classifications=classifications,  # 关联的分类
+        themes=",".join(alpha_data.themes) if alpha_data.themes else None,  # 主题
         # TODO(Ball Chang): pyramids 字段需要重新设计
-        # pyramids=",".join(alpha_data.pyramids) if alpha_data.pyramids else None,
         pyramids=None,
-        team=",".join(alpha_data.team) if alpha_data.team else None,
+        team=",".join(alpha_data.team) if alpha_data.team else None,  # 团队信息
     )
 
 
@@ -225,61 +272,70 @@ async def fetch_last_sync_time_range(
     获取上次同步的时间范围。
 
     Args:
-        client: WorldQuantClient 客户端实例
+        client (WorldQuantClient): 客户端实例。
 
     Returns:
-        Tuple[datetime, datetime]: 上次同步的开始和结束时间
+        Tuple[datetime, datetime]: 上次同步的开始和结束时间。
+
+    Raises:
+        RuntimeError: 如果数据库查询或 API 请求失败。
+
+    说明:
+        该函数会从数据库或 API 获取最近的因子同步时间范围。
     """
     await file_logger.adebug(
         "进入 fetch_last_sync_time_range 函数", client=str(client), emoji="🔍"
     )
 
-    async with get_db_session(Database.ALPHAS) as session:
-        alpha_dal: AlphaDAL = DALFactory.create_dal(AlphaDAL, session)
-        last_alpha: Optional[Alpha] = await alpha_dal.find_one_by(
-            order_by=Alpha.date_created.desc(),
-        )
-
-        start_time: datetime
-        end_time: datetime = datetime.now()
-
-        if last_alpha:
-            start_time = last_alpha.date_created
-            await file_logger.adebug(
-                "找到最近的因子记录",
-                last_alpha_id=last_alpha.alpha_id,
-                last_alpha_date_created=last_alpha.date_created,
-                emoji="📅",
-            )
-        else:
-            query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
-                limit=1,
-                offset=0,
-                order="dateCreated",
+    try:
+        async with get_db_session(Database.ALPHAS) as session:
+            alpha_dal: AlphaDAL = DALFactory.create_dal(AlphaDAL, session)
+            last_alpha: Optional[Alpha] = await alpha_dal.find_one_by(
+                order_by=Alpha.date_created.desc(),
             )
 
-            alphas_data_result: SelfAlphaListView = await client.alpha_get_self_list(
-                query=query_params
-            )
+            start_time: datetime
+            end_time: datetime = datetime.now()
 
-            if alphas_data_result.count > 0:
-                start_time = alphas_data_result.results[0].date_created
+            if last_alpha:
+                start_time = last_alpha.date_created
                 await file_logger.adebug(
-                    "从 API 获取最近的因子记录",
-                    api_result_count=alphas_data_result.count,
-                    start_time=start_time,
-                    emoji="🌐",
+                    "找到最近的因子记录",
+                    last_alpha_id=last_alpha.alpha_id,
+                    last_alpha_date_created=last_alpha.date_created,
+                    emoji="📅",
                 )
             else:
-                start_time = datetime.now()
-                await file_logger.awarning(
-                    "未找到任何因子记录，使用当前时间作为开始时间",
-                    start_time=start_time,
-                    emoji="⚠️",
+                query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
+                    limit=1,
+                    offset=0,
+                    order="dateCreated",
                 )
 
+                alphas_data_result: SelfAlphaListView = (
+                    await client.alpha_get_self_list(query=query_params)
+                )
+
+                if alphas_data_result.count > 0:
+                    start_time = alphas_data_result.results[0].date_created
+                    await file_logger.adebug(
+                        "从 API 获取最近的因子记录",
+                        api_result_count=alphas_data_result.count,
+                        start_time=start_time,
+                        emoji="🌐",
+                    )
+                else:
+                    start_time = datetime.now()
+                    await file_logger.awarning(
+                        "未找到任何因子记录，使用当前时间作为开始时间",
+                        start_time=start_time,
+                        emoji="⚠️",
+                    )
+    except Exception as e:
+        raise RuntimeError(f"获取同步时间范围时发生错误: {e}") from e
+
     await file_logger.adebug(
-        "退出 get_range_from_last_sync 函数",
+        "退出 fetch_last_sync_time_range 函数",
         start_time=start_time,
         end_time=end_time,
         emoji="✅",
@@ -292,88 +348,101 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
     异步处理单页 alphas 数据。
 
     Args:
-        alphas_results: 要处理的因子数据列表
+        alphas_results (List[AlphaView]): 要处理的因子数据列表。
 
     Returns:
-        Tuple[int, int]: 插入和更新的因子数量元组
+        Tuple[int, int]: 插入和更新的因子数量元组。
+
+    Raises:
+        RuntimeError: 如果数据库操作失败。
+
+    说明:
+        该函数会将单页因子数据插入或更新到数据库中。
     """
     inserted_alphas: int = 0
     updated_alphas: int = 0
 
-    async with get_db_session(Database.ALPHAS) as session:
-        alpha_dal: AlphaDAL = AlphaDAL(session)
+    try:
+        async with get_db_session(Database.ALPHAS) as session:
+            alpha_dal: AlphaDAL = AlphaDAL(session)
 
-        # 收集所有 competitions 和 classifications 的 ID
-        competition_ids: List[str] = [
-            competition.id
-            for alpha_data in alphas_results
-            if alpha_data.competitions
-            for competition in alpha_data.competitions
-            if competition.id
-        ]
-        classification_ids: List[str] = [
-            classification.id
-            for alpha_data in alphas_results
-            if alpha_data.classifications
-            for classification in alpha_data.classifications
-            if classification.id
-        ]
+            # 收集所有 competitions 和 classifications 的 ID
+            competition_ids: List[str] = [
+                competition.id
+                for alpha_data in alphas_results
+                if alpha_data.competitions
+                for competition in alpha_data.competitions
+                if competition.id
+            ]
+            classification_ids: List[str] = [
+                classification.id
+                for alpha_data in alphas_results
+                if alpha_data.classifications
+                for classification in alpha_data.classifications
+                if classification.id
+            ]
 
-        # 批量查询 competitions 和 classifications
-        competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL, session)
-        classification_dal: ClassificationDAL = DALFactory.create_dal(
-            ClassificationDAL, session
-        )
-
-        competitions_dict: dict[str, Competition] = {
-            competition.competition_id: competition
-            for competition in await competition_dal.find_by(
-                in_={"competition_id": competition_ids}
+            # 批量查询 competitions 和 classifications
+            competition_dal: CompetitionDAL = DALFactory.create_dal(
+                CompetitionDAL, session
             )
-        }
-        classifications_dict: dict[str, Classification] = {
-            classification.classification_id: classification
-            for classification in await classification_dal.find_by(
-                in_={"classification_id": classification_ids}
+            classification_dal: ClassificationDAL = DALFactory.create_dal(
+                ClassificationDAL, session
             )
-        }
 
-        for alpha_data in alphas_results:
-            if exit_event.is_set():
-                await file_logger.awarning(
-                    "检测到退出事件，中止处理因子页面", emoji="⚠️"
+            competitions_dict: dict[str, Competition] = {
+                competition.competition_id: competition
+                for competition in await competition_dal.find_by(
+                    in_={"competition_id": competition_ids}
                 )
-                break
-            alpha_id: str = alpha_data.id
+            }
+            classifications_dict: dict[str, Classification] = {
+                classification.classification_id: classification
+                for classification in await classification_dal.find_by(
+                    in_={"classification_id": classification_ids}
+                )
+            }
 
-            settings: Setting = create_alphas_settings(alpha_data)
-            regular: Regular = create_alphas_regular(alpha_data.regular)
+            for alpha_data in alphas_results:
+                if exit_event.is_set():
+                    await file_logger.awarning(
+                        "检测到退出事件，中止处理因子页面", emoji="⚠️"
+                    )
+                    break
+                alpha_id: str = alpha_data.id
 
-            # 填充 classifications 和 competitions 字段
-            classifications: List[Classification] = [
-                classifications_dict[classification.id]
-                for classification in alpha_data.classifications or []
-                if classification.id in classifications_dict
-            ]
-            competitions: List[Competition] = [
-                competitions_dict[competition.id]
-                for competition in alpha_data.competitions or []
-                if competition.id in competitions_dict
-            ]
+                settings: Setting = create_alphas_settings(alpha_data)
+                regular: Regular = create_alphas_regular(alpha_data.regular)
 
-            alpha: Alpha = create_alphas(
-                alpha_data, settings, regular, classifications, competitions
-            )
+                # 填充 classifications 和 competitions 字段
+                classifications: List[Classification] = [
+                    classifications_dict[classification.id]
+                    for classification in alpha_data.classifications or []
+                    if classification.id in classifications_dict
+                ]
+                competitions: List[Competition] = [
+                    competitions_dict[competition.id]
+                    for competition in alpha_data.competitions or []
+                    if competition.id in competitions_dict
+                ]
 
-            existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(alpha_id)
+                alpha: Alpha = create_alphas(
+                    alpha_data, settings, regular, classifications, competitions
+                )
 
-            if existing_alpha:
-                alpha.id = existing_alpha.id
-                await alpha_dal.update(alpha)
-                updated_alphas += 1
-            else:
-                await alpha_dal.create(alpha)
-                inserted_alphas += 1
+                existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
+                    alpha_id
+                )
+
+                if existing_alpha:
+                    alpha.id = existing_alpha.id
+                    await alpha_dal.update(alpha)
+                    updated_alphas += 1
+                else:
+                    await alpha_dal.create(alpha)
+                    inserted_alphas += 1
+    except Exception as e:
+        raise RuntimeError(f"处理因子页面数据时发生错误: {e}") from e
 
     await file_logger.adebug(
         "处理因子页面数据完成",
@@ -536,6 +605,82 @@ async def process_alphas_pages(
     return fetched_alphas, inserted_alphas, updated_alphas
 
 
+async def fetch_and_process_alphas(
+    client: WorldQuantClient,
+    start_time: datetime,
+    end_time: datetime,
+    parallel: int,
+) -> Tuple[int, int, int]:
+    """
+    获取并处理指定时间范围内的因子数据。
+
+    Args:
+        client: WorldQuantClient 客户端实例
+        start_time: 开始时间
+        end_time: 结束时间
+        parallel: 并行处理任务数
+
+    Returns:
+        Tuple[int, int, int]: 获取、插入和更新的因子数量元组
+    """
+    fetched_alphas: int = 0
+    inserted_alphas: int = 0
+    updated_alphas: int = 0
+
+    for cur_time in (
+        start_time + timedelta(days=i) for i in range((end_time - start_time).days + 1)
+    ):
+        if exit_event.is_set():
+            await file_logger.awarning(
+                "检测到退出事件，中止因子同步",
+                current_date=cur_time,
+                module=__name__,
+                emoji="⚠️",
+            )
+            break
+
+        fetched, inserted, updated = await process_alphas_for_date(
+            client, cur_time, parallel
+        )
+        fetched_alphas += fetched
+        inserted_alphas += inserted
+        updated_alphas += updated
+
+        # 添加调试日志输出同步进度
+        await file_logger.adebug(
+            "同步进度更新",
+            current_date=cur_time,
+            fetched=fetched_alphas,
+            inserted=inserted_alphas,
+            updated=updated_alphas,
+            module=__name__,
+            emoji="📊",
+        )
+
+    return fetched_alphas, inserted_alphas, updated_alphas
+
+
+def setup_exit_signal_handler() -> None:
+    """
+    设置退出信号处理器。
+
+    在接收到退出信号时，执行资源清理操作并通知协程退出。
+    """
+
+    def handle_exit_signal(signum: int, _: Optional[types.FrameType]) -> None:
+        file_logger.warning(
+            "接收到退出信号，准备终止操作",
+            signal=signum,
+            module=__name__,
+            emoji="🛑",
+        )
+        # 设置退出事件，通知所有协程停止操作
+        exit_event.set()
+
+    signal.signal(signal.SIGINT, handle_exit_signal)  # 处理 Ctrl+C
+    signal.signal(signal.SIGTERM, handle_exit_signal)  # 处理终止信号
+
+
 async def sync_alphas(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
@@ -548,6 +693,7 @@ async def sync_alphas(
     Args:
         start_time: 开始时间。
         end_time: 结束时间。
+        increamental: 是否增量同步。
         parallel: 并行任务数。
 
     Raises:
@@ -576,61 +722,35 @@ async def sync_alphas(
     if start_time >= end_time:
         raise ValueError("start_time 必须早于 end_time。")
 
+    # 检查是否需要同步竞赛数据
+    if competition_data_expire_check():
+        await file_logger.ainfo(
+            "竞赛数据过期，准备同步",
+            start_time=start_time,
+            end_time=end_time,
+            emoji="🛠️",
+        )
+        await sync_competition()
+        await file_logger.ainfo(
+            "竞赛数据同步完成",
+            start_time=start_time,
+            end_time=end_time,
+            emoji="✅",
+        )
+
+    # 设置退出信号处理器
+    setup_exit_signal_handler()
+
     # 使用正确的异步日志方法
     await file_logger.ainfo("开始同步因子", emoji="🚀")
 
-    def handle_exit_signal(signum: int, _: Optional[types.FrameType]) -> None:
-        """
-        处理退出信号的函数。
-
-        在接收到退出信号时，执行资源清理操作并通知协程退出。
-
-        Args:
-            signum (int): 信号编号。
-            frame (Optional[types.FrameType]): 信号处理的当前帧。
-        """
-        file_logger.warning(
-            "接收到退出信号，准备终止操作",
-            signal=signum,
-            emoji="🛑",
-        )
-        # 设置退出事件，通知所有协程停止操作
-        exit_event.set()
-
-    signal.signal(signal.SIGINT, handle_exit_signal)  # 处理 Ctrl+C
-    signal.signal(signal.SIGTERM, handle_exit_signal)  # 处理终止信号
-
-    fetched_alphas: int = 0
-    inserted_alphas: int = 0
-    updated_alphas: int = 0
-
     async with wq_client:
         try:
-            for cur_time in (
-                start_time + timedelta(days=i)
-                for i in range((end_time - start_time).days + 1)
-            ):
-                if exit_event.is_set():
-                    await file_logger.awarning(
-                        "检测到退出事件，中止因子同步", emoji="⚠️"
-                    )
-                    break
-                fetched, inserted, updated = await process_alphas_for_date(
-                    wq_client, cur_time, parallel
+            fetched_alphas, inserted_alphas, updated_alphas = (
+                await fetch_and_process_alphas(
+                    wq_client, start_time, end_time, parallel
                 )
-                fetched_alphas += fetched
-                inserted_alphas += inserted
-                updated_alphas += updated
-
-                # 添加调试日志输出同步进度
-                await file_logger.adebug(
-                    "同步进度更新",
-                    current_date=cur_time,
-                    fetched=fetched_alphas,
-                    inserted=inserted_alphas,
-                    updated=updated_alphas,
-                    emoji="📊",
-                )
+            )
 
             # 使用正确的异步日志方法
             await file_logger.ainfo(
@@ -638,13 +758,25 @@ async def sync_alphas(
                 fetched=fetched_alphas,
                 inserted=inserted_alphas,
                 updated=updated_alphas,
+                module=__name__,
                 emoji="✅",
             )
         except Exception as e:
             # 使用正确的异步日志方法
             await file_logger.aerror(
-                "同步因子时出错", error=str(e), exc_info=True, emoji="❌"
+                "同步因子时出错",
+                error=str(e),
+                exc_info=True,
+                module=__name__,
+                emoji="❌",
             )
         finally:
             if exit_event.is_set():
-                await file_logger.ainfo("因子同步被中止", emoji="🛑")
+                await file_logger.ainfo(
+                    "因子同步被中止",
+                    fetched=fetched_alphas,
+                    inserted=inserted_alphas,
+                    updated=updated_alphas,
+                    module=__name__,
+                    emoji="🛑",
+                )
