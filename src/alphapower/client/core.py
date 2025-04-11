@@ -77,11 +77,13 @@ class WorldQuantClient:
         self._usage_count: int = 0
         self._usage_lock: asyncio.Lock = asyncio.Lock()
         self.authentication_info: Optional[AuthenticationView] = None
+        logger.info("WorldQuantClient 实例已创建", emoji="🆕")
 
     async def _start_refresh_task(self, expiry: float) -> None:
         """
         后台异步循环刷新会话。
         """
+        await logger.ainfo("启动会话刷新任务", expiry=expiry, emoji="🔄")
         self._refresh_task = asyncio.create_task(self._run_session_refresh_loop(expiry))
 
     async def _run_session_refresh_loop(self, expiry: float) -> None:
@@ -91,20 +93,23 @@ class WorldQuantClient:
                 await self._wait_for_refresh_time(expiry)
                 expiry = await self._perform_session_refresh()
             except asyncio.CancelledError:
+                await logger.awarning("会话刷新任务被取消", emoji="⚠️")
                 break
             except Exception as e:
-                await logger.aerror(f"刷新会话时发生错误: {e}")
+                await logger.aerror("刷新会话时发生错误", error=str(e), emoji="❌")
 
     async def _wait_for_refresh_time(self, expiry: float) -> None:
         """等待直到接近会话过期时间"""
         refresh_interval = max(expiry - 60, 0)
-        await logger.ainfo(f"计划在 {refresh_interval} 秒后刷新会话")
+        await logger.ainfo(
+            "计划刷新会话", refresh_interval=refresh_interval, emoji="⏳"
+        )
         await asyncio.sleep(refresh_interval)
 
     async def _perform_session_refresh(self) -> float:
         """执行实际的会话刷新操作并返回新的过期时间"""
         old_session = self.session
-        await logger.ainfo("开始刷新会话")
+        await logger.ainfo("开始刷新会话", emoji="🔄")
 
         # 创建新会话并获取认证信息
         self.session = ClientSession(auth=self._auth)
@@ -114,34 +119,39 @@ class WorldQuantClient:
         # 关闭旧会话
         if old_session:
             await old_session.close()
+            await logger.ainfo("旧会话已关闭", emoji="🛑")
 
         expiry = session_info.token.expiry
-        await logger.ainfo(f"会话刷新成功，新的过期时间: {expiry}")
+        await logger.ainfo("会话刷新成功", new_expiry=expiry, emoji="✅")
         return expiry
 
     async def initialize(self) -> None:
         """
         初始化客户端会话。
         """
+        await logger.ainfo("初始化客户端会话", emoji="🚀")
         self.session = ClientSession(auth=self._auth)
         self.authentication_info = await authentication(self.session)
         self._is_closed = False
         self._refresh_task = asyncio.create_task(
             self._start_refresh_task(self.authentication_info.token.expiry)
         )
+        await logger.ainfo("客户端会话初始化完成", emoji="✅")
 
     async def close(self) -> None:
         """
         关闭客户端会话。
         """
+        await logger.ainfo("关闭客户端会话", emoji="🛑")
         if self.session and not self.session.closed:
             await self.session.close()
+            await logger.ainfo("会话已关闭", emoji="✅")
         self._is_closed = True
-        self._auth_task = None
         if self._refresh_task:
             self._refresh_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._refresh_task
+            await logger.ainfo("刷新任务已取消", emoji="🛑")
         self._refresh_task = None
 
     async def _is_initialized(self) -> bool:
@@ -151,8 +161,12 @@ class WorldQuantClient:
         返回:
         bool: 如果已初始化，则返回 True，否则返回 False。
         """
+        await logger.adebug(
+            "检查客户端是否已初始化", is_closed=self._is_closed, emoji="🔍"
+        )
         if self.session and self.session.closed:
             if self._is_closed:
+                await logger.awarning("客户端未初始化", emoji="⚠️")
                 return False
             else:
                 await self.close()
@@ -168,6 +182,9 @@ class WorldQuantClient:
         WorldQuantClient: 客户端实例。
         """
         async with self._usage_lock:
+            await logger.adebug(
+                "进入异步上下文管理器", usage_count=self._usage_count, emoji="🔑"
+            )
             if self._usage_count == 0:
                 if self._is_closed:
                     await self.initialize()
@@ -192,6 +209,9 @@ class WorldQuantClient:
         """
         async with self._usage_lock:
             self._usage_count -= 1
+            await logger.adebug(
+                "退出异步上下文管理器", usage_count=self._usage_count, emoji="🔑"
+            )
             if self._usage_count == 0:
                 await self.close()
 
@@ -199,6 +219,7 @@ class WorldQuantClient:
         """
         确保在对象销毁时清理资源。
         """
+        logger.warning("WorldQuantClient 实例被销毁", emoji="🗑️")
         if self.session and not self.session.closed:
             asyncio.create_task(self.session.close())
 

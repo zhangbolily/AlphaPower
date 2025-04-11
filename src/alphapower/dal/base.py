@@ -499,7 +499,8 @@ class BaseDAL(Generic[T]):
         Returns:
             更新后的实体对象。
         """
-        self.session.add(entity)
+
+        await self.session.merge(entity)
         await self.session.flush()
         return entity
 
@@ -513,7 +514,8 @@ class BaseDAL(Generic[T]):
         Returns:
             更新后的实体对象列表。
         """
-        self.session.add_all(entities)
+        for entity in entities:
+            await self.session.merge(entity)
         await self.session.flush()
         return entities
 

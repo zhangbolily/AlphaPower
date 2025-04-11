@@ -4,6 +4,8 @@
 """
 
 import asyncio
+import signal
+import types
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Tuple
 
@@ -33,7 +35,7 @@ from alphapower.entity import (
     Setting,
 )
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging  # 引入公共方法
+from alphapower.internal.logging import setup_logging
 
 from .utils import create_sample
 
@@ -41,10 +43,12 @@ from .utils import create_sample
 console_logger: BoundLogger = setup_logging(__name__, enable_console=True)
 file_logger: BoundLogger = setup_logging(__name__, enable_console=False)
 
-# TODO(Ball Chang): 测试命令确保能正常同步数据，走通流程
 # TODO(Ball Chang): 支持全量和增量同步，努力提高数据同步并发度和写入性能
 # TODO(Ball Chang): 找一个好的解决方案来判断因子回测配置是否相同
 # TODO(Ball Chang): 整理重复的公共逻辑，放到同一个模块里管理
+
+# 全局事件，用于通知所有协程终止操作
+exit_event: asyncio.Event = asyncio.Event()
 
 
 def create_alphas_settings(alpha_data: AlphaView) -> Setting:
@@ -230,6 +234,9 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
     updated_alphas: int = 0
 
     for alpha_data in alphas_results:
+        if exit_event.is_set():
+            await file_logger.awarning("检测到退出事件，中止处理因子页面", emoji="⚠️")
+            break
         alpha_id: str = alpha_data.id
 
         settings: Setting = create_alphas_settings(alpha_data)
@@ -244,7 +251,6 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
             alpha_data, settings, regular, classifications, competitions
         )
 
-        # 使用锁保护数据库写操作
         async with get_db_session(Database.ALPHAS) as session:
             alpha_dal: AlphaDAL = AlphaDAL(session)
             existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(alpha_id)
@@ -253,13 +259,16 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
                 alpha.id = existing_alpha.id
                 await alpha_dal.update(alpha)
                 updated_alphas += 1
-                # 使用正确的异步日志方法
-                await file_logger.adebug("更新因子", alpha_id=alpha_id, emoji="🔄")
             else:
                 await alpha_dal.create(alpha)
                 inserted_alphas += 1
-                await file_logger.adebug("插入因子", alpha_id=alpha_id, emoji="➕")
 
+    await file_logger.adebug(
+        "处理因子页面数据完成",
+        inserted=inserted_alphas,
+        updated=updated_alphas,
+        emoji="✅",
+    )
     return inserted_alphas, updated_alphas
 
 
@@ -380,6 +389,9 @@ async def process_alphas_pages(
     updated_alphas: int = 0
 
     for page in range(start_page, end_page + 1):
+        if exit_event.is_set():
+            await file_logger.awarning("检测到退出事件，中止处理因子页范围", emoji="⚠️")
+            break
         query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
             limit=page_size,
             offset=(page - 1) * page_size,
@@ -430,6 +442,27 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
     # 使用正确的异步日志方法
     await file_logger.ainfo("开始同步因子", emoji="🚀")
 
+    def handle_exit_signal(signum: int, _: Optional[types.FrameType]) -> None:
+        """
+        处理退出信号的函数。
+
+        在接收到退出信号时，执行资源清理操作并通知协程退出。
+
+        Args:
+            signum (int): 信号编号。
+            frame (Optional[types.FrameType]): 信号处理的当前帧。
+        """
+        file_logger.warning(
+            "接收到退出信号，准备终止操作",
+            signal=signum,
+            emoji="🛑",
+        )
+        # 设置退出事件，通知所有协程停止操作
+        exit_event.set()
+
+    signal.signal(signal.SIGINT, handle_exit_signal)  # 处理 Ctrl+C
+    signal.signal(signal.SIGTERM, handle_exit_signal)  # 处理终止信号
+
     fetched_alphas: int = 0
     inserted_alphas: int = 0
     updated_alphas: int = 0
@@ -440,12 +473,27 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
                 start_time + timedelta(days=i)
                 for i in range((end_time - start_time).days + 1)
             ):
+                if exit_event.is_set():
+                    await file_logger.awarning(
+                        "检测到退出事件，中止因子同步", emoji="⚠️"
+                    )
+                    break
                 fetched, inserted, updated = await process_alphas_for_date(
                     wq_client, cur_time, parallel
                 )
                 fetched_alphas += fetched
                 inserted_alphas += inserted
                 updated_alphas += updated
+
+                # 添加调试日志输出同步进度
+                await file_logger.adebug(
+                    "同步进度更新",
+                    current_date=cur_time,
+                    fetched=fetched_alphas,
+                    inserted=inserted_alphas,
+                    updated=updated_alphas,
+                    emoji="📊",
+                )
 
             # 使用正确的异步日志方法
             await file_logger.ainfo(
@@ -460,3 +508,6 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
             await file_logger.aerror(
                 "同步因子时出错", error=str(e), exc_info=True, emoji="❌"
             )
+        finally:
+            if exit_event.is_set():
+                await file_logger.ainfo("因子同步被中止", emoji="🛑")
