@@ -31,11 +31,13 @@ from alphapower.client import (
 from alphapower.client.raw_api import (
     alpha_check_submission,
     alpha_fetch_competitions,
+    alpha_fetch_correlations,
     get_alpha_detail,
     get_self_alphas,
     get_simulation_progress,
     set_alpha_properties,
 )
+from alphapower.constants import CorrelationType
 
 
 def assert_alpha_check_result(result: Optional[AlphaCheckResultView]) -> None:
@@ -343,3 +345,20 @@ async def test_alpha_competitions(setup_mock_responses: str) -> None:
                 assert isinstance(comp.status, str)
             if comp.description:
                 assert isinstance(comp.description, str)
+
+
+@pytest.mark.asyncio
+async def test_alpha_correlations(setup_mock_responses: str) -> None:
+    """
+    测试 Alpha Correlations 的响应
+    """
+    with patch("alphapower.client.raw_api.BASE_URL", new=setup_mock_responses):
+        session: ClientSession = ClientSession()
+
+        alpha_ids = ["regular_alpha_0"]
+        for alpha_id in alpha_ids:
+            _, _, result, _ = await alpha_fetch_correlations(
+                session, alpha_id, CorrelationType.SELF
+            )
+
+            assert isinstance(result, AlphaCorrelationsView)

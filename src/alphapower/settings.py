@@ -9,7 +9,7 @@ from typing import Dict
 from pydantic import AnyUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .constants import DB_ALPHAS, DB_DATA, DB_SIMULATION, ENV_PROD
+from .constants import ENV_PROD, Database
 
 
 class DatabaseConfig(BaseSettings):
@@ -36,21 +36,26 @@ class AppConfig(BaseSettings):
     应用程序配置类，用于定义数据库、日志和凭据的相关配置。
     """
 
-    databases: Dict[str, DatabaseConfig] = {
-        DB_ALPHAS: DatabaseConfig(
+    databases: Dict[Database, DatabaseConfig] = {
+        Database.ALPHAS: DatabaseConfig(
             dsn=AnyUrl(url="sqlite+aiosqlite:///db/alphas.db"),
             description="Alpha 数据库",
-            alias=DB_ALPHAS,
+            alias=Database.ALPHAS.value,
         ),
-        DB_DATA: DatabaseConfig(
+        Database.DATA: DatabaseConfig(
             dsn=AnyUrl(url="sqlite+aiosqlite:///db/data.db"),
             description="数据集数据库",
-            alias=DB_DATA,
+            alias=Database.DATA.value,
         ),
-        DB_SIMULATION: DatabaseConfig(
+        Database.SIMULATION: DatabaseConfig(
             dsn=AnyUrl(url="sqlite+aiosqlite:///db/simulation.db"),
             description="模拟回测任务数据库",
-            alias=DB_SIMULATION,
+            alias=Database.SIMULATION.value,
+        ),
+        Database.CHECKS: DatabaseConfig(
+            dsn=AnyUrl(url="sqlite+aiosqlite:///db/checks.db"),
+            description="检查数据库",
+            alias=Database.CHECKS.value,
         ),
     }
 
@@ -59,7 +64,6 @@ class AppConfig(BaseSettings):
     sql_echo: bool = Field(default=False)
     environment: str = Field(default=ENV_PROD)
     credential: CredentialConfig = CredentialConfig()
-    
 
     model_config = SettingsConfigDict(
         env_file=f".env.{os.getenv('ENVIRONMENT', 'default')}",

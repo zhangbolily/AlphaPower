@@ -80,6 +80,7 @@ class Database(Enum):
     ALPHAS = "alphas"  # Alpha因子数据库
     DATA = "data"  # 市场数据库
     SIMULATION = "simulation"  # 模拟回测数据库
+    CHECKS = "checks"  # 检查数据库
 
 
 # 数据库名称常量 (兼容性保留，建议使用Database枚举)
@@ -711,6 +712,22 @@ class CheckType(Enum):
     POWER_POOL_CORRELATION = "POWER_POOL_CORRELATION"
     UNITS = "UNITS"
     IS_LADDER_SHARPE = "IS_LADDER_SHARPE"
+
+
+class CorrelationType(Enum):
+    """相关性类型枚举。
+
+    定义了系统中可能使用的相关性类型。
+
+    Attributes:
+        DEFAULT: 默认值，无实际意义
+        SELF: 自相关
+        PROD: 生产环境相关性
+    """
+
+    DEFAULT = "DEFAULT"
+    SELF = "self"  # 自相关
+    PROD = "prod"  # 生产环境相关性
 
 
 class CompetitionStatus(Enum):

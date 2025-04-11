@@ -18,6 +18,8 @@ __all__ = [
     "alphas_competitions",
     "Sample",
     "Check",
+    "Correlation",
+    "ChecksBase",
     "Setting",
     "DataBase",
     "Category",
@@ -33,7 +35,9 @@ __all__ = [
 ]
 
 # 数据库常量和会话管理工具
-from alphapower.constants import DB_ALPHAS, DB_DATA, DB_SIMULATION, ENV_DEV, ENV_TEST
+from typing import Any, List, Tuple
+
+from alphapower.constants import ENV_DEV, ENV_TEST, Database
 from alphapower.internal.db_session import sync_register_db
 from alphapower.settings import settings
 
@@ -52,6 +56,8 @@ from .alphas import (
     alphas_classifications,
     alphas_competitions,
 )
+from .checks import Base as ChecksBase
+from .checks import Correlation
 
 # 数据相关实体
 from .data import Base as DataBase
@@ -79,18 +85,17 @@ def register_all_entities() -> None:
 
     此函数集中管理所有实体的注册逻辑，便于维护和扩展
     """
-    entity_mappings = [
-        (AlphaBase, DB_ALPHAS),
-        (DataBase, DB_DATA),
-        (SimulationBase, DB_SIMULATION),
+    entity_mappings: List[Tuple[Any, Database]] = [
+        (AlphaBase, Database.ALPHAS),
+        (DataBase, Database.DATA),
+        (SimulationBase, Database.SIMULATION),
+        (ChecksBase, Database.CHECKS),
     ]
 
-    force_recreate_db: bool = (
-        True if settings.environment in [ENV_DEV, ENV_TEST] else False
-    )
+    force_recreate_db: bool = settings.environment in [ENV_DEV, ENV_TEST]
 
-    for base, db_name in entity_mappings:
-        sync_register_db(base, db_name, settings.databases[db_name], force_recreate_db)
+    for base, db in entity_mappings:
+        sync_register_db(base, db, settings.databases[db], force_recreate_db)
 
 
 # 在模块导入时自动注册所有实体

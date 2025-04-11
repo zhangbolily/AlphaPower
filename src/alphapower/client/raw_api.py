@@ -29,6 +29,7 @@ from alphapower.constants import (
     ENDPOINT_OPERATORS,
     ENDPOINT_SELF_ALPHA_LIST,
     ENDPOINT_SIMULATION,
+    CorrelationType,
 )
 
 from .models import (
@@ -193,8 +194,8 @@ async def get_alpha_pnl(
         ), RateLimit.from_headers(response.headers)
 
 
-async def get_alpha_self_correlations(
-    session: aiohttp.ClientSession, alpha_id: str
+async def alpha_fetch_correlations(
+    session: aiohttp.ClientSession, alpha_id: str, corr_type: CorrelationType
 ) -> Tuple[bool, Optional[float], Optional[AlphaCorrelationsView], RateLimit]:
     """
     获取指定 alpha 的自相关性数据。
@@ -202,12 +203,15 @@ async def get_alpha_self_correlations(
     参数:
     session (aiohttp.ClientSession): 用于发送 HTTP 请求的会话对象。
     alpha_id (str): alpha 的唯一标识符。
+    corr_type (CorrelationType): 自相关性类型。
 
     返回:
     Tuple[bool, Optional[float], Optional[AlphaCorrelations], RateLimit]:
         包含请求完成状态、重试时间、自相关性数据和速率限制信息的元组。
     """
-    url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id, 'self')}"
+    url: str = (
+        f"{BASE_URL}/{ENDPOINT_ALPHA_SELF_CORRELATIONS(alpha_id, corr_type.value)}"
+    )
     async with session.get(url) as response:
         response.raise_for_status()
         retry_after: float = retry_after_from_headers(response.headers)

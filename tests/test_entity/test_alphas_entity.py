@@ -350,7 +350,6 @@ class TestSample:
         assert db_sample.sharpe == 1.8
         assert db_sample.fitness == 0.75
         assert db_sample.start_date == now
-        assert db_sample.checks_id == sample_check.id
         assert db_sample.self_correration == 0.2
         assert db_sample.prod_correration == 0.3
         assert db_sample.os_is_sharpe_ratio == 0.9

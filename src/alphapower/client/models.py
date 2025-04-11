@@ -226,10 +226,6 @@ class TableSchema(BaseModel):
         properties: 模式包含的属性列表。
     """
 
-    name: str
-    title: str
-    properties: List["TableSchema.Property"]
-
     class Property(BaseModel):
         """模式属性。
 
@@ -244,6 +240,10 @@ class TableSchema(BaseModel):
         name: str
         title: str
         type: str
+
+    name: str
+    title: str
+    properties: List[Property]
 
 
 class SimulationSettingsView(BaseModel):
