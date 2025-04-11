@@ -430,7 +430,10 @@ class BaseDAL(Generic[T]):
             raise ValueError("没有提供任何过滤条件")
 
     async def find_one_by(
-        self, session: Optional[AsyncSession] = None, **kwargs: Any
+        self,
+        session: Optional[AsyncSession] = None,
+        order_by: Optional[Union[str, ColumnExpressionArgument]] = None,
+        **kwargs: Any,
     ) -> Optional[T]:
         """
         按条件查找单个实体。
@@ -446,6 +449,8 @@ class BaseDAL(Generic[T]):
         query: Select = select(self.entity_type)
         for key, value in kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
+        if order_by:
+            query = query.order_by(order_by)
         result = await actual_session.execute(query.limit(1))
         return result.scalars().first()
 

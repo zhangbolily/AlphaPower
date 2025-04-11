@@ -683,6 +683,35 @@ class DataFieldType(Enum):
     UNIVERSE = "UNIVERSE"
 
 
+class CheckType(Enum):
+    """检查类型枚举。
+    定义了系统中可能使用的检查类型。
+    Attributes:
+        DEFAULT: 默认值，无实际意义
+        LOW_SHARPE: 低夏普比率
+        LOW_FITNESS: 低适应度
+    """
+
+    DEFAULT = "DEFAULT"
+    LOW_SHARPE = "LOW_SHARPE"
+    LOW_FITNESS = "LOW_FITNESS"
+    LOW_TURNOVER = "LOW_TURNOVER"
+    HIGH_TURNOVER = "HIGH_TURNOVER"
+    CONCENTRATED_WEIGHT = "CONCENTRATED_WEIGHT"
+    LOW_SUB_UNIVERSE_SHARPE = "LOW_SUB_UNIVERSE_SHARPE"
+    SELF_CORRELATION = "SELF_CORRELATION"
+    DATA_DIVERSITY = "DATA_DIVERSITY"
+    PROD_CORRELATION = "PROD_CORRELATION"
+    REGULAR_SUBMISSION = "REGULAR_SUBMISSION"
+    MATCHES_COMPETITION = "MATCHES_COMPETITION"
+    LOW_2Y_SHARPE = "LOW_2Y_SHARPE"
+    MATCHES_PYRAMID = "MATCHES_PYRAMID"
+    MATCHES_THEMES = "MATCHES_THEMES"
+    POWER_POOL_CORRELATION = "POWER_POOL_CORRELATION"
+    UNITS = "UNITS"
+    IS_LADDER_SHARPE = "IS_LADDER_SHARPE"
+
+
 # -----------------------------------------------------------------------------
 # 对象关系映射
 # -----------------------------------------------------------------------------

@@ -37,10 +37,16 @@ async def handle_exit_signal(signum: int, frame: Optional[types.FrameType]) -> N
     Args:
         signum (int): 信号编号。
         frame (Optional[types.FrameType]): 信号处理的当前帧。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 如果资源清理过程中发生错误。
     """
-    await logger.ainfo(f"接收到信号 {signum}，帧架信息: {frame}")
+    await logger.ainfo(f"接收到信号 {signum}，帧架信息: {frame}", emoji="🚦")
     await close_resources()
-    await logger.ainfo("资源清理完成，程序即将退出。")
+    await logger.ainfo("资源清理完成，程序即将退出。", emoji="✅")
 
 
 # 注册信号处理函数
@@ -58,8 +64,11 @@ async def cli() -> None:
     CLI 命令组的入口。
 
     初始化 CLI 命令组，并记录调试日志。
+
+    Returns:
+        None
     """
-    await logger.adebug("CLI 初始化完成。")
+    await logger.adebug("CLI 初始化完成。", emoji="🚀")
 
 
 @cli.group()
@@ -68,6 +77,9 @@ async def sync() -> None:
     同步命令组。
 
     提供用于同步数据集、因子和数据字段的子命令。
+
+    Returns:
+        None
     """
     await logger.adebug("同步命令组初始化完成。")
 
@@ -78,6 +90,9 @@ async def simulation() -> None:
     模拟命令组。
 
     提供用于启动模拟任务的子命令。
+
+    Returns:
+        None
     """
     await logger.adebug("模拟命令组初始化完成。")
 
@@ -98,22 +113,36 @@ async def datasets(
         universe (Optional[str]): 股票池。
         delay (Optional[int]): 延迟时间。
         parallel (int): 并行数，默认为 5。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 如果同步过程中发生错误。
     """
     await logger.ainfo(
-        f"开始同步数据集，参数: region={region}, universe={universe}, delay={delay}, parallel={parallel}"
+        f"开始同步数据集，参数: region={region}, universe={universe}, "
+        f"delay={delay}, parallel={parallel}",
+        emoji="📊",
     )
     await sync_datasets(
         region=region, universe=universe, delay=delay, parallel=parallel
     )
-    await logger.ainfo("数据集同步完成。")
+    await logger.ainfo("数据集同步完成。", emoji="✅")
 
 
 @sync.command()
 @click.option("--start_time", default=None, help="开始时间")
 @click.option("--end_time", default=None, help="结束时间")
+@click.option(
+    "--increamental", is_flag=True, default=False, help="增量同步，默认为全量同步"
+)
 @click.option("--parallel", default=5, help="并行数 默认为5")
 async def alphas(
-    start_time: Optional[str], end_time: Optional[str], parallel: int
+    start_time: Optional[str],
+    end_time: Optional[str],
+    increamental: bool = False,
+    parallel: int = 5,
 ) -> None:
     """
     同步因子。
@@ -121,7 +150,15 @@ async def alphas(
     Args:
         start_time (Optional[str]): 开始时间。
         end_time (Optional[str]): 结束时间。
+        increamental (bool): 是否增量同步，默认为 False。
         parallel (int): 并行数，默认为 5。
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: 如果日期格式不支持。
+        Exception: 如果同步过程中发生错误。
     """
 
     def parse_date(date_str: str) -> datetime:
@@ -146,7 +183,9 @@ async def alphas(
         raise ValueError(f"日期格式不支持: {date_str}")
 
     await logger.ainfo(
-        f"开始同步因子，参数: start_time={start_time}, end_time={end_time}, parallel={parallel}"
+        f"开始同步因子，参数: start_time={start_time}, end_time={end_time}, "
+        f"parallel={parallel}, increamental={increamental}",
+        emoji="📈",
     )
     parsed_start_time: datetime = datetime.fromtimestamp(0, tz=timezone.utc)
     parsed_end_time: datetime = datetime.now(tz=timezone.utc)
@@ -156,9 +195,12 @@ async def alphas(
         parsed_end_time = parse_date(end_time)
 
     await sync_alphas(
-        start_time=parsed_start_time, end_time=parsed_end_time, parallel=parallel
+        start_time=parsed_start_time,
+        end_time=parsed_end_time,
+        increamental=increamental,
+        parallel=parallel,
     )
-    await logger.ainfo("因子同步完成。")
+    await logger.ainfo("因子同步完成。", emoji="✅")
 
 
 @sync.command()
@@ -175,16 +217,24 @@ async def datafields(
         instrument_type (str): 工具类型。
         dataset_id (Optional[str]): 数据集 ID。
         parallel (int): 并行数，默认为 5。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 如果同步过程中发生错误。
     """
     await logger.ainfo(
-        f"开始同步数据字段，参数: instrument_type={instrument_type}, dataset_id={dataset_id}, parallel={parallel}"
+        f"开始同步数据字段，参数: instrument_type={instrument_type}, "
+        f"dataset_id={dataset_id}, parallel={parallel}",
+        emoji="📋",
     )
     await sync_datafields(
         instrument_type=instrument_type,
         dataset_id=dataset_id,
         parallel=parallel,
     )
-    await logger.ainfo("数据字段同步完成。")
+    await logger.ainfo("数据字段同步完成。", emoji="✅")
 
 
 @simulation.command()
@@ -209,11 +259,18 @@ async def start_worker_pool(
         worker_timeout (int): 工作者健康检查超时时间（秒）。
         task_fetch_size (int): 每次从任务提供者获取的任务数量。
         low_priority_threshold (int): 低优先级任务提升阈值。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 如果工作池启动过程中发生错误。
     """
     await logger.ainfo(
         f"启动工作池，参数: initial_workers={initial_workers}, dry_run={dry_run}, "
         f"worker_timeout={worker_timeout}, task_fetch_size={task_fetch_size}, "
-        f"low_priority_threshold={low_priority_threshold}"
+        f"low_priority_threshold={low_priority_threshold}",
+        emoji="⚙️",
     )
     await task_start_worker_pool(
         initial_workers=initial_workers,
@@ -222,6 +279,7 @@ async def start_worker_pool(
         task_fetch_size=task_fetch_size,
         low_priority_threshold=low_priority_threshold,
     )
+    await logger.ainfo("工作池启动完成。", emoji="✅")
 
 
 if __name__ == "__main__":

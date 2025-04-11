@@ -2,14 +2,13 @@
 通用方法，用于获取或创建数据库实体。
 """
 
-from typing import Optional, Protocol, Type, TypeVar
+from typing import List, Optional, Protocol, Type, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from alphapower.client import AlphaSampleView as AlphaSampleModel
-from alphapower.entity import Category
-from alphapower.entity import Sample as AlphasSampleEntity
+from alphapower.client import AlphaCheckItemView, AlphaSampleView
+from alphapower.entity import Category, Check, Sample
 
 
 class HasIdAndName(Protocol):
@@ -51,9 +50,7 @@ async def get_or_create_entity(
     return entity
 
 
-async def get_or_create_category(
-    session: AsyncSession, category_name: str
-) -> Category:
+async def get_or_create_category(session: AsyncSession, category_name: str) -> Category:
     """
     获取或创建数据分类。
 
@@ -86,9 +83,7 @@ async def get_or_create_subcategory(
     返回:
     数据子分类对象。
     """
-    result = await session.execute(
-        select(Category).filter_by(name=subcategory_name)
-    )
+    result = await session.execute(select(Category).filter_by(name=subcategory_name))
     subcategory: Optional[Category] = result.scalars().first()
     if subcategory is None:
         subcategory = Category(name=subcategory_name)
@@ -98,8 +93,8 @@ async def get_or_create_subcategory(
 
 
 def create_sample(
-    sample_data: Optional[AlphaSampleModel],
-) -> Optional[AlphasSampleEntity]:
+    sample_data: Optional[AlphaSampleView],
+) -> Optional[Sample]:
     """
     创建样本数据。
 
@@ -112,7 +107,34 @@ def create_sample(
     if sample_data is None:
         return None
 
-    return AlphasSampleEntity(
+    def create_checks(checks: Optional[List[AlphaCheckItemView]]) -> List[Check]:
+        """
+        创建检查项列表。
+
+        参数:
+        checks: 检查项数据列表。
+
+        返回:
+        检查项实体对象列表。
+        """
+        if checks is None:
+            return []
+
+        return [
+            Check(
+                name=check.name,
+                result=check.result,
+                message=check.message,
+                limit=check.limit,
+                value=check.value,
+                date=check.date,
+                # TODO: 检查项的竞赛数据，需要用单独的服务去同步
+                # competitions=[],
+            )
+            for check in checks
+        ]
+
+    return Sample(
         pnl=sample_data.pnl,
         book_size=sample_data.book_size,
         long_count=sample_data.long_count,
@@ -123,5 +145,10 @@ def create_sample(
         margin=sample_data.margin,
         sharpe=sample_data.sharpe,
         fitness=sample_data.fitness,
+        self_correration=sample_data.self_correlation,  # 自相关性
+        prod_correration=sample_data.prod_correlation,  # 生产相关性
+        os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,  # 样本外-样本内夏普比率
+        pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,  # 收盘前夏普比率
         start_date=sample_data.start_date,
+        checks=create_checks(sample_data.checks),  # 检查项列表
     )

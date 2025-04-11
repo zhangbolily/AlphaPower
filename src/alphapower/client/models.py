@@ -16,11 +16,15 @@ from pydantic import AliasChoices, BaseModel, Field, RootModel
 
 from alphapower.constants import (
     AlphaType,
+    Color,
     Delay,
+    Grade,
     InstrumentType,
     Neutralization,
     Region,
     RegularLanguage,
+    Stage,
+    Status,
     Switch,
     UnitHandling,
     Universe,
@@ -377,8 +381,8 @@ class AlphaView(BaseModel):
     author: str
     settings: SimulationSettingsView
     regular: RegularView
-    date_created: Optional[datetime] = Field(
-        default=None, validation_alias=AliasChoices("dateCreated", "date_created")
+    date_created: datetime = Field(
+        validation_alias=AliasChoices("dateCreated", "date_created")
     )
     date_submitted: Optional[datetime] = Field(
         default=None, validation_alias=AliasChoices("dateSubmitted", "date_submitted")
@@ -389,13 +393,13 @@ class AlphaView(BaseModel):
     name: Optional[str] = ""
     favorite: bool = False
     hidden: bool = False
-    color: Optional[str] = None
+    color: Optional[Color] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
     classifications: Optional[List[ClassificationView]] = None
-    grade: Optional[str] = None
-    stage: Optional[str] = None
-    status: Optional[str] = None
+    grade: Optional[Grade] = None
+    stage: Optional[Stage] = None
+    status: Optional[Status] = None
     in_sample: Optional[AlphaSampleView] = Field(
         default=None, validation_alias=AliasChoices("is", "in_sample")
     )

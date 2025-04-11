@@ -17,10 +17,11 @@ from alphapower.client import (
     CompetitionView,
     RegularView,
     SelfAlphaListQueryParams,
+    SelfAlphaListView,
     WorldQuantClient,
     wq_client,
 )
-from alphapower.constants import Database
+from alphapower.constants import Color, Database, Grade
 from alphapower.dal.alphas import (
     AlphaDAL,
     ClassificationDAL,
@@ -199,11 +200,10 @@ def create_alphas(
         name=getattr(alpha_data, "name", None),
         favorite=alpha_data.favorite,
         hidden=alpha_data.hidden,
-        color=getattr(alpha_data, "color", None),
+        color=alpha_data.color if alpha_data.color else Color.NONE,
         category=getattr(alpha_data, "category", None),
-        tags=",".join(alpha_data.tags) if alpha_data.tags else None,
-        classifications=classifications,
-        grade=alpha_data.grade,
+        tags=alpha_data.tags,
+        grade=alpha_data.grade if alpha_data.grade else Grade.DEFAULT,
         stage=alpha_data.stage,
         status=alpha_data.status,
         in_sample=create_sample(alpha_data.in_sample),
@@ -211,13 +211,84 @@ def create_alphas(
         train=create_sample(alpha_data.train),
         test=create_sample(alpha_data.test),
         prod=create_sample(alpha_data.prod),
-        competitions=competitions,
+        # TODO(Ball Chang): 这里的分类和比赛数据需要重新设计
+        # competitions=competitions,
+        # classifications=classifications,
         themes=",".join(alpha_data.themes) if alpha_data.themes else None,
         # TODO(Ball Chang): pyramids 字段需要重新设计
         # pyramids=",".join(alpha_data.pyramids) if alpha_data.pyramids else None,
         pyramids=None,
         team=",".join(alpha_data.team) if alpha_data.team else None,
     )
+
+
+async def fetch_last_sync_time_range(
+    client: WorldQuantClient,
+) -> Tuple[datetime, datetime]:
+    """
+    获取上次同步的时间范围。
+
+    Args:
+        client: WorldQuantClient 客户端实例
+
+    Returns:
+        Tuple[datetime, datetime]: 上次同步的开始和结束时间
+    """
+    await file_logger.adebug(
+        "进入 fetch_last_sync_time_range 函数", client=str(client), emoji="🔍"
+    )
+
+    async with get_db_session(Database.ALPHAS) as session:
+        alpha_dal: AlphaDAL = DALFactory.create_dal(AlphaDAL, session)
+        last_alpha: Optional[Alpha] = await alpha_dal.find_one_by(
+            order_by=Alpha.date_created.desc(),
+        )
+
+        start_time: datetime
+        end_time: datetime = datetime.now()
+
+        if last_alpha:
+            start_time = last_alpha.date_created
+            await file_logger.adebug(
+                "找到最近的因子记录",
+                last_alpha_id=last_alpha.alpha_id,
+                last_alpha_date_created=last_alpha.date_created,
+                emoji="📅",
+            )
+        else:
+            query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
+                limit=1,
+                offset=0,
+                order="dateCreated",
+            )
+
+            alphas_data_result: SelfAlphaListView = await client.get_self_alphas(
+                query=query_params
+            )
+
+            if alphas_data_result.count > 0:
+                start_time = alphas_data_result.results[0].date_created
+                await file_logger.adebug(
+                    "从 API 获取最近的因子记录",
+                    api_result_count=alphas_data_result.count,
+                    start_time=start_time,
+                    emoji="🌐",
+                )
+            else:
+                start_time = datetime.now()
+                await file_logger.awarning(
+                    "未找到任何因子记录，使用当前时间作为开始时间",
+                    start_time=start_time,
+                    emoji="⚠️",
+                )
+
+    await file_logger.adebug(
+        "退出 get_range_from_last_sync 函数",
+        start_time=start_time,
+        end_time=end_time,
+        emoji="✅",
+    )
+    return start_time, end_time
 
 
 async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int]:
@@ -233,26 +304,32 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
     inserted_alphas: int = 0
     updated_alphas: int = 0
 
-    for alpha_data in alphas_results:
-        if exit_event.is_set():
-            await file_logger.awarning("检测到退出事件，中止处理因子页面", emoji="⚠️")
-            break
-        alpha_id: str = alpha_data.id
+    async with get_db_session(Database.ALPHAS) as session:
+        alpha_dal: AlphaDAL = AlphaDAL(session)
 
-        settings: Setting = create_alphas_settings(alpha_data)
-        regular: Regular = create_alphas_regular(alpha_data.regular)
-        classifications: List[Classification] = await create_alpha_classifications(
-            alpha_data.classifications
-        )
-        competitions: List[Competition] = await create_alpha_competitions(
-            alpha_data.competitions
-        )
-        alpha: Alpha = create_alphas(
-            alpha_data, settings, regular, classifications, competitions
-        )
+        for alpha_data in alphas_results:
+            if exit_event.is_set():
+                await file_logger.awarning(
+                    "检测到退出事件，中止处理因子页面", emoji="⚠️"
+                )
+                break
+            alpha_id: str = alpha_data.id
 
-        async with get_db_session(Database.ALPHAS) as session:
-            alpha_dal: AlphaDAL = AlphaDAL(session)
+            settings: Setting = create_alphas_settings(alpha_data)
+            regular: Regular = create_alphas_regular(alpha_data.regular)
+            # TODO(Ball Chang): 这里的分类和比赛数据需要重新设计
+            # classifications: List[Classification] = await create_alpha_classifications(
+            #     alpha_data.classifications
+            # )
+            # competitions: List[Competition] = await create_alpha_competitions(
+            #     alpha_data.competitions
+            # )
+            classifications: List[Classification] = []
+            competitions: List[Competition] = []
+            alpha: Alpha = create_alphas(
+                alpha_data, settings, regular, classifications, competitions
+            )
+
             existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(alpha_id)
 
             if existing_alpha:
@@ -424,7 +501,12 @@ async def process_alphas_pages(
     return fetched_alphas, inserted_alphas, updated_alphas
 
 
-async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -> None:
+async def sync_alphas(
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    increamental: bool = False,
+    parallel: int = 1,
+) -> None:
     """
     异步同步因子。
 
@@ -436,6 +518,26 @@ async def sync_alphas(start_time: datetime, end_time: datetime, parallel: int) -
     Raises:
         ValueError: 当开始时间晚于或等于结束时间时抛出
     """
+    if increamental:
+        async with wq_client:
+            sync_time_range: Tuple[datetime, datetime] = (
+                await fetch_last_sync_time_range(wq_client)
+            )
+
+            start_time = (
+                max(sync_time_range[0], start_time)
+                if start_time
+                else sync_time_range[0]
+            )
+            end_time = (
+                min(sync_time_range[1], end_time) if end_time else sync_time_range[1]
+            )
+    else:
+        if start_time is None:
+            start_time = datetime.now() - timedelta(days=1)
+        if end_time is None:
+            end_time = datetime.now()
+
     if start_time >= end_time:
         raise ValueError("start_time 必须早于 end_time。")
 
