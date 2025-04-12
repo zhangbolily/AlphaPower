@@ -72,14 +72,23 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
     )
 
     logger.debug(
-        f"生成单个模拟任务负载数据，任务 ID: {task.id}, 类型: {task.type}, 设置: {setting}"
+        event="生成单个模拟任务负载数据",
+        emoji="🛠️",
+        task_id=task.id,
+        task_type=task.type.value,
+        settings=setting.model_dump(mode="json"),
     )
     payload: SingleSimulationPayload = SingleSimulationPayload(
         type=task.type.value,
         settings=setting,
         regular=task.regular,
     )
-    logger.debug(f"生成的负载数据: {payload}")
+    logger.debug(
+        event="生成的负载数据",
+        emoji="📦",
+        task_id=task.id,
+        payload=payload.model_dump(mode="json"),
+    )
     return payload
 
 
@@ -150,17 +159,29 @@ class Worker(AbstractWorker):
         Returns:
             bool: 如果成功取消则返回 True，否则返回 False
         """
-        # 添加详细的调试日志，便于跟踪取消任务的流程
-        logger.debug(
-            f"正在判断是否应该取消任务，进度 ID: {progress_id}, shutdown: {self._shutdown_flag}, "
-            f"cancel_tasks: {self._is_task_cancel_requested}"
+        await logger.adebug(
+            event="判断是否应该取消任务",
+            emoji="❓",
+            progress_id=progress_id,
+            shutdown=self._shutdown_flag,
+            cancel_tasks=self._is_task_cancel_requested,
+            task_count=len(tasks),
         )
         # 仅在工作者关闭且明确请求取消任务时执行取消操作
         if self._shutdown_flag and self._is_task_cancel_requested:
-            await logger.ainfo(f"工作者已关闭，尝试取消任务，进度 ID: {progress_id}")
+            await logger.ainfo(
+                event="工作者已关闭，尝试取消任务",
+                emoji="🚫",
+                progress_id=progress_id,
+                task_count=len(tasks),
+            )
             success = await self._client.simulation_delete(progress_id=progress_id)
             if success:
-                await logger.ainfo(f"任务取消成功，进度 ID: {progress_id}")
+                await logger.ainfo(
+                    event="任务取消成功",
+                    emoji="✅",
+                    progress_id=progress_id,
+                )
 
                 async with get_db_session(Database.SIMULATION) as session:
                     dal: SimulationTaskDAL = SimulationTaskDAL(session)
@@ -170,9 +191,16 @@ class Worker(AbstractWorker):
                     await session.commit()
 
                 return True
-            await logger.aerror(f"任务取消失败，进度 ID: {progress_id}")
+            await logger.aerror(
+                event="任务取消失败",
+                emoji="❌",
+                progress_id=progress_id,
+            )
 
-        logger.debug("任务取消请求未满足条件，跳过取消操作")
+        await logger.adebug(
+            event="任务取消请求未满足条件，跳过取消操作",
+            emoji="⏭️",
+        )
         return False
 
     async def _handle_task_completion(
@@ -195,7 +223,12 @@ class Worker(AbstractWorker):
         # 1. 更新任务状态和必要的字段
         # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
         # 3. 确认任务是否已成功完成，并更新相关统计信息
-        logger.info(f"任务 {task.id} 完成，结果: {result}")
+        await logger.ainfo(
+            event="任务完成",
+            emoji="🎉",
+            task_id=task.id,
+            result=result.model_dump(mode="json"),
+        )
 
         task.result = result.model_dump(mode="json")  # 保存原始结果，用户后续评估分析
         task.child_progress_id = result.id
@@ -203,7 +236,10 @@ class Worker(AbstractWorker):
             task.status = SimulationTaskStatus(result.status)
         except ValueError:
             await logger.aerror(
-                f"未知任务状态，任务 ID: {task.id}，状态: {result.status}"
+                event="未知任务状态",
+                emoji="❓",
+                task_id=task.id,
+                status=result.status,
             )
         task.completed_at = datetime.now()
         if task.status == SimulationTaskStatus.COMPLETE:
@@ -214,7 +250,10 @@ class Worker(AbstractWorker):
             await dal.update(task)
             await session.commit()
             await logger.ainfo(
-                f"更新任务状态成功，任务 ID: {task.id}，状态: {task.status}"
+                event="更新任务状态成功",
+                emoji="✅",
+                task_id=task.id,
+                status=task.status.value,
             )
             # 因为这里数据更新是个很低频的操作，每次都提交事务即可
 
@@ -230,12 +269,18 @@ class Worker(AbstractWorker):
                     )
                 except Exception as e:
                     await logger.aerror(
-                        f"设置因子属性失败，任务 ID: {task.id}，错误: {e}"
+                        event="设置因子属性失败",
+                        emoji="❌",
+                        task_id=task.id,
+                        error=str(e),
                     )
                     return
                 finally:
                     await logger.ainfo(
-                        f"设置因子属性成功，任务 ID: {task.id}，因子 ID: {result.alpha}"
+                        event="设置因子属性成功",
+                        emoji="🏷️",
+                        task_id=task.id,
+                        alpha_id=result.alpha,
                     )
 
         if self._dry_run:
@@ -262,7 +307,11 @@ class Worker(AbstractWorker):
         Args:
             name: 心跳任务的名称，用于日志记录和调试
         """
-        await logger.adebug(f"心跳节点 {name} 检查")
+        await logger.adebug(
+            event="心跳检查",
+            emoji="💓",
+            node_name=name,
+        )
 
         async def _heartbeat_async_task() -> None:
             """异步心跳检查任务"""
@@ -300,11 +349,14 @@ class Worker(AbstractWorker):
 
         Args:
             task: 要处理的模拟任务对象
-
-        Returns:
-            None
         """
-        logger.debug(f"开始处理单个模拟任务，任务 ID: {task.id}")
+        await logger.adebug(
+            event="开始处理单个模拟任务",
+            emoji="🚀",
+            task_id=task.id,
+            task_type=task.type.value,
+            user_role=self._user_role.value,
+        )
         if self._shutdown_flag:
             await logger.aerror(f"工作者已关闭，无法处理任务 ID: {task.id}")
             return
@@ -342,7 +394,11 @@ class Worker(AbstractWorker):
                     return
 
                 await logger.ainfo(
-                    f"创建单个模拟任务成功，任务 ID: {task.id}，进度 ID: {progress_id}"
+                    event="创建单个模拟任务成功",
+                    emoji="✅",
+                    task_id=task.id,
+                    progress_id=progress_id,
+                    retry_after=f"{retry_after}s",
                 )
 
                 # 等待指定时间后开始检查进度
@@ -381,8 +437,11 @@ class Worker(AbstractWorker):
                         progress: float = progress_or_result.progress
                         if progress != prev_progress:
                             await logger.ainfo(
-                                f"单个模拟任务进行中，任务 ID: {task.id}，"
-                                + f"进度 ID: {progress_id}，进度: {progress * 100:.2f}%"
+                                event="单个模拟任务进行中",
+                                emoji="⏳",
+                                task_id=task.id,
+                                progress_id=progress_id,
+                                progress=f"{progress * 100:.2f}%",
                             )
                             prev_progress = progress
                     else:
@@ -432,10 +491,8 @@ class Worker(AbstractWorker):
 
             async with self._client:
                 try:
-                    success, result = (
-                        await self._client.simulation_get_child_result(
-                            child_progress_id=child_id,
-                        )
+                    success, result = await self._client.simulation_get_child_result(
+                        child_progress_id=child_id,
                     )
                     if not success:
                         await logger.aerror(
@@ -471,8 +528,10 @@ class Worker(AbstractWorker):
         Args:
             tasks: 模拟任务列表
         """
-        logger.debug(
-            f"开始处理多个模拟任务，任务 ID 列表: {[task.id for task in tasks]}"
+        await logger.adebug(
+            event="开始处理多个模拟任务",
+            emoji="🚀",
+            task_ids=[task.id for task in tasks],
         )
         if self._user_role != UserRole.CONSULTANT:
             await logger.aerror("当前用户角色不是顾问，无法处理多个模拟任务")

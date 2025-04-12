@@ -6,10 +6,15 @@ import asyncio
 from bisect import insort
 from typing import Dict, List, Optional
 
+from structlog.stdlib import BoundLogger
+
 from alphapower.entity import SimulationTask, SimulationTaskStatus
+from alphapower.internal.logging import setup_logging
 
 from .provider_abc import AbstractTaskProvider
 from .scheduler_abc import AbstractScheduler
+
+logger: BoundLogger = setup_logging(__name__)
 
 
 class PriorityScheduler(AbstractScheduler):
@@ -66,6 +71,12 @@ class PriorityScheduler(AbstractScheduler):
                 count=self.task_fetch_size
             )
             if new_tasks:
+                await logger.adebug(
+                    event="从任务提供者获取新任务",
+                    new_task_count=len(new_tasks),
+                    message="成功从任务提供者获取新任务",
+                    emoji="📥",
+                )
                 self.add_tasks(new_tasks)  # 使用 add_tasks 确保映射关系更新
 
     def add_tasks(self, tasks: List[SimulationTask]) -> None:
@@ -125,6 +136,13 @@ class PriorityScheduler(AbstractScheduler):
                     tasks, key=lambda t: -int(t.priority)
                 )  # 重新排序
                 self.low_priority_counter[group_key] = 0  # 重置计数器
+                logger.info(
+                    event="提升低优先级任务",
+                    group_key=group_key,
+                    promoted_task_count=len(tasks),
+                    message="低优先级任务已提升优先级",
+                    emoji="⬆️",
+                )
 
     async def _do_schedule(self, batch_size: int) -> List[SimulationTask]:
         """
@@ -193,6 +211,12 @@ class PriorityScheduler(AbstractScheduler):
                         self.task_provider.acknowledge_scheduled_tasks(task_ids)
                     )
                 )
+        await logger.ainfo(
+            event="调度任务完成",
+            scheduled_task_count=len(scheduled_tasks) if scheduled_tasks else 0,
+            message="任务调度完成",
+            emoji="✅",
+        )
 
     async def wait_for_post_async_tasks(self) -> None:
         """

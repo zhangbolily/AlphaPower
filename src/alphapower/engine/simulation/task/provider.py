@@ -5,12 +5,17 @@ This module provides task providers for simulation tasks, including database-bac
 import asyncio
 from typing import List, Optional, Set
 
+from structlog.stdlib import BoundLogger
+
 from alphapower.constants import Database
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
+from alphapower.internal.logging import setup_logging
 
 from .provider_abc import AbstractTaskProvider
+
+logger: BoundLogger = setup_logging(__name__)
 
 
 class DatabaseTaskProvider(AbstractTaskProvider):
@@ -65,7 +70,17 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                     self.cursor = 0
                     if pending_task_count > 0:
                         # 如果还有待处理的任务，继续循环
+                        await logger.adebug(
+                            event="任务跳采样继续",
+                            pending_task_count=pending_task_count,
+                            emoji="🔄",
+                        )
                         continue
+                    await logger.awarning(
+                        event="无更多任务",
+                        message="数据库中没有更多待处理任务",
+                        emoji="⚠️",
+                    )
                     break
 
                 sampled_task_ids.extend(task_ids[::sample_interval])
@@ -90,3 +105,9 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         async with self._lock:
             # 提交成功后，从待确认列表中移除
             self.committing_scheduled_task_ids.difference_update(task_ids)
+        await logger.ainfo(
+            event="确认调度任务",
+            task_ids=task_ids,
+            message="成功确认调度的任务",
+            emoji="📋",
+        )

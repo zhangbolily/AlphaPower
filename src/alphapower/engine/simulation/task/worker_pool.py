@@ -123,10 +123,20 @@ class WorkerPool(AbstractWorkerPool):
             await worker.add_heartbeat_callback(self._on_worker_heartbeat)
             # 记录工作者创建时间作为最后活跃时间
             self._worker_last_active[worker] = time.time()
-            await logger.adebug(f"成功创建新工作者: {id(worker)}")
+            await logger.adebug(
+                event="成功创建新工作者",
+                worker_id=id(worker),
+                message="新工作者已成功创建",
+                emoji="🛠️",
+            )
             return worker
         except Exception as e:
-            await logger.aerror(f"创建工作者失败: {str(e)}")
+            await logger.aerror(
+                event="创建工作者失败",
+                error=str(e),
+                message="工作者创建过程中发生错误",
+                emoji="❌",
+            )
             raise
 
     async def _on_task_completed(
@@ -165,8 +175,13 @@ class WorkerPool(AbstractWorkerPool):
             await self._log_pool_status()
 
         await logger.adebug(
-            f"任务完成: {task.id}, 状态: {result.status}, "
-            f"已处理任务总数: {self._processed_tasks}, 失败任务总数: {self._failed_tasks}"
+            event="任务完成",
+            task_id=task.id,
+            status=result.status,
+            processed_tasks=self._processed_tasks,
+            failed_tasks=self._failed_tasks,
+            message="任务已完成，更新统计信息",
+            emoji="✅",
         )
 
     async def _on_worker_heartbeat(self, worker: AbstractWorker) -> None:
@@ -187,7 +202,10 @@ class WorkerPool(AbstractWorkerPool):
                 await logger.adebug(f"收到工作者 {id(worker)} 心跳")
         else:
             await logger.awarning(
-                f"收到未知工作者 {id(worker)} 的心跳，可能是新创建的工作者"
+                event="收到未知工作者心跳",
+                worker_id=id(worker),
+                message="收到未知工作者的心跳信号",
+                emoji="❓",
             )
 
     async def _find_worker_for_task(
@@ -211,10 +229,13 @@ class WorkerPool(AbstractWorkerPool):
             success_rate = f"{success_rate * 100:.2f}%"
 
         await logger.ainfo(
-            f"工作池状态: 工作者数量={status['worker_count']}, "
-            f"处理任务={status['processed_tasks']}, "
-            f"成功率={success_rate}, "
-            f"平均处理时间={avg_duration:.2f}秒"
+            event="工作池状态",
+            worker_count=status["worker_count"],
+            processed_tasks=status["processed_tasks"],
+            success_rate=success_rate,
+            avg_task_duration=f"{avg_duration:.2f}秒",
+            message="记录当前工作池状态",
+            emoji="📊",
         )
 
     async def start(self) -> None:
@@ -229,7 +250,12 @@ class WorkerPool(AbstractWorkerPool):
 
         self._running = True
         self._started_at = datetime.now()
-        await logger.ainfo(f"启动工作池，初始工作者数量: {self._initial_workers}")
+        await logger.ainfo(
+            event="启动工作池",
+            initial_workers=self._initial_workers,
+            message="工作池已启动",
+            emoji="🚀",
+        )
 
         # 创建初始工作者
         await self.scale_up(self._initial_workers)
@@ -255,7 +281,12 @@ class WorkerPool(AbstractWorkerPool):
             await logger.awarning("工作池未运行，忽略停止请求")
             return
 
-        await logger.ainfo(f"停止工作池，当前工作者数量: {len(self._workers)}")
+        await logger.ainfo(
+            event="停止工作池",
+            worker_count=len(self._workers),
+            message="工作池已停止",
+            emoji="🛑",
+        )
         self._running = False
 
         # 停止健康检查任务
@@ -348,7 +379,11 @@ class WorkerPool(AbstractWorkerPool):
                     await logger.aerror(f"创建工作者失败: {str(e)}")
 
         await logger.ainfo(
-            f"扩容完成，成功创建 {created_count} 个工作者，当前总数: {len(self._workers)}"
+            event="扩容完成",
+            created_count=created_count,
+            total_workers=len(self._workers),
+            message="工作池扩容完成",
+            emoji="➕",
         )
 
     async def scale_down(self, count: int) -> None:
@@ -412,7 +447,11 @@ class WorkerPool(AbstractWorkerPool):
                     await logger.aerror(f"停止工作者失败: {str(e)}")
 
         await logger.ainfo(
-            f"缩容完成，已停止 {stopped_count} 个工作者，当前剩余: {len(self._workers)}"
+            event="缩容完成",
+            stopped_count=stopped_count,
+            remaining_workers=len(self._workers),
+            message="工作池缩容完成",
+            emoji="➖",
         )
 
     # 工作者健康检查方法
@@ -435,8 +474,11 @@ class WorkerPool(AbstractWorkerPool):
                         if current_time - last_active > self._worker_timeout:
                             workers_to_restart.append(worker)
                             await logger.awarning(
-                                f"检测到工作者 {id(worker)} 不活跃，"
-                                f"最后活跃时间: {datetime.fromtimestamp(last_active).isoformat()}"
+                                event="检测到工作者不活跃",
+                                worker_id=id(worker),
+                                last_active=datetime.fromtimestamp(last_active).isoformat(),
+                                message="工作者长时间未活跃，可能需要重启",
+                                emoji="⚠️",
                             )
 
                 # 重启不健康的工作者
@@ -493,7 +535,13 @@ class WorkerPool(AbstractWorkerPool):
                 self._workers.append(new_worker)
                 self._worker_tasks[new_worker] = new_task
 
-                await logger.ainfo(f"已成功重启一个不健康的工作者 {id(worker)}")
+                await logger.ainfo(
+                    event="已成功重启工作者",
+                    old_worker_id=id(worker),
+                    new_worker_id=id(new_worker),
+                    message="不健康的工作者已成功重启",
+                    emoji="🔄",
+                )
 
         except Exception as e:
             await logger.aerror(f"重启工作者失败: {str(e)}")
