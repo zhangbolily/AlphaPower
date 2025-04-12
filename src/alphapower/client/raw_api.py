@@ -22,6 +22,7 @@ from alphapower.constants import (
     ENDPOINT_ALPHA_YEARLY_STATS,
     ENDPOINT_ALPHAS,
     ENDPOINT_AUTHENTICATION,
+    ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE,
     ENDPOINT_COMPETITIONS,
     ENDPOINT_DATA_CATEGORIES,
     ENDPOINT_DATA_FIELDS,
@@ -32,6 +33,7 @@ from alphapower.constants import (
     CorrelationType,
 )
 
+from .checks_view import BeforeAndAfterPerformanceView
 from .models import (
     AlphaCheckResultView,
     AlphaCorrelationsView,
@@ -230,6 +232,41 @@ async def alpha_fetch_correlations(
                 AlphaCorrelationsView.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
+
+
+async def alpha_fetch_before_and_after_performance(
+    session: aiohttp.ClientSession, competition_id: str, alpha_id: str
+) -> Tuple[bool, Optional[float], Optional[BeforeAndAfterPerformanceView], RateLimit]:
+    """
+    获取指定 alpha 的前后性能数据。
+    参数:
+    session (aiohttp.ClientSession): 用于发送 HTTP 请求的会话对象。
+    alpha_id (str): alpha 的唯一标识符。
+    返回:
+    Tuple[bool, Optional[float], Optional[AlphaCorrelations], RateLimit]:
+        包含请求完成状态、重试时间、自相关性数据和速率限制信息的元组。
+    """
+    url: str = (
+        f"{BASE_URL}/{ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE(competition_id, alpha_id)}"
+    )
+    async with session.get(url) as response:
+        response.raise_for_status()
+        retry_after: float = retry_after_from_headers(response.headers)
+
+        if retry_after != 0.0:
+            return (
+                False,
+                retry_after,
+                None,
+                RateLimit.from_headers(response.headers),
+            )
+
+        return (
+            True,
+            None,
+            BeforeAndAfterPerformanceView.model_validate(await response.json()),
+            RateLimit.from_headers(response.headers),
+        )
 
 
 async def set_alpha_properties(

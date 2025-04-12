@@ -32,6 +32,8 @@ from alphapower.constants import (
     Universe,
 )
 
+from .common_view import TableSchemaView
+
 
 class PyramidView(BaseModel):
     """金字塔模型。
@@ -213,37 +215,6 @@ class RegularView(BaseModel):
     operator_count: Optional[int] = Field(
         default=None, validation_alias=AliasChoices("operatorCount", "operator_count")
     )
-
-
-class TableSchema(BaseModel):
-    """表格模式。
-
-    描述表格数据的结构，包括名称、标题和属性列表。
-
-    Attributes:
-        name: 模式的名称。
-        title: 模式的标题。
-        properties: 模式包含的属性列表。
-    """
-
-    class Property(BaseModel):
-        """模式属性。
-
-        描述模式中的单个属性，包括名称、标题和类型。
-
-        Attributes:
-            name: 属性的名称。
-            title: 属性的标题。
-            type: 属性的数据类型。
-        """
-
-        name: str
-        title: str
-        type: str
-
-    name: str
-    title: str
-    properties: List[Property]
 
 
 class SimulationSettingsView(BaseModel):
@@ -777,7 +748,7 @@ class AlphaYearlyStatsView(BaseModel):
         records: 年度统计记录列表。
     """
 
-    table_schema: TableSchema = Field(
+    table_schema: TableSchemaView = Field(
         validation_alias=AliasChoices("schema", "table_schema"),
         serialization_alias="schema",
     )
@@ -808,7 +779,7 @@ class AlphaPnLView(BaseModel):
         records: 盈亏记录列表。
     """
 
-    table_schema: TableSchema = Field(
+    table_schema: TableSchemaView = Field(
         validation_alias=AliasChoices("schema", "table_schema"),
         serialization_alias="schema",
     )
@@ -862,7 +833,7 @@ class AlphaCorrelationsView(BaseModel):
         max: 最大相关性值，可选，默认为0.0。
     """
 
-    table_schema: TableSchema = Field(
+    table_schema: TableSchemaView = Field(
         validation_alias=AliasChoices("schema", "table_schema"),
         serialization_alias="schema",
     )
@@ -1631,7 +1602,7 @@ class SelfSimulationActivitiesView(BaseModel):
             records: 记录列表。
         """
 
-        table_schema: TableSchema = Field(
+        table_schema: TableSchemaView = Field(
             validation_alias=AliasChoices("schema", "table_schema"),
             serialization_alias="schema",
         )

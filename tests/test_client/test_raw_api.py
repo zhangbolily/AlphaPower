@@ -16,6 +16,7 @@ from alphapower.client import (
     AlphaDetailView,
     AlphaPropertiesPayload,
     AlphaView,
+    BeforeAndAfterPerformanceView,
     ClassificationView,
     CompetitionListView,
     CompetitionView,
@@ -30,6 +31,7 @@ from alphapower.client import (
 )
 from alphapower.client.raw_api import (
     alpha_check_submission,
+    alpha_fetch_before_and_after_performance,
     alpha_fetch_competitions,
     alpha_fetch_correlations,
     get_alpha_detail,
@@ -265,7 +267,7 @@ async def test_set_alpha_properties(setup_mock_responses: str) -> None:
             if result.name:
                 assert result.name == alpha_props.name
             if result.tags and alpha_props.tags:
-                for tag in alpha_props.tags:
+                for tag in alpha_props.tags:  # pylint: disable=E1133
                     assert tag in result.tags
 
 
@@ -362,3 +364,24 @@ async def test_alpha_correlations(setup_mock_responses: str) -> None:
             )
 
             assert isinstance(result, AlphaCorrelationsView)
+
+
+@pytest.mark.asyncio
+async def test_alpha_fetch_before_and_after_performance(
+    setup_mock_responses: str,
+) -> None:
+    """
+    测试 Alpha Fetch Before and After Performance 的响应
+    """
+    with patch("alphapower.client.raw_api.BASE_URL", new=setup_mock_responses):
+        session: ClientSession = ClientSession()
+
+        competition_ids = ["competition_0"]
+        alpha_ids = ["regular_alpha_0"]
+        for alpha_id in alpha_ids:
+            for competition_id in competition_ids:
+                _, _, result, _ = await alpha_fetch_before_and_after_performance(
+                    session, competition_id, alpha_id
+                )
+
+                assert isinstance(result, BeforeAndAfterPerformanceView)

@@ -114,6 +114,9 @@ ENDPOINT_ALPHA_SELF_CORRELATIONS: Final[Callable[[str, str], str]] = (
     lambda alpha_id, correlation_type: f"alphas/{alpha_id}/correlations/{correlation_type}"
 )
 ENDPOINT_COMPETITIONS: Final[str] = "competitions"  # 竞赛端点
+ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[str, str], str]] = (
+    lambda competition_id, alpha_id: f"/{competition_id}/alphas/{alpha_id}/before-and-after-performance"
+)
 
 # 模拟端点
 ENDPOINT_SIMULATION: Final[str] = "simulations"
@@ -124,6 +127,9 @@ ENDPOINT_DATA_CATEGORIES: Final[str] = "data-categories"
 ENDPOINT_DATA_SETS: Final[str] = "data-sets"
 ENDPOINT_DATA_FIELDS: Final[str] = "data-fields"
 ENDPOINT_OPERATORS: Final[str] = "operators"
+
+# 前后性能对比默认路径
+PATH_SELF_PERFORMANCE_COMPARE: Final[str] = "/users/self/"
 
 # -----------------------------------------------------------------------------
 # 用户角色相关常量

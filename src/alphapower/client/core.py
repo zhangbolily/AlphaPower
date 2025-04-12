@@ -8,11 +8,14 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 from aiohttp import BasicAuth, ClientSession
 
+from alphapower.constants import CorrelationType
 from alphapower.internal.logging import setup_logging
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
 
+from .checks_view import BeforeAndAfterPerformanceView
 from .models import (
+    AlphaCorrelationsView,
     AlphaDetailView,
     AlphaPropertiesPayload,
     AuthenticationView,
@@ -35,7 +38,9 @@ from .models import (
     SingleSimulationResultView,
 )
 from .raw_api import (
+    alpha_fetch_before_and_after_performance,
     alpha_fetch_competitions,
+    alpha_fetch_correlations,
     authentication,
     create_multi_simulation,
     create_single_simulation,
@@ -451,6 +456,61 @@ class WorldQuantClient:
 
         resp = await alpha_fetch_competitions(self.session, params=params)
         return resp
+
+    @exception_handler
+    @rate_limit_handler
+    async def alpha_correlation_check(
+        self, alpha_id: str, corr_type: CorrelationType
+    ) -> Tuple[bool, Optional[float], Optional[AlphaCorrelationsView]]:
+        """
+        检查 Alpha 的相关性。
+
+        参数:
+        alpha_id (str): Alpha ID。
+        corr_type (CorrelationType): 相关性类型。
+
+        返回:
+        bool: 检查是否成功。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        finished, retry_after, result, _ = await alpha_fetch_correlations(
+            self.session, alpha_id, corr_type
+        )
+        return finished, retry_after, result
+
+    @exception_handler
+    @rate_limit_handler
+    async def alpha_fetch_before_and_after_performance(
+        self, competition_id: str, alpha_id: str
+    ) -> Tuple[
+        bool, Optional[float], Optional[BeforeAndAfterPerformanceView], RateLimit
+    ]:
+        """
+        获取 Alpha 的提交前后性能数据。
+
+        参数:
+        alpha_id (str): Alpha ID。
+
+        返回:
+        Tuple: 包含完成状态、重试时间、性能数据和速率限制信息的元组。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        finished, retry_after, result, rate_limit = (
+            await alpha_fetch_before_and_after_performance(
+                self.session, competition_id, alpha_id
+            )
+        )
+        return finished, retry_after, result, rate_limit
 
     # -------------------------------
     # Data-related methods
