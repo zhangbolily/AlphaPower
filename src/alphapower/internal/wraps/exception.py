@@ -53,31 +53,32 @@ def exception_handler(func: T) -> T:
         retry_count: int = 0
         max_retries: int = 6
         wait_time: int = 300  # 5分钟，单位为秒
+        func_name: str = func.__name__
 
         # 记录函数调用的 DEBUG 日志
-        await log_function_entry(func.__name__, args, kwargs)
+        await log_function_entry(func_name, args, kwargs)
 
         while True:
             try:
                 result = await func(*args, **kwargs)
-                await log_function_success(func.__name__, result)
+                await log_function_success(func_name, result)
                 return result
             except ClientResponseError as e:
                 if e.status == 429 and retry_count < max_retries:
                     retry_count += 1
                     await log_retry_warning(
-                        func.__name__, e, retry_count, max_retries, wait_time
+                        func_name, e, retry_count, max_retries, wait_time
                     )
                     await asyncio.sleep(wait_time)
                     continue
                 elif e.status == 429:
-                    await log_max_retry_error(func.__name__, e, max_retries)
+                    await log_max_retry_error(func_name, e, max_retries)
                     raise
                 else:
-                    await log_request_error(func.__name__, e)
+                    await log_request_error(func_name, e)
                     raise
             except Exception as e:
-                await log_generic_error(func.__name__, e)
+                await log_generic_error(func_name, e)
                 raise
 
     return wrapper  # type: ignore
@@ -87,7 +88,7 @@ async def log_function_entry(func_name: str, args: Any, kwargs: Any) -> None:
     """记录函数进入的 DEBUG 日志。"""
     await logger.adebug(
         "进入函数",
-        func_name=func_name,
+        wrapped_func_name=func_name,
         args=args,
         kwargs=kwargs,
         module_name=__name__,
@@ -99,7 +100,7 @@ async def log_function_success(func_name: str, result: Any) -> None:
     """记录函数成功返回的 DEBUG 日志。"""
     await logger.adebug(
         "函数执行成功",
-        func_name=func_name,
+        wrapped_func_name=func_name,
         result=result,
         module_name=__name__,
         emoji="✅",
@@ -116,7 +117,7 @@ async def log_retry_warning(
     """记录请求过于频繁的 WARNING 日志。"""
     await logger.awarning(
         "请求过于频繁",
-        func_name=func_name,
+        wrapped_func_name=func_name,
         status_code=error.status,
         error_message=str(error),
         retry_count=retry_count,
@@ -133,7 +134,7 @@ async def log_max_retry_error(
     """记录达到最大重试次数的 ERROR 日志。"""
     await logger.aerror(
         "请求过于频繁，达到最大重试次数",
-        func_name=func_name,
+        wrapped_func_name=func_name,
         status_code=error.status,
         error_message=str(error),
         max_retries=max_retries,
@@ -147,7 +148,7 @@ async def log_request_error(func_name: str, error: ClientResponseError) -> None:
     """记录请求失败的 ERROR 日志。"""
     await logger.aerror(
         "请求失败",
-        func_name=func_name,
+        wrapped_func_name=func_name,
         status_code=error.status,
         error_message=str(error),
         module_name=__name__,
@@ -160,7 +161,7 @@ async def log_generic_error(func_name: str, error: Exception) -> None:
     """记录通用异常的 ERROR 日志。"""
     await logger.aerror(
         "执行函数时发生异常",
-        func_name=func_name,
+        wrapped_func_name=func_name,
         error_message=str(error),
         module_name=__name__,
         stack_info=True,

@@ -10,6 +10,7 @@ Typical usage example:
 """
 
 import asyncio
+import random
 from datetime import datetime
 from typing import Awaitable, Callable, List, Optional, Union
 
@@ -175,6 +176,9 @@ class Worker(AbstractWorker):
                 progress_id=progress_id,
                 task_count=len(tasks),
             )
+
+            jitter = random.uniform(0, 1)  # 随机生成 0 到 1 秒之间的抖动时间
+            await asyncio.sleep(jitter)
             success = await self._client.simulation_delete(progress_id=progress_id)
             if success:
                 await logger.ainfo(
