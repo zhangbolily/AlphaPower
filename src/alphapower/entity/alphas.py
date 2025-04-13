@@ -46,6 +46,7 @@ from sqlalchemy.orm import (
 )
 
 from alphapower.constants import (
+    ALPHA_ID_LENGTH,
     AlphaType,
     Color,
     CompetitionScoring,
@@ -63,6 +64,8 @@ from alphapower.constants import (
     UnitHandling,
     Universe,
 )
+
+# pylint: disable=E1136
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -116,9 +119,9 @@ class Competition(Base):
             countries: 国家列表
         """
         super().__init__(**kwargs)
-        self.universities = universities
-        self.countries = countries
-        self.excluded_countries = excluded_countries
+        self.universities = universities  # type: ignore[method-assign]
+        self.countries = countries  # type: ignore[method-assign]
+        self.excluded_countries = excluded_countries  # type: ignore[method-assign]
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     competition_id: MappedColumn[str] = mapped_column(
@@ -290,7 +293,7 @@ class Check(Base):
     limit: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
     value: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
     date: MappedColumn[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    competitions: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    competitions: MappedColumn[Optional[str]] = mapped_column(JSON, nullable=True)
 
 
 class Sample(Base):
@@ -342,7 +345,7 @@ class Sample(Base):
         Float, nullable=True
     )
     start_date: MappedColumn[datetime] = mapped_column(DateTime)
-    checks = relationship(
+    checks: Mapped[List[Check]] = relationship(
         "Check",
         backref="sample",  # 定义一对多关系，样本检查属于某个样本
         cascade="all, delete-orphan",
@@ -491,7 +494,7 @@ class Alpha(Base):
     __tablename__ = "alphas"
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    alpha_id: MappedColumn[str] = mapped_column(String, nullable=False, unique=True)
+    alpha_id: MappedColumn[str] = mapped_column(String(ALPHA_ID_LENGTH), nullable=False, unique=True)
     author: MappedColumn[str] = mapped_column(String, nullable=False)
     name: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     category: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
@@ -526,21 +529,21 @@ class Alpha(Base):
     settings_id: MappedColumn[int] = mapped_column(
         Integer, ForeignKey("settings.id"), nullable=False
     )
-    settings: Mapped["Setting"] = relationship("Setting", backref="alphas")
+    settings: Mapped[Setting] = relationship("Setting", backref="alphas")
     regular_id: MappedColumn[int] = mapped_column(
         Integer, ForeignKey("regulars.id"), nullable=False
     )
-    regular: Mapped["Regular"] = relationship("Regular", backref="alphas")
+    regular: Mapped[Regular] = relationship("Regular", backref="alphas")
     in_sample_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
-    in_sample: Mapped["Sample"] = relationship(
+    in_sample: Mapped[Sample] = relationship(
         "Sample", foreign_keys=[in_sample_id], uselist=False, backref="alphas_in_sample"
     )
     out_sample_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
-    out_sample: Mapped["Sample"] = relationship(
+    out_sample: Mapped[Sample] = relationship(
         "Sample",
         foreign_keys=[out_sample_id],
         uselist=False,
@@ -549,25 +552,25 @@ class Alpha(Base):
     train_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
-    train: Mapped["Sample"] = relationship(
+    train: Mapped[Sample] = relationship(
         "Sample", foreign_keys=[train_id], uselist=False, backref="alphas_train"
     )
     test_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
-    test: Mapped["Sample"] = relationship(
+    test: Mapped[Sample] = relationship(
         "Sample", foreign_keys=[test_id], uselist=False, backref="alphas_test"
     )
     prod_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
-    prod: Mapped["Sample"] = relationship(
+    prod: Mapped[Sample] = relationship(
         "Sample", foreign_keys=[prod_id], uselist=False, backref="alphas_prod"
     )
-    classifications: Mapped[List["Classification"]] = relationship(
+    classifications: Mapped[List[Classification]] = relationship(
         "Classification", secondary="alpha_classification", backref="alphas", cascade=""
     )
-    competitions: Mapped[List["Competition"]] = relationship(
+    competitions: Mapped[List[Competition]] = relationship(
         "Competition", secondary="alpha_competition", backref="alphas", cascade=""
     )
 

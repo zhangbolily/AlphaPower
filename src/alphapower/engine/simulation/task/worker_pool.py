@@ -199,12 +199,15 @@ class WorkerPool(AbstractWorkerPool):
 
             # 定期记录心跳信息（避免日志过多，只在调试级别记录）
             if logger.isEnabledFor(10):  # DEBUG level
-                await logger.adebug(f"收到工作者 {id(worker)} 心跳")
+                await logger.adebug(
+                    event="收到工作者心跳",
+                    worker_id=id(worker),
+                    emoji="💓",
+                )
         else:
             await logger.awarning(
                 event="收到未知工作者心跳",
                 worker_id=id(worker),
-                message="收到未知工作者的心跳信号",
                 emoji="❓",
             )
 
@@ -476,7 +479,9 @@ class WorkerPool(AbstractWorkerPool):
                             await logger.awarning(
                                 event="检测到工作者不活跃",
                                 worker_id=id(worker),
-                                last_active=datetime.fromtimestamp(last_active).isoformat(),
+                                last_active=datetime.fromtimestamp(
+                                    last_active
+                                ).isoformat(),
                                 message="工作者长时间未活跃，可能需要重启",
                                 emoji="⚠️",
                             )

@@ -22,6 +22,7 @@ async def task_start_worker_pool(
     worker_timeout: int = 300,
     task_fetch_size: int = 10,
     low_priority_threshold: int = 10,
+    sample_rate: int = 1,
 ) -> None:
     """
     启动工作池以执行模拟任务。
@@ -32,7 +33,7 @@ async def task_start_worker_pool(
         worker_timeout (int): 工作者健康检查超时时间（秒）。
         task_fetch_size (int): 每次从任务提供者获取的任务数量。
         low_priority_threshold (int): 低优先级任务提升阈值。
-    
+
     # TODO(Ball Chang): 新增定时主动垃圾回收机制，提高长时间运行的稳定性
     # TODO(Ball Chang): 优化日志格式，输出内容紧凑高效，日志级别配置合理
     """
@@ -52,7 +53,7 @@ async def task_start_worker_pool(
 
     try:
         # 初始化任务提供者
-        provider = DatabaseTaskProvider()
+        provider = DatabaseTaskProvider(sample_rate=sample_rate)
 
         # 初始化调度器
         scheduler = PriorityScheduler(

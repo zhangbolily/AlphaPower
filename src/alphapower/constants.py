@@ -65,6 +65,8 @@ ENV_PROD: Final[str] = "prod"  # 生产环境标识符
 ENV_DEV: Final[str] = "dev"  # 开发环境标识符
 ENV_TEST: Final[str] = "test"  # 测试环境标识符
 
+ALPHA_ID_LENGTH: Final[int] = 7  # Alpha ID的长度
+
 
 class Database(Enum):
     """数据库名称枚举。
@@ -698,6 +700,19 @@ class CheckType(Enum):
         DEFAULT: 默认值，无实际意义
         LOW_SHARPE: 低夏普比率
         LOW_FITNESS: 低适应度
+        LOW_TURNOVER: 低换手率
+        HIGH_TURNOVER: 高换手率
+        CONCENTRATED_WEIGHT: 集中持仓
+        LOW_SUB_UNIVERSE_SHARPE: 低子股票池夏普比率
+        SELF_CORRELATION: 自相关性检查
+        DATA_DIVERSITY: 数据多样性检查
+        PROD_CORRELATION: 生产环境相关性检查
+        REGULAR_SUBMISSION: 定期提交检查
+        MATCHES_COMPETITION: 匹配竞赛检查
+        LOW_2Y_SHARPE: 低2年夏普比率
+        MATCHES_PYRAMID: 匹配金字塔检查
+        MATCHES_THEMES: 匹配主题检查
+        POWER_POOL_CORRELATION: 力量池相关性检查
     """
 
     DEFAULT = "DEFAULT"

@@ -21,12 +21,19 @@
 """
 
 import asyncio
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
+from pydantic import TypeAdapter
 from structlog.stdlib import BoundLogger
 
-from alphapower.client import AlphaCorrelationsView, WorldQuantClient, wq_client
-from alphapower.constants import CorrelationType
+from alphapower.client import (
+    AlphaCorrelationsView,
+    CompetitionRefView,
+    WorldQuantClient,
+    wq_client,
+)
+from alphapower.constants import CheckType, CorrelationType
+from alphapower.entity import Alpha
 from alphapower.internal.logging import setup_logging
 
 logger: BoundLogger = setup_logging(module_name=__name__)
@@ -53,14 +60,43 @@ class Checks:
             检查数据的生产相关性
     """
 
-    def __init__(self, alpha_id: str):
+    def __init__(self, alpha: Alpha):
         """
         初始化 Checks 类
 
         Args:
             alpha_id (str): Alpha 的唯一标识符
         """
-        self._alpha_id: str = alpha_id
+        self._alpha: Alpha = alpha
+
+    async def matched_competitions(self) -> List[CompetitionRefView]:
+        """
+        获取与 Alpha 匹配的竞争列表
+
+        Returns:
+            List[CompetitionRefView]: 匹配的竞争列表
+        """
+        # 创建 TypeAdapter 实例，用于验证和解析 JSON 数据
+        competitions_adapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
+            List[CompetitionRefView]
+        )
+
+        # 遍历 Alpha 的 in_sample 检查项
+        for check in self._alpha.in_sample.checks:
+            if check.name == CheckType.MATCHES_COMPETITION.value:
+                # 使用 TypeAdapter 验证并解析 JSON 数据
+                if check.competitions:
+                    competitions: List[CompetitionRefView] = (
+                        competitions_adapter.validate_json(check.competitions)
+                    )
+                    return competitions
+                else:
+                    raise ValueError(
+                        f"Alpha 的 in_sample 检查项存在{check.name}，但没有对应的竞赛项"
+                    )
+
+        # 如果没有匹配的竞争项，返回空列表
+        return []
 
     async def correlation_check(self, corr_type: CorrelationType) -> None:
         """
@@ -87,7 +123,7 @@ class Checks:
                         logger.warning(
                             "数据相关性检查未完成且没有重试时间",
                             emoji="❌",
-                            alpha_id=self._alpha_id,
+                            alpha_id=self._alpha.alpha_id,
                             corr_type=corr_type,
                         )
                         break
@@ -95,7 +131,7 @@ class Checks:
                     logger.warning(
                         "数据相关性检查被取消",
                         emoji="⚠️",
-                        alpha_id=self._alpha_id,
+                        alpha_id=self._alpha.alpha_id,
                         corr_type=corr_type,
                     )
                     break
@@ -103,7 +139,7 @@ class Checks:
                     logger.error(
                         "数据相关性检查异常",
                         emoji="❌",
-                        alpha_id=self._alpha_id,
+                        alpha_id=self._alpha.alpha_id,
                         corr_type=corr_type,
                         error=str(e),
                     )
@@ -128,12 +164,12 @@ class Checks:
         logger.debug(
             "开始执行相关性检查",
             emoji="🔍",
-            alpha_id=self._alpha_id,
+            alpha_id=self._alpha.alpha_id,
             corr_type=corr_type,
         )
         async with wq_client as client:
             return await client.alpha_correlation_check(
-                alpha_id=self._alpha_id,
+                alpha_id=self._alpha.alpha_id,
                 corr_type=corr_type,
             )
 
@@ -151,7 +187,7 @@ class Checks:
             logger.info(
                 "数据相关性检查完成",
                 emoji="✅",
-                alpha_id=self._alpha_id,
+                alpha_id=self._alpha.alpha_id,
                 corr_type=corr_type,
                 result=result,
             )
@@ -159,7 +195,7 @@ class Checks:
             logger.warning(
                 "数据相关性检查失败",
                 emoji="❌",
-                alpha_id=self._alpha_id,
+                alpha_id=self._alpha.alpha_id,
                 corr_type=corr_type,
                 result=result,
             )
@@ -177,7 +213,7 @@ class Checks:
         logger.info(
             "数据相关性检查未完成",
             emoji="⏳",
-            alpha_id=self._alpha_id,
+            alpha_id=self._alpha.alpha_id,
             corr_type=corr_type,
             retry_after=retry_after,
         )
@@ -187,7 +223,7 @@ class Checks:
             logger.warning(
                 "等待重试时任务被取消",
                 emoji="⚠️",
-                alpha_id=self._alpha_id,
+                alpha_id=self._alpha.alpha_id,
                 corr_type=corr_type,
             )
             raise
@@ -218,19 +254,19 @@ class Checks:
         logger.info(
             "检查数据的前后性能",
             emoji="🔍",
-            alpha_id=self._alpha_id,
+            alpha_id=self._alpha.alpha_id,
             competition_id=competition_id,
         )
         async with wq_client as client:
             result = await client.alpha_fetch_before_and_after_performance(
-                alpha_id=self._alpha_id,
+                alpha_id=self._alpha.alpha_id,
                 competition_id=competition_id,
             )
             if result:
                 logger.info(
                     "数据前后性能检查完成",
                     emoji="✅",
-                    alpha_id=self._alpha_id,
+                    alpha_id=self._alpha.alpha_id,
                     competition_id=competition_id,
                     result=result,
                 )
@@ -238,7 +274,7 @@ class Checks:
                 logger.warning(
                     "数据前后性能检查失败",
                     emoji="❌",
-                    alpha_id=self._alpha_id,
+                    alpha_id=self._alpha.alpha_id,
                     competition_id=competition_id,
                     result=result,
                 )

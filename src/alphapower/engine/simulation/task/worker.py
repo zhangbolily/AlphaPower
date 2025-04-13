@@ -76,7 +76,7 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         emoji="🛠️",
         task_id=task.id,
         task_type=task.type.value,
-        settings=setting.model_dump(mode="json"),
+        settings=setting.model_dump(mode="python"),
     )
     payload: SingleSimulationPayload = SingleSimulationPayload(
         type=task.type.value,
@@ -87,7 +87,7 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         event="生成的负载数据",
         emoji="📦",
         task_id=task.id,
-        payload=payload.model_dump(mode="json"),
+        payload=payload.model_dump(mode="python"),
     )
     return payload
 
@@ -775,20 +775,63 @@ class Worker(AbstractWorker):
         Args:
             cancel_tasks: 如果为True，将尝试取消所有正在执行的任务
         """
-        await logger.adebug(f"工作者停止，当前全部状态信息: {self.__dict__}")
-        await logger.ainfo(f"工作者停止，当前状态：{self._running}")
+        await logger.adebug(
+            event="开始停止工作者",
+            emoji="🛑",
+            shutdown_flag=self._shutdown_flag,
+            running=self._running,
+            cancel_tasks=cancel_tasks,
+            post_handler_futures=len(self._post_handler_futures),
+        )
         self._shutdown_flag = True
         self._is_task_cancel_requested = cancel_tasks
-        await logger.adebug(f"等待挂起任务完成，任务信息: {self._post_handler_futures}")
-        await asyncio.gather(*self._post_handler_futures)
 
+        # 等待挂起任务完成，设置超时时间
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._post_handler_futures, return_exceptions=True),
+                timeout=30,
+            )
+            await logger.ainfo(
+                event="挂起任务完成",
+                emoji="✅",
+                task_count=len(self._post_handler_futures),
+            )
+        except asyncio.TimeoutError:
+            await logger.awarning(
+                event="等待挂起任务超时",
+                emoji="⏳",
+                timeout=30,
+                task_count=len(self._post_handler_futures),
+            )
+
+        # 确保运行锁的释放
         await logger.adebug(
-            f"尝试获取运行锁，等待主循环退出释放锁，当前锁状态: {self._run_lock.locked()}"
+            event="尝试获取运行锁",
+            emoji="🔒",
+            run_lock_status=self._run_lock.locked(),
         )
-        async with self._run_lock:
-            await logger.ainfo(f"工作者已停止，当前锁状态: {self._run_lock.locked()}")
-            self._running = False
-            await logger.ainfo("工作者已停止，所有资源已清理")
+        try:
+            async with self._run_lock:
+                await logger.ainfo(
+                    event="运行锁已释放",
+                    emoji="🔓",
+                    run_lock_status=self._run_lock.locked(),
+                )
+                self._running = False
+        except Exception as e:
+            await logger.aerror(
+                event="释放运行锁时发生异常",
+                emoji="❌",
+                error=str(e),
+            )
+        finally:
+            await logger.ainfo(
+                event="工作者已停止，所有资源已清理",
+                emoji="🧹",
+                shutdown_flag=self._shutdown_flag,
+                running=self._running,
+            )
 
     async def add_task_complete_callback(
         self,
@@ -808,15 +851,23 @@ class Worker(AbstractWorker):
         Raises:
             RuntimeError: 当工作者未关闭时无法添加回调
         """
-        logger.debug(f"添加任务完成回调函数: {callback}")
-        if self._running:
-            await logger.aerror("工作者正在运行中，无法添加回调函数")
-        self._task_complete_callbacks.append(callback)
         await logger.adebug(
-            (
-                f"添加任务完成回调函数 {callback}, 类型: {type(callback)}, "
-                f"当前回调函数数量 {len(self._task_complete_callbacks)}"
+            event="添加任务完成回调函数",
+            emoji="➕",
+            callback_type=type(callback).__name__,
+            running=self._running,
+        )
+        if self._running:
+            await logger.aerror(
+                event="工作者正在运行中，无法添加回调函数",
+                emoji="⚠️",
             )
+            return
+        self._task_complete_callbacks.append(callback)
+        await logger.ainfo(
+            event="任务完成回调函数添加成功",
+            emoji="✅",
+            callback_count=len(self._task_complete_callbacks),
         )
 
     async def get_current_tasks(self) -> List[SimulationTask]:

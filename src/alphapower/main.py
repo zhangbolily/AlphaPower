@@ -242,6 +242,7 @@ async def datafields(
 @click.option("--dry-run", is_flag=True, help="以仿真模式运行，不实际执行任务")
 @click.option("--worker-timeout", default=300, help="工作者健康检查超时时间（秒）")
 @click.option("--task-fetch-size", default=10, help="每次从任务提供者获取的任务数量")
+@click.option("--sample-rate", default=1, help="任务跳采样率")
 @click.option("--low-priority-threshold", default=10, help="低优先级任务提升阈值")
 async def start_worker_pool(
     initial_workers: int,
@@ -249,6 +250,7 @@ async def start_worker_pool(
     worker_timeout: int,
     task_fetch_size: int,
     low_priority_threshold: int,
+    sample_rate: int,
 ) -> None:
     """
     启动工作池以执行模拟任务。
@@ -278,6 +280,7 @@ async def start_worker_pool(
         worker_timeout=worker_timeout,
         task_fetch_size=task_fetch_size,
         low_priority_threshold=low_priority_threshold,
+        sample_rate=sample_rate,
     )
     await logger.ainfo("工作池启动完成。", emoji="✅")
 

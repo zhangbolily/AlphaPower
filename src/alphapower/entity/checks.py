@@ -18,10 +18,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     Integer,
+    String,
     func,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, MappedColumn, mapped_column
+
+from alphapower.constants import ALPHA_ID_LENGTH
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -59,7 +62,7 @@ class Correlation(Base):
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     alpha_id: MappedColumn[int] = mapped_column(
-        Integer,
+        String(ALPHA_ID_LENGTH),
         nullable=False,
     )
     correlation_max: MappedColumn[float] = mapped_column(
