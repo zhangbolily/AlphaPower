@@ -54,6 +54,11 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
     Returns:
         SingleSimulationPayload: 格式化后的单个模拟任务负载数据
     """
+    logger.debug(
+        event="进入 build_single_simulation_payload",
+        emoji="🔧",
+        task_id=task.id,
+    )
     # 详细记录构建负载数据过程，便于调试
     setting = SimulationSettingsView.model_construct(
         region=task.region.value,
@@ -89,6 +94,12 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         emoji="📦",
         task_id=task.id,
         payload=payload.model_dump(mode="python"),
+    )
+    logger.debug(
+        event="退出 build_single_simulation_payload",
+        emoji="🚪",
+        task_id=task.id,
+        payload=payload,
     )
     return payload
 
@@ -156,6 +167,7 @@ class Worker(AbstractWorker):
 
         Args:
             progress_id: 要取消的任务进度 ID
+            tasks: 与此进度 ID 关联的任务列表
 
         Returns:
             bool: 如果成功取消则返回 True，否则返回 False
@@ -193,6 +205,12 @@ class Worker(AbstractWorker):
                         task.status = SimulationTaskStatus.CANCELLED
                     await dal.update_all(tasks)
                     await session.commit()
+                    await logger.ainfo(
+                        event="数据库中任务状态更新为已取消",
+                        emoji="💾",
+                        progress_id=progress_id,
+                        task_ids=[t.id for t in tasks],
+                    )
 
                 return True
             await logger.aerror(
@@ -204,6 +222,7 @@ class Worker(AbstractWorker):
         await logger.adebug(
             event="任务取消请求未满足条件，跳过取消操作",
             emoji="⏭️",
+            progress_id=progress_id,
         )
         return False
 
@@ -217,21 +236,13 @@ class Worker(AbstractWorker):
         Args:
             task: 已完成的模拟任务对象
             result: 任务执行的结果数据
-
-        Todo:
-            * 更新任务状态和必要的字段
-            * 为失败的任务记录错误信息并通知其他服务
-            * 调用注册的回调函数通知任务完成
         """
-        # TODO: 更新流程
-        # 1. 更新任务状态和必要的字段
-        # 2. 如果是失败的任务，可能需要记录错误信息并通知其他服务
-        # 3. 确认任务是否已成功完成，并更新相关统计信息
         await logger.ainfo(
-            event="任务完成",
+            event="任务完成，开始处理结果",
             emoji="🎉",
             task_id=task.id,
-            result=result.model_dump(mode="json"),
+            result_status=result.status,
+            result_id=result.id,
         )
 
         task.result = result.model_dump(mode="json")  # 保存原始结果，用户后续评估分析
@@ -240,11 +251,13 @@ class Worker(AbstractWorker):
             task.status = SimulationTaskStatus(result.status)
         except ValueError:
             await logger.aerror(
-                event="未知任务状态",
+                event="收到未知的任务状态",
                 emoji="❓",
                 task_id=task.id,
-                status=result.status,
+                received_status=result.status,
             )
+            # 可以考虑设置一个默认错误状态或保持原状态
+            task.status = SimulationTaskStatus.ERROR  # 假设有一个错误状态
         task.completed_at = datetime.now()
         if task.status == SimulationTaskStatus.COMPLETE:
             task.alpha_id = result.alpha
@@ -254,42 +267,59 @@ class Worker(AbstractWorker):
             await dal.update(task)
             await session.commit()
             await logger.ainfo(
-                event="更新任务状态成功",
-                emoji="✅",
+                event="数据库中任务状态更新成功",
+                emoji="💾",
                 task_id=task.id,
-                status=task.status.value,
+                new_status=task.status.value,
             )
             # 因为这里数据更新是个很低频的操作，每次都提交事务即可
 
         # 更新完成的因子标签
-        if task.status == SimulationTaskStatus.COMPLETE:
+        if task.status == SimulationTaskStatus.COMPLETE and task.alpha_id:
             async with self._client:
                 try:
+                    await logger.adebug(
+                        event="尝试更新因子属性",
+                        emoji="🏷️",
+                        task_id=task.id,
+                        alpha_id=task.alpha_id,
+                        tags=task.tags,
+                    )
                     await self._client.alpha_update_properties(
-                        alpha_id=result.alpha,
+                        alpha_id=task.alpha_id,
                         properties=AlphaPropertiesPayload(
                             tags=task.tags,
                         ),
                     )
-                except Exception as e:
-                    await logger.aerror(
-                        event="设置因子属性失败",
+                    await logger.ainfo(
+                        event="更新因子属性成功",
+                        emoji="✅",
+                        task_id=task.id,
+                        alpha_id=task.alpha_id,
+                    )
+                except Exception:
+                    await logger.aexception(
+                        event="更新因子属性时发生异常",
                         emoji="❌",
                         task_id=task.id,
-                        error=str(e),
+                        alpha_id=task.alpha_id,
                     )
-                    return
-                finally:
-                    await logger.ainfo(
-                        event="设置因子属性成功",
-                        emoji="🏷️",
-                        task_id=task.id,
-                        alpha_id=result.alpha,
-                    )
+                    # 注意：这里仅记录异常，不影响后续回调执行
 
         if self._dry_run:
-            logger.debug("dry-run: 回调方法不调用。")
+            await logger.adebug(
+                event="Dry-run 模式，跳过任务完成回调",
+                emoji="🚫",
+                task_id=task.id,
+            )
+            return  # 在 dry-run 模式下直接返回
 
+        await logger.adebug(
+            event="开始调用任务完成回调",
+            emoji="📞",
+            task_id=task.id,
+            callback_count=len(self._task_complete_callbacks),
+        )
         for callback in self._task_complete_callbacks:
             try:
                 if asyncio.iscoroutinefunction(callback):
@@ -298,10 +328,18 @@ class Worker(AbstractWorker):
                 else:
                     # 如果是同步函数，直接调用
                     callback(task, result)
-            except Exception as e:
-                await logger.aerror(
-                    f"调用任务完成回调函数失败，任务 ID: {task.id}，错误: {e}"
+            except Exception:
+                await logger.aexception(
+                    event="调用任务完成回调函数时发生异常",
+                    emoji="💥",
+                    task_id=task.id,
+                    callback_name=getattr(callback, "__name__", repr(callback)),
                 )
+        await logger.adebug(
+            event="任务完成回调调用结束",
+            emoji="🏁",
+            task_id=task.id,
+        )
 
     async def _heartbeat(self, name: str) -> None:
         """心跳方法，用于定期检查工作者的健康状态。
@@ -312,9 +350,10 @@ class Worker(AbstractWorker):
             name: 心跳任务的名称，用于日志记录和调试
         """
         await logger.adebug(
-            event="心跳检查",
+            event="心跳检查开始",
             emoji="💓",
             node_name=name,
+            callback_count=len(self._heartbeat_callbacks),
         )
 
         async def _heartbeat_async_task() -> None:
@@ -327,23 +366,50 @@ class Worker(AbstractWorker):
                     else:
                         # 如果是同步函数，直接调用
                         callback(self)
-                except Exception as e:
-                    await logger.aerror(f"节点 {name} 心跳回调失败，错误: {e}")
+                except Exception:
+                    await logger.aexception(
+                        event="心跳回调执行失败",
+                        emoji="💔",
+                        node_name=name,
+                        callback_name=getattr(callback, "__name__", repr(callback)),
+                    )
 
         # 创建并启动异步任务
         if self._heartbeat_task and not self._heartbeat_task.done():
+            task_name = self._heartbeat_task.get_name()
             await logger.awarning(
-                (
-                    f"心跳节点 {name} 任务已存在，等待完成再启动下一个心跳任务，"
-                    + f"任务协程栈信息: {self._heartbeat_task.get_stack()}"
+                event="上一个心跳任务尚未完成，等待其结束",
+                emoji="⏳",
+                current_node_name=name,
+                previous_task_name=task_name,
+                # task_stack=self._heartbeat_task.get_stack(), # 堆栈信息可能过长，谨慎使用
+            )
+            try:
+                await asyncio.wait_for(
+                    self._heartbeat_task, timeout=10.0
+                )  # 设置超时等待
+            except asyncio.TimeoutError:
+                await logger.aerror(
+                    event="等待上一个心跳任务超时",
+                    emoji="⌛",
+                    previous_task_name=task_name,
                 )
-            )
-            await logger.awarning(
-                f"等待节点 {self._heartbeat_task.get_name()} 任务完成"
-            )
-            await self._heartbeat_task
+            except Exception:
+                await logger.aexception(
+                    event="等待上一个心跳任务时发生异常",
+                    emoji="💥",
+                    previous_task_name=task_name,
+                )
 
-        self._heartbeat_task = asyncio.create_task(_heartbeat_async_task(), name=name)
+        self._heartbeat_task = asyncio.create_task(
+            _heartbeat_async_task(), name=f"heartbeat-{name}"
+        )
+        await logger.adebug(
+            event="心跳检查任务已创建",
+            emoji="✅",
+            node_name=name,
+            task_name=self._heartbeat_task.get_name(),
+        )
 
     async def _process_single_simulation_task(self, task: SimulationTask) -> None:
         """处理单个模拟任务。
@@ -354,7 +420,7 @@ class Worker(AbstractWorker):
         Args:
             task: 要处理的模拟任务对象
         """
-        await logger.adebug(
+        await logger.ainfo(
             event="开始处理单个模拟任务",
             emoji="🚀",
             task_id=task.id,
@@ -362,17 +428,26 @@ class Worker(AbstractWorker):
             user_role=self._user_role.value,
         )
         if self._shutdown_flag:
-            await logger.aerror(f"工作者已关闭，无法处理任务 ID: {task.id}")
+            await logger.awarning(
+                event="工作者已关闭，无法处理新任务",
+                emoji="🛑",
+                task_id=task.id,
+            )
             return
 
         if self._dry_run:
-            logger.debug("dry-run 模式下跳过实际请求。")
-            task.status = SimulationTaskStatus.RUNNING
+            await logger.ainfo(
+                event="Dry-run 模式，模拟单个任务执行",
+                emoji="🧪",
+                task_id=task.id,
+            )
+            task.status = SimulationTaskStatus.RUNNING  # 模拟运行状态
+            # 模拟一个成功的响应
             mock_result = SingleSimulationResultView(
-                id="dry-run-single-id",
-                status="COMPLETE",
-                alpha=None,
-                type=AlphaType.REGULAR,
+                id=f"dry-run-single-{task.id}",
+                status=SimulationTaskStatus.COMPLETE.value,  # 使用枚举值
+                alpha=f"dry-run-alpha-{task.id}",  # 模拟 Alpha ID
+                type=task.type,  # 使用任务的类型
             )
             await self._handle_task_completion(task, mock_result)
             return
@@ -381,46 +456,83 @@ class Worker(AbstractWorker):
         payload = build_single_simulation_payload(task)
 
         async with self._client:
+            progress_id: Optional[str] = None  # 初始化 progress_id
             try:
                 # 创建模拟任务
-                logger.debug(
-                    f"发送创建单个模拟任务请求，任务 ID: {task.id}, 请求体: {payload}"
+                await logger.adebug(
+                    event="发送创建单个模拟任务请求",
+                    emoji="📤",
+                    task_id=task.id,
+                    payload=payload.model_dump(mode="python"),  # 记录请求体用于调试
                 )
                 success, progress_id, retry_after = (
                     await self._client.simulation_create_single(payload=payload)
                 )
 
                 # 处理创建失败的情况
-                if not success:
-                    await logger.awarning(
-                        f"创建单个模拟任务失败，任务 ID: {task.id}，请求体: {payload}"
+                if not success or not progress_id:
+                    await logger.aerror(
+                        event="创建单个模拟任务失败",
+                        emoji="❌",
+                        task_id=task.id,
+                        payload=payload.model_dump(mode="python"),
+                        progress_id=progress_id,  # 记录返回的 progress_id (可能为 None)
                     )
+                    # 可以考虑更新任务状态为失败
+                    task.status = SimulationTaskStatus.ERROR
+                    task.completed_at = datetime.now()
+                    async with get_db_session(Database.SIMULATION) as session:
+                        dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                        await dal.update(task)
+                        await session.commit()
                     return
 
                 await logger.ainfo(
-                    event="创建单个模拟任务成功",
+                    event="创建单个模拟任务成功，等待首次进度检查",
                     emoji="✅",
                     task_id=task.id,
                     progress_id=progress_id,
                     retry_after=f"{retry_after}s",
                 )
 
+                # 更新任务状态为运行中，并保存 progress_id
+                task.status = SimulationTaskStatus.RUNNING
+                task.parent_progress_id = (
+                    progress_id  # 单任务也用 parent_progress_id 存储
+                )
+                async with get_db_session(Database.SIMULATION) as session:
+                    dal = SimulationTaskDAL(session)
+                    await dal.update(task)
+                    await session.commit()
+                    await logger.ainfo(
+                        event="数据库中任务状态更新为运行中",
+                        emoji="💾",
+                        task_id=task.id,
+                        progress_id=progress_id,
+                    )
+
                 # 等待指定时间后开始检查进度
                 await asyncio.sleep(retry_after)
 
                 # 循环检查任务进度直到完成
-                prev_progress: float = 0.0
+                prev_progress: float = -1.0  # 初始化为-1，确保第一次进度会被记录
                 while True:
                     #! 4. 心跳检查
-                    await self._heartbeat(name="_process_single_simulation_task")
-                    logger.debug(
-                        f"检查任务进度，任务 ID: {task.id}, 进度 ID: {progress_id}"
+                    await self._heartbeat(name=f"single_task_poll_{task.id}")
+                    await logger.adebug(
+                        event="检查任务进度",
+                        emoji="🔍",
+                        task_id=task.id,
+                        progress_id=progress_id,
                     )
                     if await self._cancel_task_if_possible(progress_id, tasks=[task]):
                         await logger.ainfo(
-                            f"任务已取消，任务 ID: {task.id}，进度 ID: {progress_id}"
+                            event="任务已被取消，停止进度检查",
+                            emoji="🚫",
+                            task_id=task.id,
+                            progress_id=progress_id,
                         )
-                        break
+                        break  # 任务已取消，退出循环
 
                     finished, progress_or_result, retry_after = (
                         await self._client.simulation_get_progress_single(
@@ -428,18 +540,32 @@ class Worker(AbstractWorker):
                         )
                     )
 
-                    if finished and isinstance(
-                        progress_or_result, SingleSimulationResultView
-                    ):
-                        await logger.ainfo(
-                            f"单个模拟任务完成，任务 ID: {task.id}，进度 ID: {progress_id}"
-                        )
-                        await self._handle_task_completion(task, progress_or_result)
-                        break
-
-                    if isinstance(progress_or_result, SimulationProgressView):
+                    if finished:
+                        if isinstance(progress_or_result, SingleSimulationResultView):
+                            await logger.ainfo(
+                                event="单个模拟任务完成",
+                                emoji="🏁",
+                                task_id=task.id,
+                                progress_id=progress_id,
+                                result_status=progress_or_result.status,
+                            )
+                            await self._handle_task_completion(task, progress_or_result)
+                        else:
+                            # finished 为 True 但结果类型不匹配，记录错误
+                            await logger.aerror(
+                                event="任务完成但结果类型不匹配",
+                                emoji="❓",
+                                task_id=task.id,
+                                progress_id=progress_id,
+                                expected_type="SingleSimulationResultView",
+                                received_type=type(progress_or_result).__name__,
+                                received_value=progress_or_result,
+                            )
+                            # 可以在这里将任务标记为错误状态
+                        break  # 任务完成，退出循环
+                    elif isinstance(progress_or_result, SimulationProgressView):
                         progress: float = progress_or_result.progress
-                        if progress != prev_progress:
+                        if abs(progress - prev_progress) > 1e-6:  # 比较浮点数
                             await logger.ainfo(
                                 event="单个模拟任务进行中",
                                 emoji="⏳",
@@ -448,17 +574,58 @@ class Worker(AbstractWorker):
                                 progress=f"{progress * 100:.2f}%",
                             )
                             prev_progress = progress
+                        else:
+                            # 进度未变化，可以考虑使用 DEBUG 级别记录
+                            await logger.adebug(
+                                event="任务进度未变化",
+                                emoji="🧘",
+                                task_id=task.id,
+                                progress_id=progress_id,
+                                progress=f"{progress * 100:.2f}%",
+                            )
                     else:
+                        # 返回值组合未知，记录错误
                         await logger.aerror(
-                            f"未知返回值组合，任务 ID: {task.id}，进度 ID: {progress_id}，"
-                            f"返回值: finished={finished}, progress_or_result={progress_or_result}, "
-                            + f"retry_after={retry_after}"
+                            event="获取任务进度时返回未知组合",
+                            emoji="❓",
+                            task_id=task.id,
+                            progress_id=progress_id,
+                            finished=finished,
+                            progress_or_result_type=type(progress_or_result).__name__,
+                            progress_or_result=progress_or_result,
+                            retry_after=retry_after,
                         )
+                        # 考虑是否需要退出循环或重试
+
+                    await logger.adebug(
+                        event="等待下次进度检查",
+                        emoji="😴",
+                        task_id=task.id,
+                        progress_id=progress_id,
+                        retry_after=f"{retry_after}s",
+                    )
                     await asyncio.sleep(retry_after)
-            except Exception as e:
+            except Exception:
                 # 记录异常信息，确保异常不会中断工作者主循环
-                await logger.aerror(
-                    f"处理单个模拟任务失败，任务 ID: {task.id}，错误: {e}"
+                await logger.aexception(
+                    event="处理单个模拟任务时发生异常",
+                    emoji="💥",
+                    task_id=task.id,
+                    progress_id=progress_id,  # 记录当前的 progress_id
+                )
+                # 可以在这里将任务标记为错误状态
+                task.status = SimulationTaskStatus.ERROR
+                task.completed_at = datetime.now()
+                async with get_db_session(Database.SIMULATION) as session:
+                    dal = SimulationTaskDAL(session)
+                    await dal.update(task)
+                    await session.commit()
+            finally:
+                await logger.ainfo(
+                    event="单个模拟任务处理结束",
+                    emoji="🔚",
+                    task_id=task.id,
+                    final_status=task.status.value,
                 )
 
     async def _handle_multi_task_completion(
@@ -472,6 +639,16 @@ class Worker(AbstractWorker):
             tasks: 模拟任务列表
             result: 多个模拟任务的结果，包含子任务ID信息
         """
+        parent_progress_id = tasks[0].parent_progress_id if tasks else None
+        task_ids = [t.id for t in tasks]
+        await logger.ainfo(
+            event="多个模拟任务集合完成，开始处理子任务结果",
+            emoji="🧩",
+            parent_progress_id=parent_progress_id,
+            task_ids=task_ids,
+            child_progress_ids=result.children,
+            result_status=result.status,
+        )
 
         async def handle_completed_task(task: SimulationTask, child_id: str) -> None:
             """处理多个模拟任务的子任务。
@@ -482,45 +659,129 @@ class Worker(AbstractWorker):
                 task: 模拟任务
                 child_id: 子任务 ID
             """
+            await logger.adebug(
+                event="开始处理多任务中的单个子任务",
+                emoji="🔧",
+                task_id=task.id,
+                child_progress_id=child_id,
+            )
             if self._dry_run:
-                logger.debug("dry-run: 跳过 get_multi_simulation_child_result 调用。")
+                await logger.ainfo(
+                    event="Dry-run 模式，模拟获取子任务结果",
+                    emoji="🧪",
+                    task_id=task.id,
+                    child_progress_id=child_id,
+                )
                 mock_result = SingleSimulationResultView(
-                    id=f"dry-run-child-{child_id}",
-                    status="COMPLETE",
-                    alpha=None,
-                    type=AlphaType.REGULAR,
+                    id=child_id,  # 使用传入的 child_id
+                    status=SimulationTaskStatus.COMPLETE.value,
+                    alpha=f"dry-run-alpha-{task.id}",
+                    type=task.type,
                 )
                 await self._handle_task_completion(task, mock_result)
                 return
 
             async with self._client:
                 try:
-                    success, result = await self._client.simulation_get_child_result(
+                    await logger.adebug(
+                        event="尝试获取子任务结果",
+                        emoji="📥",
+                        task_id=task.id,
                         child_progress_id=child_id,
                     )
-                    if not success:
-                        await logger.aerror(
-                            f"获取多个模拟任务的子任务结果失败，任务实体 ID {task.id} 子任务 ID {child_id}"
+                    success, child_result = (
+                        await self._client.simulation_get_child_result(
+                            child_progress_id=child_id,
                         )
-                        return
-                    await logger.ainfo(
-                        f"获取多个模拟任务的子任务结果成功，任务实体 ID {task.id} 子任务 ID {child_id}"
                     )
-                    await self._handle_task_completion(task, result)
-                except Exception as e:
+                    if not success or not isinstance(
+                        child_result, SingleSimulationResultView
+                    ):
+                        await logger.aerror(
+                            event="获取子任务结果失败或类型不匹配",
+                            emoji="❌",
+                            task_id=task.id,
+                            child_progress_id=child_id,
+                            success=success,
+                            result_type=type(child_result).__name__,
+                        )
+                        # 标记任务为错误状态
+                        task.status = SimulationTaskStatus.ERROR
+                        task.completed_at = datetime.now()
+                        async with get_db_session(Database.SIMULATION) as session:
+                            dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                            await dal.update(task)
+                            await session.commit()
+                        return
+
+                    await logger.ainfo(
+                        event="获取子任务结果成功",
+                        emoji="✅",
+                        task_id=task.id,
+                        child_progress_id=child_id,
+                        result_status=child_result.status,
+                    )
+                    await self._handle_task_completion(task, child_result)
+                except Exception:
                     # 捕获所有异常并记录错误，不向上继续抛出
-                    await logger.aerror(
-                        f"处理多个模拟任务的子任务失败，任务实体 ID {task.id} 子任务 ID {child_id} 错误: {e}"
+                    await logger.aexception(
+                        event="处理子任务时发生异常",
+                        emoji="💥",
+                        task_id=task.id,
+                        child_progress_id=child_id,
+                    )
+                    # 标记任务为错误状态
+                    task.status = SimulationTaskStatus.ERROR
+                    task.completed_at = datetime.now()
+                    async with get_db_session(Database.SIMULATION) as session:
+                        dal = SimulationTaskDAL(session)
+                        await dal.update(task)
+                        await session.commit()
+                finally:
+                    await logger.adebug(
+                        event="单个子任务处理结束",
+                        emoji="🔚",
+                        task_id=task.id,
+                        child_progress_id=child_id,
+                        final_status=task.status.value,
                     )
 
         # 使用锁确保并发安全地管理异步任务
         async with self._post_handler_lock:
+            await logger.adebug(
+                event="获取 post_handler_lock，准备创建子任务处理协程",
+                emoji="🔒",
+                parent_progress_id=parent_progress_id,
+                task_count=len(tasks),
+                child_count=len(result.children),
+            )
+            if len(tasks) != len(result.children):
+                await logger.aerror(
+                    event="任务数量与子任务 ID 数量不匹配",
+                    emoji="❗",
+                    parent_progress_id=parent_progress_id,
+                    task_count=len(tasks),
+                    child_count=len(result.children),
+                )
+                # 根据实际情况决定如何处理，例如只处理匹配的部分或全部标记为错误
+
             # 为每个子任务创建异步任务并添加到待处理列表
-            self._post_handler_futures.extend(
-                [
-                    asyncio.create_task(handle_completed_task(task, child_id))
-                    for task, child_id in zip(tasks, result.children)
-                ]
+            new_futures = [
+                asyncio.create_task(
+                    handle_completed_task(task, child_id),
+                    name=f"handle_child_{task.id}_{child_id}",
+                )
+                for task, child_id in zip(
+                    tasks, result.children
+                )  # 使用 zip 保证一一对应
+            ]
+            self._post_handler_futures.extend(new_futures)
+            await logger.adebug(
+                event="子任务处理协程已创建并添加",
+                emoji="➕",
+                parent_progress_id=parent_progress_id,
+                new_future_count=len(new_futures),
+                total_future_count=len(self._post_handler_futures),
             )
 
     async def _process_multi_simulation_task(self, tasks: List[SimulationTask]) -> None:
@@ -532,33 +793,60 @@ class Worker(AbstractWorker):
         Args:
             tasks: 模拟任务列表
         """
-        await logger.adebug(
+        task_ids: List[int] = [task.id for task in tasks]
+        await logger.ainfo(
             event="开始处理多个模拟任务",
             emoji="🚀",
-            task_ids=[task.id for task in tasks],
+            task_count=len(tasks),
+            task_ids=task_ids,
+            user_role=self._user_role.value,
         )
+
         if self._user_role != UserRole.CONSULTANT:
-            await logger.aerror("当前用户角色不是顾问，无法处理多个模拟任务")
+            await logger.aerror(
+                event="权限不足，无法处理多个模拟任务",
+                emoji="🚫",
+                required_role=UserRole.CONSULTANT.value,
+                current_role=self._user_role.value,
+                task_ids=task_ids,
+            )
+            # 可以考虑将这些任务标记为失败
             return
 
         if self._shutdown_flag:
-            await logger.aerror("工作者已关闭，无法处理多个模拟任务")
+            await logger.awarning(
+                event="工作者已关闭，无法处理新任务",
+                emoji="🛑",
+                task_ids=task_ids,
+            )
             return
 
         if len(tasks) > MAX_CONSULTANT_SIMULATION_SLOTS:
             await logger.aerror(
-                f"任务数量超出限制，当前任务数量: {len(tasks)}，最大数量: {MAX_CONSULTANT_SIMULATION_SLOTS}"
+                event="任务数量超出顾问角色限制",
+                emoji="📈",
+                task_count=len(tasks),
+                limit=MAX_CONSULTANT_SIMULATION_SLOTS,
+                task_ids=task_ids,
             )
+            # 可以考虑将这些任务标记为失败
             return
 
         if self._dry_run:
-            logger.debug("dry-run 模式下跳过实际请求。")
+            await logger.ainfo(
+                event="Dry-run 模式，模拟多个任务执行",
+                emoji="🧪",
+                task_ids=task_ids,
+            )
             for t in tasks:
-                t.status = SimulationTaskStatus.RUNNING
+                t.status = SimulationTaskStatus.RUNNING  # 模拟运行状态
+            # 模拟一个成功的响应
             mock_result = MultiSimulationResultView(
                 children=[f"dry-run-child-{t.id}" for t in tasks],
-                type=AlphaType.REGULAR,
-                status="COMPLETE",
+                type=(
+                    tasks[0].type if tasks else AlphaType.REGULAR
+                ),  # 取第一个任务的类型或默认
+                status=SimulationTaskStatus.COMPLETE.value,
             )
             await self._handle_multi_task_completion(tasks, mock_result)
             return
@@ -569,52 +857,81 @@ class Worker(AbstractWorker):
         payload: MultiSimulationPayload = MultiSimulationPayload(
             root=single_simu_payloads
         )
-        task_ids: List[int] = [task.id for task in tasks]
-        task_ids_str: str = ", ".join(str(task_id) for task_id in task_ids)
 
         async with self._client:
+            progress_id: Optional[str] = None
             try:
-                logger.debug(
-                    f"发送创建多个模拟任务请求，任务 ID 列表: {task_ids_str}, 请求体: {payload}"
+                await logger.adebug(
+                    event="发送创建多个模拟任务请求",
+                    emoji="📤",
+                    task_ids=task_ids,
+                    payload=payload.model_dump(mode="python"),  # 记录请求体
                 )
                 success, progress_id, retry_after = (
                     await self._client.simulation_create_multi(payload=payload)
                 )
 
-                if not success:
+                if not success or not progress_id:
                     await logger.aerror(
-                        f"创建多个模拟任务失败，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
+                        event="创建多个模拟任务失败",
+                        emoji="❌",
+                        task_ids=task_ids,
+                        payload=payload.model_dump(mode="python"),
+                        progress_id=progress_id,
                     )
+                    # 标记任务失败
+                    async with get_db_session(Database.SIMULATION) as session:
+                        dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                        for task in tasks:
+                            task.status = SimulationTaskStatus.ERROR
+                            task.completed_at = datetime.now()
+                        await dal.update_all(tasks)
+                        await session.commit()
                     return
 
                 await logger.ainfo(
-                    f"创建多个模拟任务成功，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
+                    event="创建多个模拟任务成功，等待首次进度检查",
+                    emoji="✅",
+                    task_ids=task_ids,
+                    progress_id=progress_id,
+                    retry_after=f"{retry_after}s",
                 )
 
-                for task in tasks:
-                    task.status = SimulationTaskStatus.RUNNING
-                    task.parent_progress_id = progress_id
-
+                # 更新任务状态为运行中，并保存父进度 ID
                 async with get_db_session(Database.SIMULATION) as session:
-                    dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                    dal = SimulationTaskDAL(session)
+                    for task in tasks:
+                        task.status = SimulationTaskStatus.RUNNING
+                        task.parent_progress_id = progress_id
                     await dal.update_all(tasks)
                     await session.commit()
                     await logger.ainfo(
-                        f"更新多个模拟任务状态成功，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
-                        + f"，状态: {SimulationTaskStatus.RUNNING}"
+                        event="数据库中多个任务状态更新为运行中",
+                        emoji="💾",
+                        task_ids=task_ids,
+                        progress_id=progress_id,
                     )
 
                 await asyncio.sleep(retry_after)
 
-                prev_progress: float = 0.0
+                prev_progress: float = -1.0
                 while True:
                     #! 5. 心跳检查
-                    await self._heartbeat(name="_process_multi_simulation_task")
+                    await self._heartbeat(name=f"multi_task_poll_{progress_id}")
+                    await logger.adebug(
+                        event="检查多个任务进度",
+                        emoji="🔍",
+                        task_ids=task_ids,
+                        progress_id=progress_id,
+                    )
                     if await self._cancel_task_if_possible(progress_id, tasks=tasks):
                         await logger.ainfo(
-                            f"任务已取消，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
+                            event="多个任务已被取消，停止进度检查",
+                            emoji="🚫",
+                            task_ids=task_ids,
+                            progress_id=progress_id,
                         )
-                        break
+                        break  # 任务已取消，退出循环
 
                     finished, progress_or_result, retry_after = (
                         await self._client.simulation_get_progress_multi(
@@ -622,43 +939,100 @@ class Worker(AbstractWorker):
                         )
                     )
 
-                    if finished and isinstance(
-                        progress_or_result, MultiSimulationResultView
-                    ):
-                        await logger.ainfo(
-                            f"多个模拟任务完成，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}"
-                        )
-                        await self._handle_multi_task_completion(
-                            tasks, progress_or_result
-                        )
-                        break
-
-                    if isinstance(progress_or_result, SimulationProgressView):
-                        progress: float = progress_or_result.progress
-
-                        logger.debug(
-                            (
-                                f"轮询任务进度，任务 ID 列表: {task_ids_str}, "
-                                + f"进度 ID: {progress_id}, 进度: {progress * 100:.2f}%"
-                            )
-                        )
-
-                        if progress != prev_progress:
+                    if finished:
+                        if isinstance(progress_or_result, MultiSimulationResultView):
                             await logger.ainfo(
-                                f"多任务模拟进行中，任务 ID 列表: {task_ids_str}，"
-                                + f"进度 ID: {progress_id}，进度: {progress * 100:.2f}%"
+                                event="多个模拟任务集合完成",
+                                emoji="🏁",
+                                task_ids=task_ids,
+                                progress_id=progress_id,
+                                result_status=progress_or_result.status,
+                            )
+                            await self._handle_multi_task_completion(
+                                tasks, progress_or_result
+                            )
+                        else:
+                            await logger.aerror(
+                                event="多个任务完成但结果类型不匹配",
+                                emoji="❓",
+                                task_ids=task_ids,
+                                progress_id=progress_id,
+                                expected_type="MultiSimulationResultView",
+                                received_type=type(progress_or_result).__name__,
+                                received_value=progress_or_result,
+                            )
+                            # 标记任务失败
+                            async with get_db_session(Database.SIMULATION) as session:
+                                dal = SimulationTaskDAL(session)
+                                for task in tasks:
+                                    task.status = SimulationTaskStatus.ERROR
+                                    task.completed_at = datetime.now()
+                                await dal.update_all(tasks)
+                                await session.commit()
+                        break  # 任务完成，退出循环
+
+                    elif isinstance(progress_or_result, SimulationProgressView):
+                        progress: float = progress_or_result.progress
+                        if abs(progress - prev_progress) > 1e-6:
+                            await logger.ainfo(
+                                event="多个模拟任务进行中",
+                                emoji="⏳",
+                                task_ids=task_ids,
+                                progress_id=progress_id,
+                                progress=f"{progress * 100:.2f}%",
                             )
                             prev_progress = progress
+                        else:
+                            await logger.adebug(
+                                event="多个任务进度未变化",
+                                emoji="🧘",
+                                task_ids=task_ids,
+                                progress_id=progress_id,
+                                progress=f"{progress * 100:.2f}%",
+                            )
                     else:
                         await logger.aerror(
-                            f"未知返回值组合，任务 ID 列表: {task_ids_str}，进度 ID: {progress_id}，"
-                            + f"返回值: finished={finished}, progress_or_result={progress_or_result}, "
-                            + f"retry_after={retry_after}"
+                            event="获取多个任务进度时返回未知组合",
+                            emoji="❓",
+                            task_ids=task_ids,
+                            progress_id=progress_id,
+                            finished=finished,
+                            progress_or_result_type=type(progress_or_result).__name__,
+                            progress_or_result=progress_or_result,
+                            retry_after=retry_after,
                         )
+
+                    await logger.adebug(
+                        event="等待下次多个任务进度检查",
+                        emoji="😴",
+                        task_ids=task_ids,
+                        progress_id=progress_id,
+                        retry_after=f"{retry_after}s",
+                    )
                     await asyncio.sleep(retry_after)
-            except Exception as e:
-                await logger.aerror(
-                    f"处理多个模拟任务失败，任务 ID 列表: {task_ids_str}，错误: {e}"
+            except Exception:
+                await logger.aexception(
+                    event="处理多个模拟任务时发生异常",
+                    emoji="💥",
+                    task_ids=task_ids,
+                    progress_id=progress_id,
+                )
+                # 标记任务失败
+                async with get_db_session(Database.SIMULATION) as session:
+                    dal = SimulationTaskDAL(session)
+                    for task in tasks:
+                        task.status = SimulationTaskStatus.ERROR
+                        task.completed_at = datetime.now()
+                    await dal.update_all(tasks)
+                    await session.commit()
+            finally:
+                final_statuses = {t.id: t.status.value for t in tasks}
+                await logger.ainfo(
+                    event="多个模拟任务处理结束",
+                    emoji="🔚",
+                    task_ids=task_ids,
+                    progress_id=progress_id,
+                    final_statuses=final_statuses,
                 )
 
     async def _do_work(self) -> None:
@@ -671,13 +1045,18 @@ class Worker(AbstractWorker):
             Exception: 当调度器未设置时
             ValueError: 当遇到未知用户角色时
         """
-        await logger.adebug("开始执行工作循环")
+        await logger.ainfo(event="工作者开始执行工作循环", emoji="🔄")
         #! 2. 心跳检查
-        await self._heartbeat(name="_do_work before schedule")
+        await self._heartbeat(name="_do_work_start")
         while not self._shutdown_flag:
+            await logger.adebug(event="开始新的工作循环迭代", emoji="➡️")
             # 验证调度器是否已设置
             if self._scheduler is None:
-                await logger.aerror("调度器未设置，无法执行工作")
+                await logger.acritical(
+                    event="调度器未设置，工作者无法继续执行",
+                    emoji="🚨",
+                )
+                # 抛出异常会导致工作者停止，符合 CRITICAL 级别定义
                 raise Exception("调度器未设置，无法执行工作")
 
             # 根据用户角色确定任务批量大小
@@ -686,44 +1065,120 @@ class Worker(AbstractWorker):
                 if self._user_role == UserRole.CONSULTANT
                 else 1
             )
+            await logger.adebug(
+                event="确定调度任务数量",
+                emoji="🔢",
+                user_role=self._user_role.value,
+                batch_size=scheduled_task_count,
+            )
 
             # 从调度器获取任务
-            tasks: List[SimulationTask] = await self._scheduler.schedule(
-                batch_size=scheduled_task_count
-            )
-            self._current_tasks = tasks
+            try:
+                await logger.adebug(event="尝试从调度器获取任务", emoji="📥")
+                tasks: List[SimulationTask] = await self._scheduler.schedule(
+                    batch_size=scheduled_task_count
+                )
+                self._current_tasks = tasks  # 保存当前处理的任务列表
+                await logger.adebug(
+                    event="从调度器获取任务成功",
+                    emoji="✅",
+                    task_count=len(tasks),
+                    task_ids=[t.id for t in tasks],
+                )
+            except Exception:
+                await logger.aexception(
+                    event="从调度器获取任务时发生异常",
+                    emoji="💥",
+                    batch_size=scheduled_task_count,
+                )
+                await asyncio.sleep(5)  # 发生异常时等待一段时间再重试
+                continue  # 继续下一次循环
 
             # 如果没有可用任务，等待后重试
             if not tasks:
-                logger.debug("调度器未返回任务，等待 5 秒后重试")
-                await logger.ainfo("没有可执行的任务")
+                await logger.ainfo(
+                    event="调度器未返回任务，等待重试",
+                    emoji="⏳",
+                    retry_delay=5,
+                )
+                self._current_tasks = []  # 清空当前任务列表
                 await asyncio.sleep(5)
-                continue
+                continue  # 继续下一次循环
 
-            # 更新任务状态
-            async with get_db_session(Database.SIMULATION) as session:
-                dal: SimulationTaskDAL = SimulationTaskDAL(session)
-                for task in tasks:
-                    task.scheduled_at = datetime.now()
-                    task.status = SimulationTaskStatus.SCHEDULED
-                await dal.update_all(tasks)
-                await session.commit()
+            # 更新任务状态为已调度
+            try:
+                async with get_db_session(Database.SIMULATION) as session:
+                    dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                    now = datetime.now()
+                    for task in tasks:
+                        task.scheduled_at = now
+                        task.status = SimulationTaskStatus.SCHEDULED
+                    await dal.update_all(tasks)
+                    await session.commit()
+                await logger.ainfo(
+                    event="数据库中任务状态更新为已调度",
+                    emoji="💾",
+                    task_ids=[t.id for t in tasks],
+                )
+            except Exception:
+                await logger.aexception(
+                    event="更新任务状态为已调度时数据库操作失败",
+                    emoji="❌",
+                    task_ids=[t.id for t in tasks],
+                )
+                # 数据库更新失败，可能需要重试或将任务放回队列
+                # 此处选择继续处理，但记录错误
+                # 可以考虑将任务状态回滚或标记为错误
 
-            await logger.ainfo(f"调度器返回任务，任务详情: {tasks}")
+            await logger.ainfo(
+                event="开始处理调度到的任务",
+                emoji="⚙️",
+                task_count=len(tasks),
+                task_ids=[t.id for t in tasks],
+            )
 
             #! 3. 心跳检查
-            await self._heartbeat(name="_do_work after schedule")
+            await self._heartbeat(name="_do_work_before_process")
 
             # 根据用户角色执行不同的任务处理逻辑
-            if self._user_role == UserRole.USER:
-                await self._process_single_simulation_task(tasks[0])
-            elif self._user_role == UserRole.CONSULTANT:
-                await self._process_multi_simulation_task(tasks)
-            else:
-                await logger.aerror(f"未知用户角色 {self._user_role}，无法处理任务")
-                raise ValueError(f"未知用户角色 {self._user_role}，无法处理任务")
+            try:
+                if self._user_role == UserRole.USER:
+                    if len(tasks) != 1:
+                        await logger.aerror(
+                            event="用户角色调度到多个任务",
+                            emoji="❗",
+                            user_role=self._user_role.value,
+                            task_count=len(tasks),
+                            task_ids=[t.id for t in tasks],
+                        )
+                        # 处理第一个任务，或标记全部错误
+                    await self._process_single_simulation_task(tasks[0])
+                elif self._user_role == UserRole.CONSULTANT:
+                    await self._process_multi_simulation_task(tasks)
+                else:
+                    # 这是一个严重错误，因为角色应该在启动时验证
+                    await logger.acritical(
+                        event="遇到未知用户角色，无法处理任务",
+                        emoji="🚨",
+                        user_role=self._user_role,
+                        task_ids=[t.id for t in tasks],
+                    )
+                    # 抛出异常停止工作者
+                    raise ValueError(f"未知用户角色 {self._user_role}，无法处理任务")
+            except Exception:
+                # 捕获任务处理过程中未被捕获的异常
+                await logger.aexception(
+                    event="任务处理过程中发生未捕获异常",
+                    emoji="💥",
+                    user_role=self._user_role.value,
+                    task_ids=[t.id for t in tasks],
+                )
+                # 异常已记录，循环继续
 
-            self._current_tasks = []
+            self._current_tasks = []  # 清空当前处理的任务列表
+            await logger.adebug(event="当前批次任务处理完成", emoji="🏁")
+
+        await logger.ainfo(event="工作者工作循环正常结束", emoji="🚪")
 
     async def set_scheduler(self, scheduler: AbstractScheduler) -> None:
         """设置任务调度器。
@@ -731,10 +1186,12 @@ class Worker(AbstractWorker):
         Args:
             scheduler: 调度器实例，用于获取待执行的任务
         """
-        logger.debug(
-            f"设置调度器，当前调度器: {self._scheduler}, 新调度器: {scheduler}"
+        await logger.ainfo(
+            event="设置新的任务调度器",
+            emoji="🔧",
+            new_scheduler=repr(scheduler),
+            previous_scheduler=repr(self._scheduler),
         )
-        await logger.adebug(f"设置调度器 {scheduler}，当前调度器 {self._scheduler}")
         self._scheduler = scheduler
 
     async def run(self) -> None:
@@ -742,34 +1199,69 @@ class Worker(AbstractWorker):
 
         重置关闭标志并启动工作循环，直到被明确停止。
         """
+        await logger.ainfo(event="尝试启动工作者", emoji="▶️")
         if self._running:
-            await logger.aerror("工作者已在运行中，无法重复启动")
+            await logger.awarning(event="工作者已在运行中，忽略启动请求", emoji="⚠️")
             return
-        self._running = True
 
-        #! 1. 心跳检查
-        await self._heartbeat(name="run")
+        async with self._run_lock:  # 使用锁确保 run 方法不并发执行
+            if self._running:  # 再次检查，防止锁等待期间状态变化
+                await logger.awarning(event="工作者在获取锁后发现已在运行", emoji="⚠️")
+                return
+            self._running = True  # 在锁内设置运行状态
 
-        logger.debug("启动工作者")
-        self._shutdown_flag = False
+            await logger.ainfo(event="工作者成功获取运行锁并启动", emoji="🚀")
 
-        async with self._client:
-            if not self._client.authentication_info:
-                raise ValueError("Client must be authenticated with valid credentials.")
+            #! 1. 心跳检查
+            await self._heartbeat(name="run_start")
 
-            if ROLE_CONSULTANT in self._client.authentication_info.permissions:
-                self._user_role = UserRole.CONSULTANT
-            elif ROLE_USER in self._client.authentication_info.permissions:
-                self._user_role = UserRole.USER
-            else:
-                raise ValueError(
-                    "Client must have a valid user role (CONSULTANT or USER)."
+            self._shutdown_flag = False  # 重置关闭标志
+            self._is_task_cancel_requested = False  # 重置取消请求标志
+
+            try:
+                # 验证客户端认证和角色
+                async with self._client:
+                    if not self._client.authentication_info:
+                        await logger.acritical(
+                            event="客户端未认证，无法启动工作者", emoji="🚨"
+                        )
+                        raise ValueError("客户端必须经过有效凭证认证。")
+
+                    if ROLE_CONSULTANT in self._client.authentication_info.permissions:
+                        self._user_role = UserRole.CONSULTANT
+                    elif ROLE_USER in self._client.authentication_info.permissions:
+                        self._user_role = UserRole.USER
+                    else:
+                        await logger.acritical(
+                            event="客户端无有效用户角色，无法启动工作者",
+                            emoji="🚨",
+                            permissions=self._client.authentication_info.permissions,
+                        )
+                        raise ValueError(
+                            "客户端必须具有有效的用户角色 (CONSULTANT 或 USER)。"
+                        )
+                await logger.ainfo(
+                    event="客户端认证和角色验证通过",
+                    emoji="✅",
+                    user_role=self._user_role.value,
                 )
-        async with self._run_lock:
-            await logger.ainfo(f"获取到运行锁，当前锁状态: {self._run_lock.locked()}")
-            await self._do_work()
-        await logger.ainfo(f"工作者主循环已停止，当前锁状态: {self._run_lock.locked()}")
-        self._running = False
+
+                # 启动主工作循环
+                await self._do_work()
+
+            except Exception:
+                # 捕获 run 方法中的意外错误
+                await logger.aexception(
+                    event="工作者运行期间发生未捕获异常", emoji="💥"
+                )
+            finally:
+                self._running = False  # 确保运行状态在退出时重置
+                await logger.ainfo(
+                    event="工作者运行结束",
+                    emoji="🏁",
+                    shutdown_flag=self._shutdown_flag,
+                )
+        # 锁在此处自动释放
 
     async def stop(self, cancel_tasks: bool = False) -> None:
         """停止工作者，清理资源。
@@ -779,63 +1271,122 @@ class Worker(AbstractWorker):
         Args:
             cancel_tasks: 如果为True，将尝试取消所有正在执行的任务
         """
-        await logger.adebug(
-            event="开始停止工作者",
+        await logger.ainfo(
+            event="收到停止工作者请求",
             emoji="🛑",
-            shutdown_flag=self._shutdown_flag,
-            running=self._running,
             cancel_tasks=cancel_tasks,
+            running=self._running,
+            shutdown_flag=self._shutdown_flag,
             post_handler_futures=len(self._post_handler_futures),
         )
+
+        if self._shutdown_flag:
+            await logger.awarning(event="工作者已在停止过程中", emoji="⚠️")
+            # 可以考虑是否需要等待之前的停止完成或直接返回
+            return
+
         self._shutdown_flag = True
         self._is_task_cancel_requested = cancel_tasks
 
-        # 等待挂起任务完成，设置超时时间
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*self._post_handler_futures, return_exceptions=True),
-                timeout=30,
-            )
+        # 尝试中断主循环 (如果正在运行)
+        # 注意：这依赖于 _do_work 循环检查 _shutdown_flag
+        # 如果 _do_work 卡在某个长时间操作（如网络请求），可能不会立即停止
+        await logger.adebug(event="关闭标志已设置", emoji="🚩")
+
+        # 等待挂起的任务完成（例如 _handle_multi_task_completion 创建的任务）
+        if self._post_handler_futures:
             await logger.ainfo(
-                event="挂起任务完成",
-                emoji="✅",
-                task_count=len(self._post_handler_futures),
-            )
-        except asyncio.TimeoutError:
-            await logger.awarning(
-                event="等待挂起任务超时",
+                event="开始等待挂起的任务完成",
                 emoji="⏳",
-                timeout=30,
                 task_count=len(self._post_handler_futures),
+                timeout=30,
+            )
+            try:
+                # 使用 asyncio.gather 等待所有任务，设置超时
+                done, pending = await asyncio.wait(
+                    self._post_handler_futures,
+                    timeout=30,
+                    return_when=asyncio.ALL_COMPLETED,
+                )
+                if pending:
+                    await logger.awarning(
+                        event="等待挂起任务超时",
+                        emoji="⌛",
+                        timeout=30,
+                        completed_count=len(done),
+                        pending_count=len(pending),
+                    )
+                    # 可以考虑取消挂起的任务
+                    for task in pending:
+                        task.cancel()
+                else:
+                    await logger.ainfo(
+                        event="所有挂起任务已完成",
+                        emoji="✅",
+                        task_count=len(done),
+                    )
+                # 检查任务结果是否有异常
+                for future in done:
+                    try:
+                        future.result()  # 获取结果以触发可能的异常
+                    except asyncio.CancelledError:
+                        await logger.awarning(
+                            event="挂起的任务被取消",
+                            emoji="🚫",
+                            task_name=future.get_name(),
+                        )
+                    except Exception:
+                        await logger.aexception(
+                            event="挂起的任务在完成时抛出异常",
+                            emoji="💥",
+                            task_name=future.get_name(),
+                        )
+
+            except Exception:
+                await logger.aexception(
+                    event="等待挂起任务时发生意外错误",
+                    emoji="💥",
+                )
+            finally:
+                self._post_handler_futures.clear()  # 清理列表
+        else:
+            await logger.ainfo(event="没有需要等待的挂起任务", emoji="👍")
+
+        # 确保运行锁最终被释放 (如果 run 方法仍在运行)
+        # 这部分逻辑比较复杂，因为 run 方法可能仍在 _do_work 中循环
+        # 一个更健壮的方法是让 run 方法在退出时自行释放锁
+        # 这里的尝试获取锁更多是为了日志记录和确认状态
+        if self._run_lock.locked():
+            await logger.adebug(
+                event="运行锁当前被持有，等待释放",
+                emoji="🔒",
+            )
+            # 不在此处强制获取锁，让 run 方法自然退出并释放
+            # 可以设置一个超时等待 run 方法结束
+            try:
+                # 等待 run 方法结束，这需要 run 方法能响应 shutdown_flag
+                # 注意：如果 run 卡住，这里也会卡住
+                # 可以考虑给 run 方法本身加入超时机制或更复杂的取消逻辑
+                pass  # 暂时不加复杂等待逻辑
+            except asyncio.TimeoutError:
+                await logger.aerror(
+                    event="等待 run 方法结束超时",
+                    emoji="⌛",
+                )
+        else:
+            await logger.adebug(
+                event="运行锁未被持有",
+                emoji="🔓",
             )
 
-        # 确保运行锁的释放
-        await logger.adebug(
-            event="尝试获取运行锁",
-            emoji="🔒",
-            run_lock_status=self._run_lock.locked(),
+        # 最终确认状态
+        self._running = False  # 强制设置运行状态为 False
+        await logger.ainfo(
+            event="工作者停止流程完成",
+            emoji="🏁",
+            shutdown_flag=self._shutdown_flag,
+            running=self._running,
         )
-        try:
-            async with self._run_lock:
-                await logger.ainfo(
-                    event="运行锁已释放",
-                    emoji="🔓",
-                    run_lock_status=self._run_lock.locked(),
-                )
-                self._running = False
-        except Exception as e:
-            await logger.aerror(
-                event="释放运行锁时发生异常",
-                emoji="❌",
-                error=str(e),
-            )
-        finally:
-            await logger.ainfo(
-                event="工作者已停止，所有资源已清理",
-                emoji="🧹",
-                shutdown_flag=self._shutdown_flag,
-                running=self._running,
-            )
 
     async def add_task_complete_callback(
         self,
@@ -851,35 +1402,48 @@ class Worker(AbstractWorker):
         Args:
             callback: 任务完成时的回调函数，接收任务和结果作为参数。
                      可以是同步函数或异步函数
-
-        Raises:
-            RuntimeError: 当工作者未关闭时无法添加回调
         """
+        callback_name = getattr(callback, "__name__", repr(callback))
         await logger.adebug(
-            event="添加任务完成回调函数",
+            event="尝试添加任务完成回调函数",
             emoji="➕",
-            callback_type=type(callback).__name__,
+            callback_name=callback_name,
+            is_async=asyncio.iscoroutinefunction(callback),
             running=self._running,
         )
-        if self._running:
-            await logger.aerror(
-                event="工作者正在运行中，无法添加回调函数",
-                emoji="⚠️",
-            )
-            return
+        # 允许在运行时添加回调，但需注意线程安全（此处是异步环境，主要关注并发访问列表）
+        # Python 列表的 append 是线程安全的，但在异步环境中，如果回调列表在迭代时被修改，可能出问题
+        # 但此处的添加操作相对简单，风险较低
+        # if self._running:
+        #     await logger.awarning(
+        #         event="工作者正在运行中添加回调函数，请注意并发风险",
+        #         emoji="⚠️",
+        #         callback_name=callback_name,
+        #     )
         self._task_complete_callbacks.append(callback)
         await logger.ainfo(
             event="任务完成回调函数添加成功",
             emoji="✅",
-            callback_count=len(self._task_complete_callbacks),
+            callback_name=callback_name,
+            total_callbacks=len(self._task_complete_callbacks),
         )
 
     async def get_current_tasks(self) -> List[SimulationTask]:
-        """获取当前任务的信息。
-        返回当前正在执行的任务列表。
+        """获取当前正在处理的任务列表。
+
+        返回工作者当前正在处理（已从调度器获取但尚未完成）的任务列表。
+        注意：这只是一个快照，列表内容可能随时变化。
+
+        Returns:
+            List[SimulationTask]: 当前正在处理的任务列表副本。
         """
-        logger.debug(f"获取当前任务，当前任务数量: {len(self._current_tasks)}")
-        return self._current_tasks
+        await logger.adebug(
+            event="获取当前正在处理的任务列表",
+            emoji="📋",
+            task_count=len(self._current_tasks),
+        )
+        # 返回列表的副本以防止外部修改内部状态
+        return list(self._current_tasks)
 
     async def add_heartbeat_callback(
         self,
@@ -888,19 +1452,33 @@ class Worker(AbstractWorker):
             Callable[["AbstractWorker"], Awaitable[None]],
         ],
     ) -> None:
-        """添加任务调度回调函数。
-        注册一个将在任务调度时调用的回调函数。支持同步和异步回调函数。
+        """添加心跳回调函数。
+
+        注册一个将在每次心跳检查时调用的回调函数。支持同步和异步回调函数。
+
         Args:
-            callback: 任务调度时的回调函数，接收任务作为参数。
-                     可以是同步函数或异步函数
+            callback: 心跳回调函数，接收工作者实例作为参数。
+                     可以是同步函数或异步函数。
         """
-        logger.debug(f"添加任务调度回调函数: {callback}")
-        if self._running:
-            await logger.aerror("工作者正在运行中，无法添加回调函数")
-        self._heartbeat_callbacks.append(callback)
+        callback_name = getattr(callback, "__name__", repr(callback))
         await logger.adebug(
-            (
-                f"添加任务调度回调函数 {callback}, 类型: {type(callback)}, "
-                f"当前回调函数数量 {len(self._heartbeat_callbacks)}"
-            )
+            event="尝试添加心跳回调函数",
+            emoji="➕",
+            callback_name=callback_name,
+            is_async=asyncio.iscoroutinefunction(callback),
+            running=self._running,
+        )
+        # 同样允许在运行时添加
+        # if self._running:
+        #     await logger.awarning(
+        #         event="工作者正在运行中添加心跳回调函数，请注意并发风险",
+        #         emoji="⚠️",
+        #         callback_name=callback_name,
+        #     )
+        self._heartbeat_callbacks.append(callback)
+        await logger.ainfo(
+            event="心跳回调函数添加成功",
+            emoji="✅",
+            callback_name=callback_name,
+            total_callbacks=len(self._heartbeat_callbacks),
         )

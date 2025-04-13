@@ -74,6 +74,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         )
         sampled_tasks: List[SimulationTask] = []
 
+        # TODO: 这里跳采样的逻辑还是有点复杂，可能需要进一步优化
         async with get_db_session(Database.SIMULATION) as session:
             sampled_task_ids: List[int] = []
             while len(sampled_task_ids) < count:
