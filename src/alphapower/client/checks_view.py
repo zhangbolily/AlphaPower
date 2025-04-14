@@ -8,9 +8,9 @@
 主要类:
     - StatsView: 表示提交前后的统计数据。
     - YearlyStatsRecordView: 表示单个年度的统计数据记录。
-    - YearlyStatsView: 表示年度统计数据集合。
+    - TableView: 表示年度统计数据集合。
     - PnLRecordView: 表示单个日期的盈亏数据记录。
-    - PnLView: 表示盈亏数据集合。
+    - TableView: 表示盈亏数据集合。
     - SubmissionDataView: 表示提交前后的综合数据，包括统计数据、年度统计和盈亏数据。
 
 注意事项:
@@ -18,39 +18,55 @@
     - 数据字段使用类型注解，确保数据类型的正确性。
 """
 
-from typing import Any, List, Optional
+from typing import Dict, List, Optional, Type
 
 from pydantic import AliasChoices, BaseModel, Field
 
-from alphapower.constants import CompetitionScoring
+from alphapower.constants import CheckRecordType, CompetitionScoring
 
-from .common_view import TableSchemaView
+from .common_view import TableView
+from .models import AlphaCheckItemView
 
 
-class CompetitionView(BaseModel):
-    """比赛视图。
-    表示比赛的基本信息。
+class SubmissionCheckResultView(BaseModel):
+    """Alpha检查结果。
+
+    表示对Alpha的检查结果，包括样本内和样本外数据。
+
     Attributes:
-        id: 比赛的唯一标识符。
-        name: 比赛名称。
-        scoring: 比赛评分方式。
+        in_sample: 样本内检查结果，可选。
+        out_sample: 样本外检查结果，可选。
     """
 
-    id: str
-    name: str
-    scoring: CompetitionScoring
+    class Sample(BaseModel):
+        """样本检查结果。
 
+        表示特定样本集上的检查结果数据。
 
-class ScoreView(BaseModel):
-    """评分视图。
-    表示比赛的评分信息。
-    Attributes:
-        before: 提交前的评分。
-        after: 提交后的评分。
-    """
+        Attributes:
+            checks: 检查项列表，可选。
+            self_correlated: 自相关性数据，可选。
+            prod_correlated: 与生产环境相关性数据，可选。
+        """
 
-    before: float
-    after: float
+        checks: Optional[List[AlphaCheckItemView]] = None
+        self_correlated: Optional[TableView] = Field(
+            default=None,
+            validation_alias=AliasChoices("selfCorrelated", "self_correlated"),
+            serialization_alias="selfCorrelated",
+        )
+        prod_correlated: Optional[TableView] = Field(
+            default=None,
+            validation_alias=AliasChoices("prodCorrelated", "prod_correlated"),
+            serialization_alias="prodCorrelated",
+        )
+
+    in_sample: Optional[Sample] = Field(
+        default=None, validation_alias=AliasChoices("is", "in_sample")
+    )
+    out_sample: Optional[Sample] = Field(
+        default=None, validation_alias=AliasChoices("os", "out_sample")
+    )
 
 
 class StatsView(BaseModel):
@@ -83,40 +99,6 @@ class StatsView(BaseModel):
     fitness: float
 
 
-class YearlyStatsView(BaseModel):
-    """年度统计视图。
-
-    表示年度统计数据集合。
-
-    Attributes:
-        schema: 表格模式。
-        records: 年度统计记录列表。
-    """
-
-    table_schema: TableSchemaView = Field(
-        validation_alias=AliasChoices("schema", "table_schema"),
-        serialization_alias="schema",
-    )
-    records: List[List[Any]]
-
-
-class PnLView(BaseModel):
-    """盈亏视图。
-
-    表示盈亏数据集合。
-
-    Attributes:
-        schema: 表格模式。
-        records: 盈亏记录列表。
-    """
-
-    table_schema: TableSchemaView = Field(
-        validation_alias=AliasChoices("schema", "table_schema"),
-        serialization_alias="schema",
-    )
-    records: List[List[Any]]
-
-
 class BeforeAndAfterPerformanceView(BaseModel):
     """提交数据视图。
 
@@ -146,12 +128,43 @@ class BeforeAndAfterPerformanceView(BaseModel):
             after: 提交后的年度统计数据。
         """
 
-        before: YearlyStatsView
-        after: YearlyStatsView
+        before: TableView
+        after: TableView
+
+    class CompetitionRefView(BaseModel):
+        """比赛视图。
+        表示比赛的基本信息。
+        Attributes:
+            id: 比赛的唯一标识符。
+            name: 比赛名称。
+            scoring: 比赛评分方式。
+        """
+
+        id: str
+        name: str
+        scoring: CompetitionScoring
+
+    class ScoreView(BaseModel):
+        """评分视图。
+        表示比赛的评分信息。
+        Attributes:
+            before: 提交前的评分。
+            after: 提交后的评分。
+        """
+
+        before: float
+        after: float
 
     stats: Stats
     yearly_stats: YearlyStats = Field(..., validation_alias="yearlyStats")
-    pnl: PnLView
+    pnl: TableView
     partition: List[str]
-    competition: Optional[CompetitionView] = None
+    competition: Optional[CompetitionRefView] = None
     score: Optional[ScoreView] = None
+
+
+CheckTypeViewMap: Dict[CheckRecordType, Type[BaseModel]] = {
+    CheckRecordType.CORRELATION: TableView,
+    CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE: BeforeAndAfterPerformanceView,
+    CheckRecordType.SUBMISSION: SubmissionCheckResultView,
+}

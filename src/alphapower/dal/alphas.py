@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Select
 
+from alphapower.constants import Status
 from alphapower.dal.base import EntityDAL
 from alphapower.entity.alphas import (
     Alpha,
@@ -61,7 +62,7 @@ class AlphaDAL(EntityDAL[Alpha]):
         return await self.find_by(session=session, author=author)
 
     async def find_by_status(
-        self, status: str, session: Optional[AsyncSession] = None
+        self, status: Status, session: Optional[AsyncSession] = None
     ) -> List[Alpha]:
         """
         查询指定状态的所有 Alpha。

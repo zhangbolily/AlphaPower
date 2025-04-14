@@ -26,12 +26,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from alphapower.constants import (
     AlphaType,
     Color,
+    CompetitionScoring,
+    CompetitionStatus,
     Database,
     Delay,
     Grade,
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Stage,
     Status,
     Switch,
@@ -135,7 +138,7 @@ class TestSetting:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             nan_handling=Switch.ON,
-            language="python",
+            language=RegularLanguage.FASTEXPR,
             visualization=True,
             test_period="3m",
             max_trade=Switch.DEFAULT,
@@ -160,7 +163,7 @@ class TestSetting:
         assert db_setting.pasteurization == Switch.ON
         assert db_setting.unit_handling == UnitHandling.VERIFY
         assert db_setting.nan_handling == Switch.ON
-        assert db_setting.language == "python"
+        assert db_setting.language == RegularLanguage.FASTEXPR
         assert db_setting.visualization is True
         assert db_setting.test_period == "3m"
         assert db_setting.max_trade == Switch.DEFAULT
@@ -237,7 +240,14 @@ class TestCompetition:
             session: 数据库会话对象。
         """
         competition: Competition = Competition(
-            competition_id="GLOBAL2023", name="2023全球Alpha大赛"
+            competition_id="GLOBAL2023",
+            name="2023全球Alpha大赛",
+            status=CompetitionStatus.ACCEPTED,
+            team_based=False,
+            scoring=CompetitionScoring.CHALLENGE,
+            prize_board=False,
+            university_board=False,
+            submissions=False,
         )
         session.add(competition)
         await session.flush()
@@ -272,6 +282,7 @@ class TestSampleCheck:
             date=now,
             competitions="GLOBAL2023",
             message="通过检查",
+            sample_id=1,  # 假设 Sample ID 为 1
         )
         session.add(sample_check)
         await session.flush()
@@ -306,7 +317,6 @@ class TestSample:
         # 先创建一个 SampleCheck 用于建立关联关系
         sample_check: Check = Check(name="basic_check", result="PASS")
         session.add(sample_check)
-        await session.flush()
 
         now: datetime.datetime = datetime.datetime.now()
         sample: Sample = Sample(
@@ -321,7 +331,7 @@ class TestSample:
             sharpe=1.8,
             fitness=0.75,
             start_date=now,
-            checks_id=sample_check.id,
+            checks=[sample_check],  # 关联 SampleCheck
             self_correration=0.2,
             prod_correration=0.3,
             os_is_sharpe_ratio=0.9,
@@ -414,7 +424,14 @@ class TestAlpha:
             classification_id="VALUE", name="价值因子"
         )
         competition1: Competition = Competition(
-            competition_id="CN2023", name="中国Alpha大赛2023"
+            competition_id="CN2023",
+            name="中国Alpha大赛2023",
+            status=CompetitionStatus.ACCEPTED,
+            team_based=False,
+            scoring=CompetitionScoring.CHALLENGE,
+            prize_board=False,
+            university_board=False,
+            submissions=False,
         )
 
         session.add_all([classification1, classification2, competition1])

@@ -693,6 +693,25 @@ class DataFieldType(Enum):
     UNIVERSE = "UNIVERSE"
 
 
+class CheckRecordType(Enum):
+    """检查记录类型枚举。
+    定义了系统中可能使用的检查记录类型。
+
+    Attributes:
+        DEFAULT: 默认值，无实际意义
+        CORRELATION: 相关性检查
+        BEFORE_AND_AFTER_PERFORMANCE: 提交前后性能对比检查
+        SUBMISSION: 提交检查
+    """
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    CORRELATION = "CORRELATION"  # 相关性检查
+    BEFORE_AND_AFTER_PERFORMANCE = (
+        "BEFORE_AND_AFTER_PERFORMANCE"  # 提交前后性能对比检查
+    )
+    SUBMISSION = "SUBMISSION"  # 提交检查
+
+
 class CheckType(Enum):
     """检查类型枚举。
     定义了系统中可能使用的检查类型。

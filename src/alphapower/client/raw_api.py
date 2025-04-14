@@ -33,14 +33,11 @@ from alphapower.constants import (
     CorrelationType,
 )
 
-from .checks_view import BeforeAndAfterPerformanceView
+from .checks_view import BeforeAndAfterPerformanceView, SubmissionCheckResultView
+from .common_view import TableView
 from .models import (
-    AlphaCheckResultView,
-    AlphaCorrelationsView,
     AlphaDetailView,
-    AlphaPnLView,
     AlphaPropertiesPayload,
-    AlphaYearlyStatsView,
     AuthenticationView,
     CompetitionListView,
     DataCategoriesListView,
@@ -156,7 +153,7 @@ async def get_alpha_detail(
 
 async def get_alpha_yearly_stats(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[AlphaYearlyStatsView, RateLimit]:
+) -> Tuple[TableView, RateLimit]:
     """
     获取指定 alpha 的年度统计数据。
 
@@ -170,14 +167,14 @@ async def get_alpha_yearly_stats(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_YEARLY_STATS(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return AlphaYearlyStatsView.model_validate(
-            await response.json()
-        ), RateLimit.from_headers(response.headers)
+        return TableView.model_validate(await response.json()), RateLimit.from_headers(
+            response.headers
+        )
 
 
 async def get_alpha_pnl(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[AlphaPnLView, RateLimit]:
+) -> Tuple[TableView, RateLimit]:
     """
     获取指定 alpha 的收益数据。
 
@@ -191,14 +188,14 @@ async def get_alpha_pnl(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_PNL(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return AlphaPnLView.model_validate(
-            await response.json()
-        ), RateLimit.from_headers(response.headers)
+        return TableView.model_validate(await response.json()), RateLimit.from_headers(
+            response.headers
+        )
 
 
 async def alpha_fetch_correlations(
     session: aiohttp.ClientSession, alpha_id: str, corr_type: CorrelationType
-) -> Tuple[bool, Optional[float], Optional[AlphaCorrelationsView], RateLimit]:
+) -> Tuple[bool, Optional[float], Optional[TableView], RateLimit]:
     """
     获取指定 alpha 的自相关性数据。
 
@@ -229,7 +226,7 @@ async def alpha_fetch_correlations(
             return (
                 True,
                 None,
-                AlphaCorrelationsView.model_validate(await response.json()),
+                TableView.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
 
@@ -295,7 +292,7 @@ async def set_alpha_properties(
 
 async def alpha_check_submission(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[bool, float, Optional[AlphaCheckResultView], RateLimit]:
+) -> Tuple[bool, float, Optional[SubmissionCheckResultView], RateLimit]:
     """
     检查指定 alpha 的提交状态。
 
@@ -324,7 +321,7 @@ async def alpha_check_submission(
             return (
                 True,
                 0.0,
-                AlphaCheckResultView.model_validate(await response.json()),
+                SubmissionCheckResultView.model_validate(await response.json()),
                 RateLimit.from_headers(response.headers),
             )
 

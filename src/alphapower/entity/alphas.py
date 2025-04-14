@@ -165,7 +165,7 @@ class Competition(Base):
     prize_board: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     university_board: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     submissions: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
-    faq: MappedColumn[str] = mapped_column(String)
+    faq: MappedColumn[str] = mapped_column(String, nullable=True)
     progress: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
 
     @hybrid_property
@@ -494,7 +494,9 @@ class Alpha(Base):
     __tablename__ = "alphas"
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    alpha_id: MappedColumn[str] = mapped_column(String(ALPHA_ID_LENGTH), nullable=False, unique=True)
+    alpha_id: MappedColumn[str] = mapped_column(
+        String(ALPHA_ID_LENGTH), nullable=False, unique=True
+    )
     author: MappedColumn[str] = mapped_column(String, nullable=False)
     name: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     category: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)

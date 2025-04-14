@@ -16,10 +16,28 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 import pytest
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import AlphaType, Database, Status
+from alphapower.constants import (
+    ALPHA_ID_LENGTH,
+    AlphaType,
+    Color,
+    CompetitionScoring,
+    CompetitionStatus,
+    Database,
+    Decay,
+    Delay,
+    Grade,
+    InstrumentType,
+    Neutralization,
+    Region,
+    RegularLanguage,
+    Stage,
+    Status,
+    Switch,
+    UnitHandling,
+    Universe,
+)
 from alphapower.dal.alphas import (
     AlphaDAL,
     ClassificationDAL,
@@ -34,8 +52,11 @@ from alphapower.entity import (
     Competition,
     Regular,
     Sample,
+    Setting,
 )
 from alphapower.internal.db_session import get_db_session
+
+# pylint: disable=too-many-lines
 
 
 @pytest.fixture(name="alphas_session")
@@ -54,56 +75,152 @@ async def fixture_alphas_session() -> AsyncGenerator[AsyncSession, None]:
         # 当前会话在上下文管理器结束时会自动回滚未提交的更改
 
 
+@pytest.fixture(name="test_setting")
+async def fixture_test_setting(alphas_session: AsyncSession) -> Setting:
+    """创建一个用于测试的 Setting 对象。
+
+    Args:
+        alphas_session: 数据库会话对象。
+
+    Returns:
+        Setting: 创建的 Setting 对象。
+    """
+    setting = Setting(
+        language=RegularLanguage.PYTHON,
+        decay=Decay.DEFAULT.value,
+        truncation=0.01,
+        visualization=False,
+        instrument_type=InstrumentType.EQUITY,
+        region=Region.USA,
+        universe=Universe.TOP3000,
+        delay=Delay.ONE,
+        neutralization=Neutralization.MARKET,
+        pasteurization=Switch.OFF,
+        unit_handling=UnitHandling.VERIFY,
+        nan_handling=Switch.OFF,
+    )
+    alphas_session.add(setting)
+    await alphas_session.flush()
+    return setting
+
+
+@pytest.fixture(name="test_regular")
+async def fixture_test_regular(alphas_session: AsyncSession) -> Regular:
+    """创建一个用于测试的 Regular 对象。
+
+    Args:
+        alphas_session: 数据库会话对象。
+
+    Returns:
+        Regular: 创建的 Regular 对象。
+    """
+    regular = Regular(code="test code", operator_count=1)
+    alphas_session.add(regular)
+    await alphas_session.flush()
+    return regular
+
+
+@pytest.fixture(name="test_sample")
+async def fixture_test_sample(alphas_session: AsyncSession) -> Sample:
+    """创建一个用于测试的 Sample 对象。
+
+    Args:
+        alphas_session: 数据库会话对象。
+
+    Returns:
+        Sample: 创建的 Sample 对象。
+    """
+    sample = Sample(start_date=datetime.now(), sharpe=1.0)
+    alphas_session.add(sample)
+    await alphas_session.flush()
+    return sample
+
+
 class TestAlphaDAL:
     """测试 AlphaDAL 类的各项功能。"""
 
-    async def test_find_by_alpha_id(self, alphas_session: AsyncSession) -> None:
+    async def test_find_by_alpha_id(
+        self,
+        alphas_session: AsyncSession,
+        test_setting: Setting,
+        test_regular: Regular,
+    ) -> None:
         """测试 AlphaDAL 的 find_by_alpha_id 方法。
 
         验证 find_by_alpha_id 方法是否能够正确查询指定 alpha_id 的 Alpha。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_setting: 测试用的 Setting 对象。
+            test_regular: 测试用的 Regular 对象。
         """
         # 创建 DAL 实例
         alpha_dal = AlphaDAL(alphas_session)
 
         # 创建测试数据
         alpha = Alpha(
-            alpha_id="SPECIFIC_TEST_1",
+            alpha_id="SPECIFIC_TEST_1".ljust(ALPHA_ID_LENGTH),  # 确保长度符合要求
             type=AlphaType.REGULAR,
             author="tester",
             name="特定DAL测试1",
+            settings_id=test_setting.id,
+            regular_id=test_regular.id,
+            date_created=datetime.now(),
+            favorite=False,
+            hidden=False,
+            color=Color.NONE,
+            grade=Grade.DEFAULT,
+            stage=Stage.IS,
+            status=Status.UNSUBMITTED,
         )
         alphas_session.add(alpha)
         await alphas_session.flush()
 
         # 使用特定方法查询
-        result = await alpha_dal.find_by_alpha_id("SPECIFIC_TEST_1")
+        result = await alpha_dal.find_by_alpha_id(
+            "SPECIFIC_TEST_1".ljust(ALPHA_ID_LENGTH)
+        )
 
         # 验证查询结果
         assert result is not None
-        assert result.alpha_id == "SPECIFIC_TEST_1"
+        assert result.alpha_id == "SPECIFIC_TEST_1".ljust(ALPHA_ID_LENGTH)
         assert result.name == "特定DAL测试1"
 
-    async def test_find_by_author(self, alphas_session: AsyncSession) -> None:
+    async def test_find_by_author(
+        self,
+        alphas_session: AsyncSession,
+        test_setting: Setting,
+        test_regular: Regular,
+    ) -> None:
         """测试 AlphaDAL 的 find_by_author 方法。
 
         验证 find_by_author 方法是否能够正确查询指定作者的所有 Alpha。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_setting: 测试用的 Setting 对象。
+            test_regular: 测试用的 Regular 对象。
         """
         # 创建 DAL 实例
         alpha_dal = AlphaDAL(alphas_session)
 
         # 创建测试数据
+        author = "test_author"
         alphas = [
             Alpha(
-                alpha_id=f"AUTHOR_TEST_{i}",
+                alpha_id=f"AUTHOR_TEST_{i}".ljust(ALPHA_ID_LENGTH),
                 type=AlphaType.REGULAR,
-                author="test_author",
+                author=author,
                 name=f"作者测试_{i}",
+                settings_id=test_setting.id,
+                regular_id=test_regular.id,
+                date_created=datetime.now(),
+                favorite=False,
+                hidden=False,
+                color=Color.NONE,
+                grade=Grade.DEFAULT,
+                stage=Stage.IS,
+                status=Status.UNSUBMITTED,
             )
             for i in range(1, 4)
         ]
@@ -111,20 +228,27 @@ class TestAlphaDAL:
         await alphas_session.flush()
 
         # 使用特定方法查询
-        results = await alpha_dal.find_by_author("test_author")
+        results = await alpha_dal.find_by_author(author)
 
         # 验证查询结果
         assert len(results) >= 3
-        assert all(a.author == "test_author" for a in results)
+        assert all(a.author == author for a in results)
         assert any(a.alpha_id.startswith("AUTHOR_TEST_") for a in results)
 
-    async def test_find_by_status(self, alphas_session: AsyncSession) -> None:
+    async def test_find_by_status(
+        self,
+        alphas_session: AsyncSession,
+        test_setting: Setting,
+        test_regular: Regular,
+    ) -> None:
         """测试 AlphaDAL 的 find_by_status 方法。
 
         验证 find_by_status 方法是否能够正确查询指定状态的所有 Alpha。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_setting: 测试用的 Setting 对象。
+            test_regular: 测试用的 Regular 对象。
         """
         # 创建 DAL 实例
         alpha_dal = AlphaDAL(alphas_session)
@@ -134,11 +258,19 @@ class TestAlphaDAL:
         for status in statuses:
             alphas = [
                 Alpha(
-                    alpha_id=f"{status.name}_ALPHA_{i}",
+                    alpha_id=f"{status.name}_ALPHA_{i}".ljust(ALPHA_ID_LENGTH),
                     type=AlphaType.REGULAR,
                     author=f"author_{i}",
                     name=f"{status.value}测试_{i}",
                     status=status,
+                    settings_id=test_setting.id,
+                    regular_id=test_regular.id,
+                    date_created=datetime.now(),
+                    favorite=False,
+                    hidden=False,
+                    color=Color.NONE,
+                    grade=Grade.DEFAULT,
+                    stage=Stage.IS,
                 )
                 for i in range(1, 3)
             ]
@@ -146,19 +278,26 @@ class TestAlphaDAL:
         await alphas_session.flush()
 
         # 使用特定方法查询
-        results = await alpha_dal.find_by_status(Status.ACTIVE.value)
+        results = await alpha_dal.find_by_status(Status.ACTIVE)  # 使用枚举成员
 
         # 验证查询结果
         assert len(results) >= 2
         assert all(a.status == Status.ACTIVE for a in results)
 
-    async def test_find_favorites(self, alphas_session: AsyncSession) -> None:
+    async def test_find_favorites(
+        self,
+        alphas_session: AsyncSession,
+        test_setting: Setting,
+        test_regular: Regular,
+    ) -> None:
         """测试 AlphaDAL 的 find_favorites 方法。
 
         验证 find_favorites 方法是否能够正确查询指定作者的收藏 Alpha。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_setting: 测试用的 Setting 对象。
+            test_regular: 测试用的 Regular 对象。
         """
         # 创建 DAL 实例
         alpha_dal = AlphaDAL(alphas_session)
@@ -167,21 +306,37 @@ class TestAlphaDAL:
         author = "favorite_tester"
         favorite_alphas = [
             Alpha(
-                alpha_id=f"FAV_ALPHA_{i}",
+                alpha_id=f"FAV_ALPHA_{i}".ljust(ALPHA_ID_LENGTH),
                 type=AlphaType.REGULAR,
                 author=author,
                 name=f"收藏测试_{i}",
                 favorite=True,
+                settings_id=test_setting.id,
+                regular_id=test_regular.id,
+                date_created=datetime.now(),
+                hidden=False,
+                color=Color.NONE,
+                grade=Grade.DEFAULT,
+                stage=Stage.IS,
+                status=Status.UNSUBMITTED,
             )
             for i in range(1, 4)
         ]
         non_favorite_alphas = [
             Alpha(
-                alpha_id=f"NON_FAV_ALPHA_{i}",
+                alpha_id=f"NON_FAV_ALPHA_{i}".ljust(ALPHA_ID_LENGTH),
                 type=AlphaType.REGULAR,
                 author=author,
                 name=f"非收藏测试_{i}",
                 favorite=False,
+                settings_id=test_setting.id,
+                regular_id=test_regular.id,
+                date_created=datetime.now(),
+                hidden=False,
+                color=Color.NONE,
+                grade=Grade.DEFAULT,
+                stage=Stage.IS,
+                status=Status.UNSUBMITTED,
             )
             for i in range(1, 3)
         ]
@@ -195,13 +350,20 @@ class TestAlphaDAL:
         assert len(results) >= 3
         assert all(a.favorite is True and a.author == author for a in results)
 
-    async def test_find_by_classification(self, alphas_session: AsyncSession) -> None:
+    async def test_find_by_classification(
+        self,
+        alphas_session: AsyncSession,
+        test_setting: Setting,
+        test_regular: Regular,
+    ) -> None:
         """测试 AlphaDAL 的 find_by_classification 方法。
 
         验证 find_by_classification 方法能否查询属于特定分类的所有 Alpha。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_setting: 测试用的 Setting 对象。
+            test_regular: 测试用的 Regular 对象。
         """
         # 创建 DAL 实例
         alpha_dal = AlphaDAL(alphas_session)
@@ -216,21 +378,25 @@ class TestAlphaDAL:
 
         # 创建测试数据 - Alpha
         alpha = Alpha(
-            alpha_id="CLASS_REL_TEST",
+            alpha_id="CLASS_REL_TEST".ljust(ALPHA_ID_LENGTH),
             type=AlphaType.REGULAR,
             author="class_tester",
             name="分类关联测试",
+            settings_id=test_setting.id,
+            regular_id=test_regular.id,
+            date_created=datetime.now(),
+            favorite=False,
+            hidden=False,
+            color=Color.NONE,
+            grade=Grade.DEFAULT,
+            stage=Stage.IS,
+            status=Status.UNSUBMITTED,
         )
         alphas_session.add(alpha)
-        await alphas_session.flush()
+        await alphas_session.flush()  # 先提交 Alpha 获取 ID
 
-        # 正确建立 Alpha 和 Classification 的关联关系
-        # 使用 sqlalchemy.text 创建原生 SQL 查询来处理关联表
-        await alpha_dal.session.execute(
-            text(
-                "INSERT INTO alpha_classification (alpha_id, classification_id) VALUES (:alpha_id, :classification_id)"
-            ).bindparams(alpha_id=alpha.id, classification_id=classification.id)
-        )
+        # 使用 ORM 关系建立关联
+        alpha.classifications.append(classification)
         await alphas_session.flush()
 
         # 执行测试 - 使用特定方法查询
@@ -240,55 +406,74 @@ class TestAlphaDAL:
 
         # 验证查询结果
         assert len(results) >= 1
-        assert any(a.id == alpha.id for a in results)
+        found_alpha = next((a for a in results if a.id == alpha.id), None)
+        assert found_alpha is not None
+        assert classification in found_alpha.classifications
 
-    async def test_find_by_competition(self, alphas_session: AsyncSession) -> None:
+    async def test_find_by_competition(
+        self,
+        alphas_session: AsyncSession,
+        test_setting: Setting,
+        test_regular: Regular,
+    ) -> None:
         """测试 AlphaDAL 的 find_by_competition 方法。
 
         验证 find_by_competition 方法能否查询参与特定比赛的所有 Alpha。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_setting: 测试用的 Setting 对象。
+            test_regular: 测试用的 Regular 对象。
         """
-        # 与 find_by_classification 类似，这个测试也需要处理关联关系
         # 创建 DAL 实例
         alpha_dal = AlphaDAL(alphas_session)
+        competition_dal = CompetitionDAL(alphas_session)
 
         # 创建测试数据 - 比赛
-        competition = Competition(competition_id="TEST_FIND_COMP", name="测试比赛查询")
-        alphas_session.add(competition)
-        await alphas_session.flush()
+        competition = Competition(
+            competition_id="TEST_FIND_COMP",
+            name="测试比赛查询",
+            status=CompetitionStatus.ACCEPTED,
+            team_based=False,
+            scoring=CompetitionScoring.CHALLENGE,
+            prize_board=False,
+            university_board=False,
+            submissions=True,
+        )
+        competition_dal.session.add(competition)
+        await competition_dal.session.flush()
 
-        # 创建测试数据 - Alpha 并关联比赛
+        # 创建测试数据 - Alpha
         alpha = Alpha(
-            alpha_id="COMP_REL_TEST",
+            alpha_id="COMP_REL_TEST".ljust(ALPHA_ID_LENGTH),
             type=AlphaType.REGULAR,
             author="comp_tester",
             name="比赛关联测试",
+            settings_id=test_setting.id,
+            regular_id=test_regular.id,
+            date_created=datetime.now(),
+            favorite=False,
+            hidden=False,
+            color=Color.NONE,
+            grade=Grade.DEFAULT,
+            stage=Stage.IS,
+            status=Status.UNSUBMITTED,
         )
         alphas_session.add(alpha)
+        await alphas_session.flush()  # 先提交 Alpha 获取 ID
+
+        # 使用 ORM 关系建立关联
+        alpha.competitions.append(competition)
         await alphas_session.flush()
 
-        # 模拟关联 alpha 和 competition
-        try:
-            # 假设有一个关联表
-            await alpha_dal.session.execute(
-                text(
-                    "INSERT INTO alpha_competitions (alpha_id, competition_id) VALUES (:alpha_id, :comp_id)"
-                ).bindparams(alpha_id=alpha.id, comp_id=competition.id)
-            )
-            await alpha_dal.session.flush()
+        # 使用特定方法查询
+        results = await alpha_dal.find_by_competition(competition.competition_id)
 
-            # 使用特定方法查询
-            results = await alpha_dal.find_by_competition(competition.competition_id)
-
-            # 验证查询结果
-            assert len(results) >= 1
-        except Exception as e:
-            # 如果关系表不存在或其他原因导致测试失败，打印消息
-            print(
-                f"测试 find_by_competition 失败，可能需要调整测试以匹配实际的数据模型: {e}"
-            )
+        # 验证查询结果
+        assert len(results) >= 1
+        found_alpha = next((a for a in results if a.id == alpha.id), None)
+        assert found_alpha is not None
+        assert competition in found_alpha.competitions
 
 
 class TestRegularDAL:
@@ -412,6 +597,12 @@ class TestCompetitionDAL:
         competition = Competition(
             competition_id="TEST_COMP_ID",
             name="测试比赛",
+            status=CompetitionStatus.ACCEPTED,  # 添加必填字段
+            team_based=False,  # 添加必填字段
+            scoring=CompetitionScoring.CHALLENGE,  # 添加必填字段
+            prize_board=False,  # 添加必填字段
+            university_board=False,  # 添加必填字段
+            submissions=True,  # 添加必填字段
         )
         alphas_session.add(competition)
         await alphas_session.flush()
@@ -437,6 +628,12 @@ class TestCompetitionDAL:
         competition = await competition_dal.create_entity(
             competition_id="COMP_CRUD_TEST",
             name="CRUD测试比赛",
+            status=CompetitionStatus.ACCEPTED,  # 添加必填字段
+            team_based=False,  # 添加必填字段
+            scoring=CompetitionScoring.CHALLENGE,  # 添加必填字段
+            prize_board=False,  # 添加必填字段
+            university_board=False,  # 添加必填字段
+            submissions=True,  # 添加必填字段
         )
         assert competition.id is not None
         assert competition.competition_id == "COMP_CRUD_TEST"
@@ -472,7 +669,7 @@ class TestSampleDAL:
         samples = [
             Sample(
                 sharpe=0.5 + i * 0.5,  # 1.0, 1.5, 2.0
-                start_date=datetime.now(),
+                start_date=datetime.now(),  # 添加必填字段
             )
             for i in range(1, 4)
         ]
@@ -484,7 +681,7 @@ class TestSampleDAL:
 
         # 验证查询结果
         assert len(results) >= 2  # 应该至少有两个样本的 sharpe > 1.2
-        assert all(s.sharpe >= 1.2 for s in results)
+        assert all(s.sharpe and s.sharpe >= 1.2 for s in results)
 
     async def test_basic_crud_operations(self, alphas_session: AsyncSession) -> None:
         """测试 SampleDAL 的基本 CRUD 操作。
@@ -498,7 +695,7 @@ class TestSampleDAL:
         # 测试创建
         sample = await sample_dal.create_entity(
             sharpe=1.5,
-            start_date=datetime.now(),
+            start_date=datetime.now(),  # 添加必填字段
         )
         assert sample.id is not None
 
@@ -518,27 +715,33 @@ class TestSampleDAL:
 class TestSampleCheckDAL:
     """测试 SampleCheckDAL 类的各项功能。"""
 
-    async def test_basic_crud_operations(self, alphas_session: AsyncSession) -> None:
+    async def test_basic_crud_operations(
+        self, alphas_session: AsyncSession, test_sample: Sample
+    ) -> None:
         """测试 SampleCheckDAL 的基本 CRUD 操作。
 
         Args:
             alphas_session: 数据库会话对象。
+            test_sample: 测试用的 Sample 对象。
         """
         # 创建 DAL 实例
         sample_check_dal = SampleCheckDAL(alphas_session)
 
         # 测试创建
         sample_check = await sample_check_dal.create_entity(
+            sample_id=test_sample.id,  # 添加必填字段
             name="测试检查",
             result="通过",
         )
         assert sample_check.id is not None
+        assert sample_check.sample_id == test_sample.id  # 验证外键
 
         # 测试更新
         updated = await sample_check_dal.update_by_id(
             sample_check.id, result="不通过", message="测试信息"
         )
         assert updated is not None
+        assert updated.result == "不通过"
 
         # 测试删除
         result = await sample_check_dal.delete_by_id(sample_check.id)

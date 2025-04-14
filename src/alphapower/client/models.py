@@ -32,7 +32,7 @@ from alphapower.constants import (
     Universe,
 )
 
-from .common_view import TableSchemaView
+from .common_view import TableView
 
 
 class PyramidView(BaseModel):
@@ -738,54 +738,6 @@ class AlphaYearlyStatsRecordView(BaseModel):
     stage: str
 
 
-class AlphaYearlyStatsView(BaseModel):
-    """Alpha年度统计。
-
-    表示Alpha的年度性能统计数据集合。
-
-    Attributes:
-        table_schema: 表格模式。
-        records: 年度统计记录列表。
-    """
-
-    table_schema: TableSchemaView = Field(
-        validation_alias=AliasChoices("schema", "table_schema"),
-        serialization_alias="schema",
-    )
-    records: List[AlphaYearlyStatsRecordView]
-
-
-class AlphaPnLRecordView(BaseModel):
-    """Alpha盈亏记录。
-
-    表示Alpha在特定日期的盈亏数据。
-
-    Attributes:
-        date: 日期。
-        pnl: 盈亏值。
-    """
-
-    date: datetime
-    pnl: float
-
-
-class AlphaPnLView(BaseModel):
-    """Alpha盈亏视图。
-
-    表示Alpha的盈亏数据集合。
-
-    Attributes:
-        table_schema: 表格模式。
-        records: 盈亏记录列表。
-    """
-
-    table_schema: TableSchemaView = Field(
-        validation_alias=AliasChoices("schema", "table_schema"),
-        serialization_alias="schema",
-    )
-    records: List[AlphaPnLRecordView]
-
-
 class AlphaCorrelationRecordView(BaseModel):
     """Alpha相关性记录。
 
@@ -821,27 +773,6 @@ class AlphaCorrelationRecordView(BaseModel):
     margin: float
 
 
-class AlphaCorrelationsView(BaseModel):
-    """Alpha相关性视图。
-
-    表示Alpha之间的相关性数据集合。
-
-    Attributes:
-        table_schema: 表格模式。
-        records: 相关性记录二维列表。
-        min: 最小相关性值，可选，默认为0.0。
-        max: 最大相关性值，可选，默认为0.0。
-    """
-
-    table_schema: TableSchemaView = Field(
-        validation_alias=AliasChoices("schema", "table_schema"),
-        serialization_alias="schema",
-    )
-    records: List[List[Any]]
-    min: Optional[float] = 0.0
-    max: Optional[float] = 0.0
-
-
 class AlphaPropertiesPayload(BaseModel):
     """Alpha属性更新载荷。
 
@@ -871,47 +802,6 @@ class AlphaPropertiesPayload(BaseModel):
     tags: Optional[List[str]] = None
     category: Optional[str] = None
     regular: Regular = Regular()
-
-
-class AlphaCheckResultView(BaseModel):
-    """Alpha检查结果。
-
-    表示对Alpha的检查结果，包括样本内和样本外数据。
-
-    Attributes:
-        in_sample: 样本内检查结果，可选。
-        out_sample: 样本外检查结果，可选。
-    """
-
-    in_sample: Optional["AlphaCheckResultView.Sample"] = Field(
-        default=None, validation_alias=AliasChoices("is", "in_sample")
-    )
-    out_sample: Optional["AlphaCheckResultView.Sample"] = Field(
-        default=None, validation_alias=AliasChoices("os", "out_sample")
-    )
-
-    class Sample(BaseModel):
-        """样本检查结果。
-
-        表示特定样本集上的检查结果数据。
-
-        Attributes:
-            checks: 检查项列表，可选。
-            self_correlated: 自相关性数据，可选。
-            prod_correlated: 与生产环境相关性数据，可选。
-        """
-
-        checks: Optional[List[AlphaCheckItemView]] = None
-        self_correlated: Optional[AlphaCorrelationsView] = Field(
-            default=None,
-            validation_alias=AliasChoices("selfCorrelated", "self_correlated"),
-            serialization_alias="selfCorrelated",
-        )
-        prod_correlated: Optional[AlphaCorrelationsView] = Field(
-            default=None,
-            validation_alias=AliasChoices("prodCorrelated", "prod_correlated"),
-            serialization_alias="prodCorrelated",
-        )
 
 
 class RateLimit:
@@ -1569,14 +1459,6 @@ class SelfSimulationActivitiesView(BaseModel):
         type: 活动类型。
     """
 
-    yesterday: "SelfSimulationActivitiesView.Period"
-    current: "SelfSimulationActivitiesView.Period"
-    previous: "SelfSimulationActivitiesView.Period"
-    ytd: "SelfSimulationActivitiesView.Period"
-    total: "SelfSimulationActivitiesView.Period"
-    records: "SelfSimulationActivitiesView.Records"
-    type: str
-
     class Period(BaseModel):
         """活动时间段。
 
@@ -1592,21 +1474,13 @@ class SelfSimulationActivitiesView(BaseModel):
         end: str
         value: float
 
-    class Records(BaseModel):
-        """活动记录集合。
-
-        表示活动的详细记录集合。
-
-        Attributes:
-            table_schema: 表格模式。
-            records: 记录列表。
-        """
-
-        table_schema: TableSchemaView = Field(
-            validation_alias=AliasChoices("schema", "table_schema"),
-            serialization_alias="schema",
-        )
-        records: List[Dict[str, Any]]
+    yesterday: Period
+    current: Period
+    previous: Period
+    ytd: Period
+    total: Period
+    records: TableView
+    type: str
 
 
 class AuthenticationView(BaseModel):
@@ -1619,10 +1493,6 @@ class AuthenticationView(BaseModel):
         token: 令牌信息。
         permissions: 权限列表。
     """
-
-    user: "AuthenticationView.User"
-    token: "AuthenticationView.Token"
-    permissions: List[str]
 
     class User(BaseModel):
         """用户信息。
@@ -1645,3 +1515,7 @@ class AuthenticationView(BaseModel):
         """
 
         expiry: float
+
+    user: User
+    token: Token
+    permissions: List[str]

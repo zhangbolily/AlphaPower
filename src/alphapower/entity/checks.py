@@ -16,6 +16,7 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     DateTime,
+    Enum,
     Float,
     Integer,
     String,
@@ -24,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, MappedColumn, mapped_column
 
-from alphapower.constants import ALPHA_ID_LENGTH
+from alphapower.constants import ALPHA_ID_LENGTH, CheckRecordType
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -75,6 +76,29 @@ class Correlation(Base):
     )
     table_schema: MappedColumn[dict] = mapped_column(JSON, nullable=False)
     records: MappedColumn[list] = mapped_column(JSON, nullable=False)
+    created_at: MappedColumn[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        insert_default=func.now(),  # pylint: disable=E1102
+    )
+
+
+class CheckRecord(Base):
+    __tablename__ = "check_records"
+
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alpha_id: MappedColumn[int] = mapped_column(
+        String(ALPHA_ID_LENGTH),
+        nullable=False,
+    )
+    record_type: MappedColumn[CheckRecordType] = mapped_column(
+        Enum(CheckRecordType),
+        nullable=False,
+    )
+    content: MappedColumn[str] = mapped_column(
+        JSON,
+        nullable=False,
+    )
     created_at: MappedColumn[datetime] = mapped_column(
         DateTime,
         nullable=False,

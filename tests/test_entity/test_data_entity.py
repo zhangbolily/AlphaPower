@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from alphapower.constants import DB_DATA, DataFieldType, Delay, Region, Universe
+from alphapower.constants import Database, DataFieldType, Delay, Region, Universe
 
 # 导入会自动注册 DB_DATA 测试数据库
 from alphapower.entity.data import (
@@ -44,7 +44,7 @@ async def fixture_db_session() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: 用于测试的异步会话对象
     """
     # 直接使用已注册的 DB_DATA 数据库
-    async with get_db_session(DB_DATA) as session:
+    async with get_db_session(Database.DATA) as session:
         yield session
 
 
@@ -332,7 +332,7 @@ class TestStatsData:
         result = await db_session.execute(
             select(StatsData).where((StatsData.data_field_id == data_field.id))
         )
-        retrieved_stats: StatsData = result.scalar_one()
+        retrieved_stats = result.scalar_one()
         await retrieved_stats.awaitable_attrs.data_field
         # 验证统计数据
         assert retrieved_stats.id is not None

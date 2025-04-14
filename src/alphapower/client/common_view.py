@@ -7,9 +7,9 @@ Classes:
     TableSchemaView: 表格模式类，描述表格数据的结构。
 """
 
-from typing import List
+from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class TableSchemaView(BaseModel):
@@ -41,3 +41,13 @@ class TableSchemaView(BaseModel):
     name: str
     title: str
     properties: List[Property]
+
+
+class TableView(BaseModel):
+    table_schema: TableSchemaView = Field(
+        validation_alias=AliasChoices("schema", "table_schema"),
+        serialization_alias="schema",
+    )
+    records: Optional[List[List[Any]]] = None
+    min: Optional[float] = 0.0
+    max: Optional[float] = 0.0

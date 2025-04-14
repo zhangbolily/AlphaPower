@@ -14,8 +14,8 @@ from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
 
 from .checks_view import BeforeAndAfterPerformanceView
+from .common_view import TableView
 from .models import (
-    AlphaCorrelationsView,
     AlphaDetailView,
     AlphaPropertiesPayload,
     AuthenticationView,
@@ -461,7 +461,7 @@ class WorldQuantClient:
     @rate_limit_handler
     async def alpha_correlation_check(
         self, alpha_id: str, corr_type: CorrelationType
-    ) -> Tuple[bool, Optional[float], Optional[AlphaCorrelationsView]]:
+    ) -> Tuple[bool, Optional[float], Optional[TableView]]:
         """
         检查 Alpha 的相关性。
 

@@ -98,7 +98,7 @@ class TestSimulationTaskEnums:
         assert AlphaType.SUPER.value == "SUPER"
 
         # 验证枚举数量
-        assert len(AlphaType) == 2, "AlphaType 应该有 2 个类型值"
+        assert len(AlphaType) == 3, "AlphaType 应该有 3 个类型值"
 
 
 class TestSimulationTask:

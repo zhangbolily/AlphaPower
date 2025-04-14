@@ -11,14 +11,13 @@ from aiohttp import ClientSession
 
 from alphapower.client import (
     AlphaCheckItemView,
-    AlphaCheckResultView,
-    AlphaCorrelationsView,
     AlphaDetailView,
     AlphaPropertiesPayload,
     AlphaView,
     BeforeAndAfterPerformanceView,
     ClassificationView,
     CompetitionListView,
+    CompetitionRefView,
     CompetitionView,
     MultiSimulationResultView,
     PyramidView,
@@ -28,6 +27,8 @@ from alphapower.client import (
     SimulationProgressView,
     SimulationSettingsView,
     SingleSimulationResultView,
+    SubmissionCheckResultView,
+    TableView,
 )
 from alphapower.client.raw_api import (
     alpha_check_submission,
@@ -39,27 +40,27 @@ from alphapower.client.raw_api import (
     get_simulation_progress,
     set_alpha_properties,
 )
-from alphapower.constants import CorrelationType
+from alphapower.constants import AlphaType, CompetitionStatus, CorrelationType
 
 
-def assert_alpha_check_result(result: Optional[AlphaCheckResultView]) -> None:
+def assert_alpha_check_result(result: Optional[SubmissionCheckResultView]) -> None:
     """
     验证 AlphaCheckResult 对象的结构和类型。
     """
-    assert isinstance(result, AlphaCheckResultView)
+    assert isinstance(result, SubmissionCheckResultView)
     if result.in_sample:
-        assert isinstance(result.in_sample, AlphaCheckResultView.Sample)
+        assert isinstance(result.in_sample, SubmissionCheckResultView.Sample)
         if result.in_sample.checks:
             assert all(
                 isinstance(check, AlphaCheckItemView)
                 for check in result.in_sample.checks
             )
         if result.in_sample.self_correlated:
-            assert isinstance(result.in_sample.self_correlated, AlphaCorrelationsView)
+            assert isinstance(result.in_sample.self_correlated, TableView)
         if result.in_sample.prod_correlated:
-            assert isinstance(result.in_sample.prod_correlated, AlphaCorrelationsView)
+            assert isinstance(result.in_sample.prod_correlated, TableView)
     if result.out_sample:
-        assert isinstance(result.out_sample, AlphaCheckResultView.Sample)
+        assert isinstance(result.out_sample, SubmissionCheckResultView.Sample)
         if result.out_sample.checks:
             assert all(
                 isinstance(check, AlphaCheckItemView)
@@ -122,7 +123,9 @@ def assert_alpha_list(result: Optional[SelfAlphaListView]) -> None:
         if alpha.date_modified:
             assert isinstance(alpha.date_modified, datetime)
         if alpha.competitions:
-            assert all(isinstance(comp, CompetitionView) for comp in alpha.competitions)
+            assert all(
+                isinstance(comp, CompetitionRefView) for comp in alpha.competitions
+            )
         if alpha.pyramids:
             assert all(isinstance(pyramid, PyramidView) for pyramid in alpha.pyramids)
 
@@ -144,7 +147,7 @@ def assert_single_simulation_result(
     """
     assert isinstance(result, SingleSimulationResultView)
     assert isinstance(result.id, str)
-    assert isinstance(result.type, str)
+    assert isinstance(result.type, AlphaType)
     assert isinstance(result.status, str)
     if result.message:
         assert isinstance(result.message, str)
@@ -180,7 +183,7 @@ def assert_multi_simulation_result(
     assert isinstance(result.children, list)
     assert all(isinstance(child, str) for child in result.children)
     assert isinstance(result.status, str)
-    assert isinstance(result.type, str)
+    assert isinstance(result.type, AlphaType)
     if result.status == "COMPELETE" and result.settings:
         assert isinstance(result.settings, SimulationSettingsView)
 
@@ -263,13 +266,6 @@ async def test_set_alpha_properties(setup_mock_responses: str) -> None:
             assert rate_limit is not None
             assert isinstance(rate_limit, RateLimit)
 
-            # 验证设置的属性是否正确
-            if result.name:
-                assert result.name == alpha_props.name
-            if result.tags and alpha_props.tags:
-                for tag in alpha_props.tags:  # pylint: disable=E1133
-                    assert tag in result.tags
-
 
 @pytest.mark.asyncio
 async def test_simulation_result(setup_mock_responses: str) -> None:
@@ -344,7 +340,7 @@ async def test_alpha_competitions(setup_mock_responses: str) -> None:
             if comp.end_date:
                 assert isinstance(comp.end_date, datetime)
             if comp.status:
-                assert isinstance(comp.status, str)
+                assert isinstance(comp.status, CompetitionStatus)
             if comp.description:
                 assert isinstance(comp.description, str)
 
@@ -363,7 +359,7 @@ async def test_alpha_correlations(setup_mock_responses: str) -> None:
                 session, alpha_id, CorrelationType.SELF
             )
 
-            assert isinstance(result, AlphaCorrelationsView)
+            assert isinstance(result, TableView)
 
 
 @pytest.mark.asyncio

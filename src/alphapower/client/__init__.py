@@ -4,17 +4,17 @@
 
 __all__ = [
     "AlphaCheckItemView",
-    "AlphaCheckResultView",
+    "SubmissionCheckResultView",
     "AlphaCorrelationRecordView",
-    "AlphaCorrelationsView",
+    "TableView",
     "AlphaDetailView",
-    "AlphaPnLRecordView",
-    "AlphaPnLView",
+    "TableView",
+    "TableView",
     "AlphaPropertiesPayload",
     "AlphaSampleView",
     "AlphaView",
     "AlphaYearlyStatsRecordView",
-    "AlphaYearlyStatsView",
+    "TableView",
     "AuthenticationView",
     "BeforeAndAfterPerformanceView",
     "ClassificationView",
@@ -53,24 +53,24 @@ __all__ = [
     "TableSchemaView",
     "WorldQuantClient",
     "wq_client",
+    "CheckTypeViewMap",
 ]
 
-from .checks_view import BeforeAndAfterPerformanceView
-from .common_view import TableSchemaView
+from .checks_view import (
+    BeforeAndAfterPerformanceView,
+    CheckTypeViewMap,
+    SubmissionCheckResultView,
+)
+from .common_view import TableSchemaView, TableView
 from .core import WorldQuantClient, wq_client
 from .models import (
     AlphaCheckItemView,
-    AlphaCheckResultView,
     AlphaCorrelationRecordView,
-    AlphaCorrelationsView,
     AlphaDetailView,
-    AlphaPnLRecordView,
-    AlphaPnLView,
     AlphaPropertiesPayload,
     AlphaSampleView,
     AlphaView,
     AlphaYearlyStatsRecordView,
-    AlphaYearlyStatsView,
     AuthenticationView,
     ClassificationView,
     CompetitionListView,
