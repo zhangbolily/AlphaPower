@@ -282,7 +282,6 @@ async def start_worker_pool(
         low_priority_threshold=low_priority_threshold,
         sample_rate=sample_rate,
     )
-    await logger.ainfo("工作池启动完成。", emoji="✅")
 
 
 if __name__ == "__main__":

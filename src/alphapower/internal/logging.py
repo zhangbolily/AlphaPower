@@ -5,9 +5,10 @@
 import asyncio
 import logging
 import os
+import sys
 import threading
 from logging.handlers import RotatingFileHandler
-from typing import Any, Mapping, MutableMapping
+from typing import Any, List, Mapping, MutableMapping
 
 import structlog
 
@@ -56,71 +57,98 @@ def setup_logging(
     """
     配置日志记录器，支持控制台和文件输出。
 
+    使用 structlog 进行完全配置，为控制台提供彩色输出，为文件提供 JSON 输出。
+
     参数:
-    module_name (str): 模块名称，用于区分日志文件。
-    enable_console (bool): 是否启用控制台日志输出，默认为 True。
+        module_name (str): 模块名称，用于区分日志文件和日志记录器名称。
+        enable_console (bool): 是否启用控制台日志输出，默认为 True。
+
+    返回:
+        structlog.stdlib.BoundLogger: 配置好的 structlog 日志记录器实例。
     """
-    if not os.path.exists(settings.log_dir):
-        os.makedirs(settings.log_dir)
+    log_dir: str = settings.log_dir
+    log_level: str = settings.log_level.upper()
 
-    # 修改标准日志格式
-    log_format = (
-        "%(asctime)s - %(name)s - %(levelname)s - "
-        "%(module)s.%(funcName)s:%(lineno)d - %(message)s"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    # structlog 共享处理器
+    shared_processors: list[Any] = [
+        structlog.stdlib.add_logger_name,  # 添加日志记录器名称
+        structlog.stdlib.add_log_level,  # 添加日志级别
+        structlog.stdlib.add_log_level_number,  # 添加日志级别数字
+        structlog.stdlib.PositionalArgumentsFormatter(),  # 格式化位置参数
+        structlog.processors.TimeStamper(fmt="iso"),  # 添加 ISO 格式时间戳
+        structlog.processors.StackInfoRenderer(),  # 添加堆栈信息
+        structlog.processors.format_exc_info,  # 格式化异常信息
+        structlog.processors.CallsiteParameterAdder(  # 添加调用点信息
+            parameters={
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+                structlog.processors.CallsiteParameter.MODULE,
+                structlog.processors.CallsiteParameter.LINENO,
+                # structlog.processors.CallsiteParameter.PATHNAME, # 路径通常较长，暂不添加
+            }
+        ),
+        add_coroutine_id,  # 添加协程或线程 ID
+        unicode_decoder,  # 解码字节字符串为 UTF-8
+    ]
+
+    # 配置 structlog
+    structlog.configure(
+        processors=shared_processors
+        + [
+            # 这个处理器必须放在最后，它会将事件传递给标准 logging
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,  # 标准库绑定的 Logger
+        cache_logger_on_first_use=True,  # 缓存 Logger 实例以提高性能
     )
-    formatter = logging.Formatter(log_format)
 
-    # 为特定模块创建日志记录器
-    logger = logging.getLogger(module_name)
-    # 清除之前的处理器，避免重复输出
-    if logger.handlers:
-        for handler in logger.handlers[:]:
-            logger.removeHandler(handler)
+    # --- 配置标准 logging ---
 
-    # 重置日志级别
-    logger.setLevel(settings.log_level)
-    # 阻止传播到根日志记录器，确保日志只发送到我们配置的处理器
-    logger.propagate = False
-
-    # 配置文件日志处理器
+    # 1. 文件处理器 (JSON 格式)
+    log_file = os.path.join(log_dir, f"{module_name}.log")
     file_handler = RotatingFileHandler(
-        os.path.join(settings.log_dir, f"{module_name}.log"),
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
+        log_file,
+        maxBytes=settings.log_file_max_bytes,
+        backupCount=settings.log_file_backup_count,
         encoding="utf-8",
     )
-    file_handler.setLevel(settings.log_level)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    # 配置控制台处理器
-    if enable_console:
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(settings.log_level)
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-
-    # 更新 structlog 配置
-    structlog.configure(
-        processors=[
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.add_log_level,
-            structlog.processors.CallsiteParameterAdder(
-                parameters={
-                    structlog.processors.CallsiteParameter.FUNC_NAME,
-                    structlog.processors.CallsiteParameter.MODULE,
-                    structlog.processors.CallsiteParameter.LINENO,
-                    structlog.processors.CallsiteParameter.PATHNAME,
-                }
-            ),
-            add_coroutine_id,  # 添加协程ID处理器
-            unicode_decoder,
-            structlog.processors.JSONRenderer(ensure_ascii=False),
-        ],
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
+    # 文件处理器的格式化器
+    file_formatter = structlog.stdlib.ProcessorFormatter(
+        # 单独为文件处理器指定渲染器
+        processor=structlog.processors.JSONRenderer(
+            ensure_ascii=False,
+            indent=4,
+        ),
+        # foreign_pre_chain 用于处理来自非 structlog 的日志记录
+        # (例如标准库 logging 或其他库直接发出的日志)
+        # 使它们也能经过我们的共享处理器进行格式化
+        foreign_pre_chain=shared_processors,
     )
+    file_handler.setFormatter(file_formatter)
 
+    handlers: List[logging.Handler] = [file_handler]
+
+    # 2. 控制台处理器 (美化彩色输出)
+    if enable_console:
+        console_handler = logging.StreamHandler(sys.stdout)  # 输出到标准输出
+        console_handler.setFormatter(file_formatter)
+        handlers.append(console_handler)
+
+    # 获取并配置标准日志记录器
+    logger = logging.getLogger(module_name)
+    # 清除之前的处理器，避免重复添加
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    # 添加配置好的处理器
+    for handler in handlers:
+        logger.addHandler(handler)
+    # 设置日志级别
+    logger.setLevel(log_level)
+    # 阻止传播到根日志记录器
+    logger.propagate = False
+
+    # 返回 structlog 包装的日志记录器
     return structlog.get_logger(module_name)

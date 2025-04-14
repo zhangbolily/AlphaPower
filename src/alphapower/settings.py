@@ -9,7 +9,7 @@ from typing import Dict
 from pydantic import AnyUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .constants import ENV_PROD, Database
+from .constants import Database, Environment
 
 
 class DatabaseConfig(BaseSettings):
@@ -19,7 +19,7 @@ class DatabaseConfig(BaseSettings):
 
     alias: str
     dsn: AnyUrl = Field(default_factory=lambda url: AnyUrl(url=url))
-    description: str = Field(default="")
+    description: str = ""
 
 
 class CredentialConfig(BaseSettings):
@@ -27,8 +27,8 @@ class CredentialConfig(BaseSettings):
     凭据配置类，用于定义用户名和密码。
     """
 
-    username: str = Field(default="")
-    password: str = Field(default="")
+    username: str = ""
+    password: str = ""
 
 
 class AppConfig(BaseSettings):
@@ -59,10 +59,12 @@ class AppConfig(BaseSettings):
         ),
     }
 
-    log_level: str = Field(default="INFO")
-    log_dir: str = Field(default="./logs")
-    sql_echo: bool = Field(default=False)
-    environment: str = Field(default=ENV_PROD)
+    log_level: str = "INFO"
+    log_dir: str = "./logs"
+    log_file_max_bytes: int = 32 * 1024 * 1024  # 5 MB
+    log_file_backup_count: int = 3
+    sql_echo: bool = False
+    environment: str = Environment.PROD.value
     credential: CredentialConfig = CredentialConfig()
 
     model_config = SettingsConfigDict(

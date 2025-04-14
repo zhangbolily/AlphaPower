@@ -82,7 +82,7 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         emoji="🛠️",
         task_id=task.id,
         task_type=task.type.value,
-        settings=setting.model_dump(mode="python"),
+        settings=setting.model_dump(mode="json"),
     )
     payload: SingleSimulationPayload = SingleSimulationPayload(
         type=task.type.value,
@@ -93,13 +93,12 @@ def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPay
         event="生成的负载数据",
         emoji="📦",
         task_id=task.id,
-        payload=payload.model_dump(mode="python"),
+        payload=payload.model_dump(mode="json"),
     )
     logger.debug(
         event="退出 build_single_simulation_payload",
         emoji="🚪",
         task_id=task.id,
-        payload=payload,
     )
     return payload
 
@@ -463,7 +462,6 @@ class Worker(AbstractWorker):
                     event="发送创建单个模拟任务请求",
                     emoji="📤",
                     task_id=task.id,
-                    payload=payload.model_dump(mode="python"),  # 记录请求体用于调试
                 )
                 success, progress_id, retry_after = (
                     await self._client.simulation_create_single(payload=payload)
@@ -475,7 +473,6 @@ class Worker(AbstractWorker):
                         event="创建单个模拟任务失败",
                         emoji="❌",
                         task_id=task.id,
-                        payload=payload.model_dump(mode="python"),
                         progress_id=progress_id,  # 记录返回的 progress_id (可能为 None)
                     )
                     # 可以考虑更新任务状态为失败
@@ -865,7 +862,6 @@ class Worker(AbstractWorker):
                     event="发送创建多个模拟任务请求",
                     emoji="📤",
                     task_ids=task_ids,
-                    payload=payload.model_dump(mode="python"),  # 记录请求体
                 )
                 success, progress_id, retry_after = (
                     await self._client.simulation_create_multi(payload=payload)
@@ -876,7 +872,6 @@ class Worker(AbstractWorker):
                         event="创建多个模拟任务失败",
                         emoji="❌",
                         task_ids=task_ids,
-                        payload=payload.model_dump(mode="python"),
                         progress_id=progress_id,
                     )
                     # 标记任务失败

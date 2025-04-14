@@ -18,12 +18,17 @@ class AbstractWorkerPool(ABC):
 
     @abstractmethod
     async def scale_down(self, count: int) -> None:
-        """向下缩容指定数量的工作者。"""
+        """
+        向下缩容指定数量的工作者。
+
+        Args:
+            count: 要减少的工作者数量。实现时应处理请求数量超过当前工作者总数的情况。
+        """
 
     @abstractmethod
-    def get_status(self) -> dict:
+    async def get_status(self) -> dict:
         """获取工作池的运行状态和各项参数。"""
 
     @abstractmethod
-    def worker_count(self) -> int:
+    async def worker_count(self) -> int:
         """获取当前工作者数量。"""

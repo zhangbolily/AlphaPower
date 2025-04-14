@@ -59,22 +59,28 @@ async def register_db(
 
     Args:
         base: SQLAlchemy 基类，用于定义模型，必须是 DeclarativeBase 或其子类。
-        name: 数据库名称，用于后续引用。
+        db: 数据库名称，用于后续引用。
         config: 数据库配置对象，包含数据库连接信息。
         force_recreate: 是否强制重新创建表结构，默认为False。
 
     Returns:
         None
     """
+    # 使用 structlog 风格记录函数入口和参数
     await logger.adebug(
-        f"进入 register_db 函数，参数: base={base}, db={db}, config={config}, "
-        f"force_recreate={force_recreate}",
-        emoji="🔧",
+        "进入 register_db 函数",
+        base=str(base),  # 记录类型信息，避免直接引用复杂对象
+        db=db.value,
+        config=config.model_dump(exclude={"dsn"}),  # 排除敏感信息或过长信息
+        dsn=config.dsn.encoded_string(),
+        force_recreate=force_recreate,
+        emoji="🏁",
     )
     async with _db_lock:
         if db in db_engines:
             await logger.awarning(
-                f"数据库 {db} 已注册，重新注册会覆盖现有配置。",
+                "数据库已注册，重新注册将覆盖现有配置",
+                db=db.value,
                 emoji="⚠️",
             )
 
@@ -83,18 +89,40 @@ async def register_db(
         execution_options: Dict[str, Any] = {}
 
         if "sqlite" in config.dsn.scheme:
-            # SQLite连接参数，根据使用情况决定是否允许跨线程访问
             connect_args["check_same_thread"] = False
-            # 设置超时时间(秒)，防止"database is locked"错误
             connect_args["timeout"] = 30.0
             execution_options["isolation_level"] = "SERIALIZABLE"
+            await logger.adebug(
+                "配置 SQLite 特定连接参数",
+                db=db.value,
+                connect_args=connect_args,
+                execution_options=execution_options,
+                emoji="⚙️",
+            )
 
-        db_engine: AsyncEngine = create_async_engine(
-            config.dsn.encoded_string(),
-            echo=settings.sql_echo,
-            connect_args=connect_args,
-            execution_options=execution_options,
-        )
+        try:
+            db_engine: AsyncEngine = create_async_engine(
+                config.dsn.encoded_string(),
+                echo=settings.sql_echo,
+                connect_args=connect_args,
+                execution_options=execution_options,
+            )
+            await logger.adebug(
+                "异步引擎已创建",
+                db=db.value,
+                engine_repr=repr(db_engine),  # 使用 repr 获取引擎信息
+                emoji="🛠️",
+            )
+        except Exception as e:
+            await logger.aerror(
+                "创建异步引擎失败",
+                db=db.value,
+                dsn=config.dsn.encoded_string(),
+                error=str(e),
+                exc_info=True,
+                emoji="💥",
+            )
+            raise  # 重新抛出异常，以便上层处理
 
         # 注册引擎和会话工厂到全局字典
         db_engines[db] = db_engine
@@ -106,37 +134,80 @@ async def register_db(
             expire_on_commit=False,
         )
         async_session_factories[db] = session_factory
+        await logger.adebug(
+            "引擎和会话工厂已注册",
+            db=db.value,
+            engine_repr=repr(db_engine),
+            session_factory_repr=repr(session_factory),
+            emoji="💾",
+        )
 
         # 如果是SQLite，配置WAL模式
         if "sqlite" in config.dsn.scheme:
-            async with db_engine.begin() as conn:
-                # 配置WAL模式，提高并发性能
-                await conn.execute(text("PRAGMA journal_mode=WAL;"))
-                # 设置同步模式，提高性能
-                await conn.execute(text("PRAGMA synchronous=NORMAL;"))
-                await logger.ainfo(f"数据库 {db} 已配置为WAL模式")
+            try:
+                async with db_engine.begin() as conn:
+                    await conn.execute(text("PRAGMA journal_mode=WAL;"))
+                    await conn.execute(text("PRAGMA synchronous=NORMAL;"))
+                    await logger.ainfo(
+                        "数据库已配置为 WAL 模式",
+                        db=db.value,
+                        emoji="💡",
+                    )
+            except Exception as e:
+                await logger.aerror(
+                    "为 SQLite 配置 WAL 模式失败",
+                    db=db.value,
+                    error=str(e),
+                    exc_info=True,
+                    emoji="💥",
+                )
+                # 根据策略决定是否继续或抛出异常
 
         await logger.ainfo(
-            f"数据库 {db} 已注册，连接字符串: {config.dsn}",
+            "数据库已注册",
+            db=db.value,
+            dsn=config.dsn.encoded_string(),
             emoji="✅",
-        )
-        await logger.adebug(
-            f"数据库 {db} 注册信息，DSN: {config.dsn}，描述: {config.description}，别名: {config.alias}，"
-            + f"基类: {base}，引擎: {db_engine}，会话工厂: {session_factory}"
-            + f"，表结构: {base.metadata.tables}",
-            emoji="📋",
         )
 
         # 创建数据库表结构
-        async with db_engine.begin() as conn:
-            if force_recreate:
-                await conn.run_sync(base.metadata.drop_all)
-                await logger.ainfo(f"数据库 {db} 已删除现有表结构。")
-            await conn.run_sync(base.metadata.create_all)
-            await logger.ainfo(
-                f"数据库 {db} 已注册并创建表结构。",
-                emoji="🏗️",
+        try:
+            async with db_engine.begin() as conn:
+                if force_recreate:
+                    await logger.ainfo(
+                        "正在删除现有表",
+                        db=db.value,
+                        emoji="🗑️",
+                    )
+                    await conn.run_sync(base.metadata.drop_all)
+                    await logger.ainfo(
+                        "现有表已删除",
+                        db=db.value,
+                        emoji="✅",
+                    )
+                await logger.adebug(
+                    "正在创建数据库表",
+                    db=db.value,
+                    tables=list(base.metadata.tables.keys()),
+                    emoji="🏗️",
+                )
+                await conn.run_sync(base.metadata.create_all)
+                await logger.ainfo(
+                    "数据库表已创建/验证",
+                    db=db.value,
+                    emoji="👍",
+                )
+        except Exception as e:
+            await logger.aerror(
+                "创建数据库表失败",
+                db=db.value,
+                error=str(e),
+                exc_info=True,
+                emoji="💥",
             )
+            raise  # 重新抛出异常
+
+    await logger.adebug("退出 register_db 函数", db=db.value, emoji="🚪")
 
 
 def sync_register_db(
@@ -159,6 +230,7 @@ def sync_register_db(
     Returns:
         None
     """
+    # 同步函数中调用异步注册，日志在异步函数内部处理
     asyncio.run(register_db(base, db, config, force_recreate))
 
 
@@ -173,7 +245,7 @@ async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
     会在退出上下文时自动提交或回滚事务。
 
     Args:
-        db_name: 数据库名称，必须是已通过register_db注册的数据库
+        db: 数据库名称，必须是已通过register_db注册的数据库
 
     Yields:
         AsyncSession: 用于执行数据库操作的异步会话对象
@@ -183,44 +255,85 @@ async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
 
     示例:
         ```python
-        async with get_db_session("main_db") as session:
-            result = await session.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
+        async with get_db_session(Database.MAIN) as session:
+            # ... use session ...
         ```
     """
-    await logger.adebug(f"进入 get_db_session 函数，参数: db={db}", emoji="🔧")
     db_name: str = db.value
+    await logger.adebug("进入 get_db_session 函数", db=db_name, emoji="🚪")
 
-    # 使用锁保护对全局字典的读取操作
+    session_factory: async_sessionmaker[AsyncSession] | None = None
     async with _db_lock:
         if db not in async_session_factories:
+            # 错误日志应在抛出异常前记录
+            await logger.aerror(
+                "数据库未注册，无法获取会话",
+                db=db_name,
+                available_dbs=[
+                    d.value for d in async_session_factories.keys()
+                ],  # 显示中文枚举值
+                emoji="❌",
+            )
             raise KeyError(
-                f"数据库 {db_name} 未注册，无法获取会话。请先调用 register_db 进行注册。"
+                f"数据库 '{db_name}' 未注册，无法获取会话。请先调用 register_db 进行注册。"
             )
         # 获取会话工厂的本地引用
-        session_factory: async_sessionmaker[AsyncSession] = async_session_factories[db]
+        session_factory = async_session_factories[db]
+        await logger.adebug(
+            "已获取会话工厂",
+            db=db_name,
+            factory_repr=repr(session_factory),
+            emoji="🔧",
+        )
 
-    # 创建会话 - 在锁外创建以避免长时间持有锁
+    # 在锁外创建会话
+    if session_factory is None:
+        # 理论上不应发生，但作为防御性编程添加检查
+        await logger.aerror("获取锁后会话工厂仍为 None", db=db_name, emoji="🤯")
+        raise RuntimeError(f"无法为数据库 '{db_name}' 获取会话工厂。")
+
     async_session: AsyncSession = session_factory()
+    session_id = id(async_session)  # 获取会话ID用于跟踪
+    await logger.adebug(
+        "已创建新的数据库会话",
+        db=db_name,
+        session_id=session_id,
+        emoji="✨",
+    )
+
     try:
-        # 提供会话给调用者
         yield async_session
         # 提交事务
         await async_session.commit()
-        await logger.adebug(f"数据库会话 {db_name} 提交成功。", emoji="✅")
+        await logger.adebug(
+            "数据库会话提交成功",
+            db=db_name,
+            session_id=session_id,
+            emoji="✅",
+        )
     except Exception as e:
         # 发生异常时回滚事务
         await async_session.rollback()
+        # 使用 aerror 记录异常信息和堆栈
         await logger.aerror(
-            f"数据库会话 {db_name} 回滚，发生异常: {e}",
-            exc_info=True,
-            emoji="❌",
+            "数据库会话因异常回滚",
+            db=db_name,
+            session_id=session_id,
+            error=str(e),
+            exc_info=True,  # 包含堆栈信息
+            emoji="⏪",
         )
-        raise e
+        raise  # 重新抛出异常，让上层处理
     finally:
         # 确保会话始终被关闭
         await async_session.close()
-        await logger.ainfo(f"数据库会话 {db_name} 已关闭。", emoji="🔒")
+        await logger.ainfo(
+            "数据库会话已关闭",
+            db=db_name,
+            session_id=session_id,
+            emoji="🔒",
+        )
+        await logger.adebug("退出 get_db_session 函数", db=db_name, emoji="🚪")
 
 
 async def release_all_db_engines() -> None:
@@ -230,16 +343,65 @@ async def release_all_db_engines() -> None:
     Returns:
         None
     """
-    await logger.ainfo("开始释放所有数据库引擎。", emoji="🛠️")
+    await logger.ainfo("开始释放所有数据库引擎", emoji="🏁")
+    engines_to_dispose: List[Tuple[Database, AsyncEngine]] = []
     async with _db_lock:
-        engines_to_dispose: List[Tuple[Database, AsyncEngine]] = list(
-            db_engines.items()
+        # 复制列表以在锁外操作
+        engines_to_dispose = list(db_engines.items())
+        db_names_to_clear = [d.value for d in db_engines.keys()]  # 显示中文枚举值
+        await logger.adebug(
+            "已获取锁，准备清理引擎和工厂",
+            engines_count=len(engines_to_dispose),
+            factory_count=len(async_session_factories),
+            emoji="🔒",
         )
         db_engines.clear()
         async_session_factories.clear()
+        await logger.adebug(
+            "已清理内部引擎和工厂字典",
+            cleared_dbs=db_names_to_clear,
+            emoji="🧹",
+        )
 
-    # 在锁外释放引擎，避免长时间持有锁
-    for db_name, engine in engines_to_dispose:
-        await engine.dispose()
-        await logger.ainfo(f"数据库 {db_name} 引擎已释放。", emoji="✅")
-    await logger.ainfo("所有数据库引擎已释放完成。", emoji="🎉")
+    # 在锁外释放引擎
+    dispose_tasks = []
+    for db, engine in engines_to_dispose:
+        db_name = db.value
+        await logger.adebug(
+            "开始释放引擎",
+            db=db_name,
+            engine_repr=repr(engine),
+            emoji="💨",
+        )
+        dispose_tasks.append(engine.dispose())
+        # 记录每个引擎的释放启动
+        await logger.ainfo("正在释放数据库引擎", db=db_name, emoji="🔧")
+
+    # 并发执行所有 dispose 操作
+    results = await asyncio.gather(*dispose_tasks, return_exceptions=True)
+
+    # 检查释放结果
+    all_successful = True
+    for (db, _), result in zip(engines_to_dispose, results):
+        db_name = db.value
+        if isinstance(result, Exception):
+            all_successful = False
+            await logger.aerror(
+                "释放引擎失败",
+                db=db_name,
+                error=str(result),
+                exc_info=result,  # 传递异常对象以记录堆栈
+                emoji="💥",
+            )
+        else:
+            await logger.ainfo(
+                "数据库引擎已成功释放",
+                db=db_name,
+                emoji="✅",
+            )
+
+    if all_successful:
+        await logger.ainfo("所有数据库引擎已成功释放", emoji="🎉")
+    else:
+        await logger.awarning("部分数据库引擎未能正确释放", emoji="⚠️")
+    await logger.ainfo("完成释放所有数据库引擎", emoji="🏁")
