@@ -13,3 +13,4 @@ db_test
 demo.py
 dist
 logs
+tests/test_client/fixtures/*.json
