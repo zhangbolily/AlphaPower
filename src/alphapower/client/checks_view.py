@@ -164,7 +164,7 @@ class BeforeAndAfterPerformanceView(BaseModel):
 
 
 CheckTypeViewMap: Dict[CheckRecordType, Type[BaseModel]] = {
-    CheckRecordType.CORRELATION: TableView,
+    CheckRecordType.CORRELATION_SELF: TableView,
     CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE: BeforeAndAfterPerformanceView,
     CheckRecordType.SUBMISSION: SubmissionCheckResultView,
 }

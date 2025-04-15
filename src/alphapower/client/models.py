@@ -738,41 +738,6 @@ class AlphaYearlyStatsRecordView(BaseModel):
     stage: str
 
 
-class AlphaCorrelationRecordView(BaseModel):
-    """Alpha相关性记录。
-
-    表示Alpha与其他Alpha的相关性数据。
-
-    Attributes:
-        id: Alpha唯一标识符。
-        name: Alpha名称。
-        instrument_type: 工具类型。
-        region: 地区。
-        universe: 股票范围。
-        correlation: 相关性值。
-        sharpe: 夏普比率。
-        returns: 回报率。
-        turnover: 周转率。
-        fitness: 适应度。
-        margin: 利润率。
-    """
-
-    id: str
-    name: str
-    instrument_type: str = Field(
-        validation_alias=AliasChoices("instrumentType", "instrument_type"),
-        serialization_alias="instrumentType",
-    )
-    region: str
-    universe: str
-    correlation: float
-    sharpe: float
-    returns: float
-    turnover: float
-    fitness: float
-    margin: float
-
-
 class AlphaPropertiesPayload(BaseModel):
     """Alpha属性更新载荷。
 

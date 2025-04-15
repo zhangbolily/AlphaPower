@@ -113,7 +113,13 @@ def setup_alpha_correlations(mock_server: HTTPServer) -> None:
     """设置 Alpha Correlations 的 mock 响应"""
     mock_server.expect_request(
         uri="/alphas/regular_alpha_0/correlations/self"
-    ).respond_with_json(load_json_fixture("alpha_self_correlation_0.json"))
+    ).respond_with_json(load_json_fixture("alpha_correlation_self_0.json"))
+    mock_server.expect_request(
+        uri="/alphas/regular_alpha_1/correlations/self"
+    ).respond_with_json(load_json_fixture("alpha_correlation_self_1.json"))
+    mock_server.expect_request(
+        uri="/alphas/regular_alpha_0/correlations/prod"
+    ).respond_with_json(load_json_fixture("alpha_correlation_prod_0.json"))
 
 
 def setup_alpha_fetch_before_and_after_performance(

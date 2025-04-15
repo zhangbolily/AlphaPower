@@ -82,7 +82,7 @@ class Database(Enum):
     ALPHAS = "alphas"  # Alpha因子数据库
     DATA = "data"  # 市场数据库
     SIMULATION = "simulation"  # 模拟回测数据库
-    CHECKS = "checks"  # 检查数据库
+    EVALUATE = "evaluate"  # 检查数据库
 
 
 # 数据库名称常量 (兼容性保留，建议使用Database枚举)
@@ -705,7 +705,8 @@ class CheckRecordType(Enum):
     """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
-    CORRELATION = "CORRELATION"  # 相关性检查
+    CORRELATION_SELF = "CORRELATION_SELF"  # 自相关性检查
+    CORRELATION_PROD = "CORRELATION_PROD"  # 生产环境相关性检查
     BEFORE_AND_AFTER_PERFORMANCE = (
         "BEFORE_AND_AFTER_PERFORMANCE"  # 提交前后性能对比检查
     )
@@ -768,6 +769,20 @@ class CorrelationType(Enum):
     DEFAULT = "DEFAULT"
     SELF = "self"  # 自相关
     PROD = "prod"  # 生产环境相关性
+
+
+class CorrelationCalcType(Enum):
+    """相关性计算类型枚举。
+    定义了系统中可能使用的相关性计算类型。
+    Attributes:
+        DEFAULT: 默认值，无实际意义
+        LOCAL: 本地计算
+        PLATFORM: 平台计算
+    """
+
+    DEFAULT = "DEFAULT"
+    LOCAL = "LOCAL"
+    PLATFORM = "PLATFORM"
 
 
 class CompetitionStatus(Enum):

@@ -52,10 +52,10 @@ class AppConfig(BaseSettings):
             description="模拟回测任务数据库",
             alias=Database.SIMULATION.value,
         ),
-        Database.CHECKS: DatabaseConfig(
-            dsn=AnyUrl(url="sqlite+aiosqlite:///db/checks.db"),
+        Database.EVALUATE: DatabaseConfig(
+            dsn=AnyUrl(url="sqlite+aiosqlite:///db/evaluate.db"),
             description="检查数据库",
-            alias=Database.CHECKS.value,
+            alias=Database.EVALUATE.value,
         ),
     }
 

@@ -433,6 +433,7 @@ class BaseDAL(Generic[T]):
         self,
         session: Optional[AsyncSession] = None,
         order_by: Optional[Union[str, ColumnExpressionArgument]] = None,
+        *args: Any,
         **kwargs: Any,
     ) -> Optional[T]:
         """

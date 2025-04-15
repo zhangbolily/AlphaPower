@@ -21,7 +21,10 @@
 """
 
 import asyncio
-from typing import ClassVar, List, Optional, Tuple  # 导入 ClassVar
+from datetime import datetime
+
+# 导入 AsyncGenerator
+from typing import AsyncGenerator, ClassVar, List, Optional, Tuple  # 导入 ClassVar
 
 from pydantic import TypeAdapter
 
@@ -30,16 +33,30 @@ from sqlalchemy import ColumnExpressionArgument, Select, and_, case, select
 from structlog.stdlib import BoundLogger
 
 from alphapower.client import (
-    AlphaCorrelationRecordView,
     BeforeAndAfterPerformanceView,
     CompetitionRefView,
+    TableView,
     WorldQuantClient,
     wq_client,
 )
-from alphapower.constants import AlphaType, CheckType, CorrelationType, Region
+from alphapower.constants import (
+    AlphaType,
+    CheckRecordType,
+    CheckType,
+    CorrelationCalcType,
+    CorrelationType,
+    Database,
+    Delay,
+    Region,
+    Universe,
+    UserRole,
+)
 
 # 导入 Alpha, Sample, Setting 实体
-from alphapower.entity import Alpha, Sample, Setting
+from alphapower.dal.base import DALFactory
+from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
+from alphapower.entity import Alpha, CheckRecord, Correlation, Sample, Setting
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import setup_logging
 
 logger: BoundLogger = setup_logging(module_name=__name__)
@@ -190,8 +207,133 @@ class BaseEvaluator:
     # 使用静态方法构建并赋值给类变量
     # 使用 ClassVar 注解，并确保类型为 Optional[Select]
     consultant_alpha_select_query: ClassVar[Optional[Select]] = (
-        _build_consultant_alpha_select_query.__func__(None)  # type: ignore
+        _build_consultant_alpha_select_query.__func__()  # type: ignore
     )
+
+    @classmethod
+    async def fetch_alphas_for_evaluation(
+        cls,
+        role: UserRole,
+        alpha_type: AlphaType,
+        start_time: datetime,
+        end_time: datetime,
+        region: Optional[Region] = None,
+        delay: Optional[Delay] = None,
+        universe: Optional[Universe] = None,
+    ) -> AsyncGenerator[Alpha, None]:  # 修改返回类型为 AsyncGenerator
+        """
+        根据指定的条件筛选 Alpha，并以异步生成器的方式返回结果。
+
+        此方法构建查询以根据用户角色、Alpha 类型、创建时间范围以及可选的区域、
+        延迟和宇宙筛选 Alpha。它使用流式处理从数据库中检索 Alpha，以避免
+        一次性将大量数据加载到内存中。
+
+        Args:
+            role (UserRole): 请求评估的用户角色 (目前仅支持顾问)。
+            alpha_type (AlphaType): 要筛选的 Alpha 类型。
+            start_time (datetime): 筛选 Alpha 的起始创建时间。
+            end_time (datetime): 筛选 Alpha 的结束创建时间。
+            region (Optional[Region]): 可选的区域筛选条件。
+            delay (Optional[Delay]): 可选的延迟筛选条件。
+            universe (Optional[Universe]): 可选的宇宙筛选条件。
+
+        Yields:
+            Alpha: 满足筛选条件的 Alpha 对象。
+
+        Raises:
+            NotImplementedError: 如果角色是 UserRole.USER (尚未实现)。
+            ValueError: 如果顾问因子筛选查询未初始化。
+            TypeError: 如果顾问因子筛选查询类型错误。
+        """
+        await logger.adebug(
+            "开始准备获取待评估的 Alpha (生成器)",
+            emoji="🔍",
+            role=role,
+            type=alpha_type,
+            start_time=start_time,
+            end_time=end_time,
+            region=region,
+            delay=delay,
+            universe=universe,
+        )
+        if role == UserRole.USER:
+            # 用户角色的筛选逻辑尚未实现
+            await logger.aerror(
+                "用户因子筛选查询尚未实现",
+                emoji="❌",
+                role=role,
+            )
+            raise NotImplementedError("用户因子筛选查询尚未实现")
+
+        # 检查顾问查询是否已正确初始化
+        if cls.consultant_alpha_select_query is None:
+            await logger.aerror(
+                "顾问因子筛选查询未初始化",
+                emoji="❌",
+                role=role,
+            )
+            raise ValueError("顾问因子筛选查询未初始化")
+        elif not isinstance(cls.consultant_alpha_select_query, Select):
+            await logger.aerror(
+                "顾问因子筛选查询类型错误",
+                emoji="❌",
+                role=role,
+                query_type=type(cls.consultant_alpha_select_query),
+            )
+            raise TypeError("顾问因子筛选查询类型错误")
+
+        # 基于基础顾问查询构建最终查询
+        query: Select = cls.consultant_alpha_select_query.where(
+            and_(
+                Alpha.type == alpha_type,
+                Alpha.date_created >= start_time,
+                Alpha.date_created <= end_time,
+            )
+        )
+
+        # 应用可选的筛选条件
+        # 注意：这里假设 Setting 是通过 Alpha 的 relationship 访问的，
+        # SQLAlchemy 会自动处理 JOIN。如果性能有问题，可能需要显式 JOIN。
+        if region:
+            query = query.where(Alpha.settings.any(Setting.region == region))
+        if delay:
+            query = query.where(Alpha.settings.any(Setting.delay == delay))
+        if universe:
+            query = query.where(Alpha.settings.any(Setting.universe == universe))
+
+        await logger.adebug(
+            "顾问因子筛选查询构建完成，准备执行流式查询",
+            emoji="⚙️",
+            query=str(query),
+        )
+
+        # 执行流式查询并逐个返回结果
+        async with get_db_session(Database.EVALUATE) as session:
+            # 使用 stream_scalars 进行流式查询
+            stream_result = await session.stream_scalars(query)
+            alpha_count: int = 0
+            async for alpha in stream_result:
+                alpha_count += 1
+                await logger.adebug(
+                    "产出一个符合条件的 Alpha",
+                    emoji="✨",
+                    alpha_id=alpha.alpha_id,
+                    current_count=alpha_count,
+                )
+                yield alpha  # 使用 yield 返回 Alpha 对象
+
+            await logger.ainfo(
+                "所有符合条件的 Alpha 已通过生成器产出",
+                emoji="✅",
+                role=role,
+                type=alpha_type,
+                start_time=start_time,
+                end_time=end_time,
+                region=region,
+                delay=delay,
+                universe=universe,
+                total_alphas_yielded=alpha_count,
+            )
 
     def __init__(self, alpha: Alpha) -> None:
         """
@@ -330,7 +472,7 @@ class BaseEvaluator:
                     )
                     finished: bool
                     retry_after: Optional[float]
-                    result: Optional[AlphaCorrelationRecordView]
+                    result: Optional[TableView]
                     finished, retry_after, result = (
                         await self._perform_correlation_check(client, corr_type)
                     )
@@ -394,7 +536,7 @@ class BaseEvaluator:
 
     async def _perform_correlation_check(
         self, client: WorldQuantClient, corr_type: CorrelationType
-    ) -> Tuple[bool, Optional[float], Optional[AlphaCorrelationRecordView]]:
+    ) -> Tuple[bool, Optional[float], Optional[TableView]]:
         """
         执行单次相关性检查 API 调用。
 
@@ -403,10 +545,10 @@ class BaseEvaluator:
             corr_type (CorrelationType): 相关性类型。
 
         Returns:
-            Tuple[bool, Optional[float], Optional[AlphaCorrelationRecordView]]:
+            Tuple[bool, Optional[float], Optional[TableView]]:
                 - finished (bool): 检查是否完成。
                 - retry_after (Optional[float]): 建议的重试等待时间（秒），如果未完成。
-                - result (Optional[AlphaCorrelationRecordView]): 检查结果对象，如果已完成。
+                - result (Optional[TableView]): 检查结果对象，如果已完成。
 
         Raises:
             # 根据 client.alpha_correlation_check 可能抛出的异常添加说明
@@ -422,11 +564,11 @@ class BaseEvaluator:
         # 注意：原代码中这里又有一个 async with wq_client，可能导致嵌套或重复获取客户端
         # 这里假设传入的 client 是有效的，直接使用
         # async with wq_client as client: # 移除内部的 async with
-        result_tuple: Tuple[
-            bool, Optional[float], Optional[AlphaCorrelationRecordView]
-        ] = await client.alpha_correlation_check(
-            alpha_id=self._alpha.alpha_id,
-            corr_type=corr_type,
+        result_tuple: Tuple[bool, Optional[float], Optional[TableView]] = (
+            await client.alpha_correlation_check(
+                alpha_id=self._alpha.alpha_id,
+                corr_type=corr_type,
+            )
         )
         await logger.adebug(
             "client.alpha_correlation_check 调用完成",
@@ -438,7 +580,7 @@ class BaseEvaluator:
         return result_tuple
 
     async def _handle_correlation_finished_check(
-        self, result: Optional[AlphaCorrelationRecordView], corr_type: CorrelationType
+        self, result: Optional[TableView], corr_type: CorrelationType
     ) -> None:
         """
         处理相关性检查完成的情况。
@@ -458,8 +600,55 @@ class BaseEvaluator:
                 # 可以考虑记录关键指标，例如：
                 # correlation_count=len(result.correlations) if result.correlations else 0,
             )
-            # TODO: 在这里添加将结果写入数据库或其他后续处理逻辑
-            # await self._save_correlation_result(result, corr_type)
+
+            check_record: CheckRecord = CheckRecord(
+                alpha_id=self._alpha.alpha_id,
+                record_type=(
+                    CheckRecordType.CORRELATION_SELF
+                    if corr_type == CorrelationType.SELF
+                    else CheckRecordType.CORRELATION_PROD
+                ),
+                content=result.model_dump(mode="python"),
+            )
+
+            async with get_db_session(Database.EVALUATE) as session:
+                checks_dal: CheckRecordDAL = DALFactory.create_dal(
+                    session=session, dal_class=CheckRecordDAL
+                )
+                correlation_dal: CorrelationDAL = DALFactory.create_dal(
+                    session=session, dal_class=CorrelationDAL
+                )
+
+                await checks_dal.create(check_record)
+
+                # 生产相关性返回的结果只有相关系数的因子数量分布，没有具体的相关性值
+                if corr_type == CorrelationType.SELF and result and result.records:
+                    corr_index: int = result.table_schema.index_of("correlation")
+                    alpha_id_index: int = result.table_schema.index_of("id")
+
+                    if corr_index == -1 or alpha_id_index == -1:
+                        await logger.aerror(
+                            "相关性检查结果中缺少必要的字段",
+                            emoji="❌",
+                            alpha_id=self._alpha.alpha_id,
+                            corr_type=corr_type,
+                        )
+                        return
+
+                    correlations: List[Correlation] = []
+                    # FIXME: 这里应该有报错
+                    for record in result.records:
+                        alpha_id: str = record[alpha_id_index]
+                        corr_value: float = record[corr_index]
+                        correlation: Correlation = Correlation(
+                            alpha_id_a=self._alpha.alpha_id,
+                            alpha_id_b=alpha_id,
+                            correlation=corr_value,
+                            calc_type=CorrelationCalcType.PLATFORM,
+                        )
+                        correlations.append(correlation)
+
+                    await correlation_dal.bulk_upsert(correlations)
         else:
             # 检查声称已完成，但没有返回有效结果，视为失败或异常情况
             await logger.awarning(
@@ -583,7 +772,6 @@ class BaseEvaluator:
 
                     if finished:
                         if isinstance(result, BeforeAndAfterPerformanceView):
-                            # TODO: 在这里处理结果，例如将其存储到数据库或进行进一步分析
                             await logger.adebug(
                                 "获取到前后性能表现数据",
                                 emoji="✅",
@@ -595,6 +783,26 @@ class BaseEvaluator:
                                 partition=result.partition,
                                 competition=result.competition,
                             )
+
+                            check_record: CheckRecord = CheckRecord(
+                                alpha_id=self._alpha.alpha_id,
+                                record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+                                content=result.model_dump(mode="python"),
+                            )
+
+                            async with get_db_session(Database.EVALUATE) as session:
+                                checks_dal: CheckRecordDAL = DALFactory.create_dal(
+                                    session=session, dal_class=CheckRecordDAL
+                                )
+                                await checks_dal.create(check_record)
+
+                            await logger.ainfo(
+                                "数据前后性能表现获取成功",
+                                emoji="🎉",
+                                alpha_id=self._alpha.alpha_id,
+                                competition_id=competition_id,
+                            )
+
                         else:
                             await logger.aerror(
                                 "获取前后性能表现数据失败，返回结果无效",

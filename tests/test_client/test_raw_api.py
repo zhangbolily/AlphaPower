@@ -361,6 +361,12 @@ async def test_alpha_correlations(setup_mock_responses: str) -> None:
 
             assert isinstance(result, TableView)
 
+            _, _, result, _ = await alpha_fetch_correlations(
+                session, alpha_id, CorrelationType.PROD
+            )
+
+            assert isinstance(result, TableView)
+
 
 @pytest.mark.asyncio
 async def test_alpha_fetch_before_and_after_performance(

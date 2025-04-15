@@ -5,7 +5,7 @@
 __all__ = [
     "AlphaCheckItemView",
     "SubmissionCheckResultView",
-    "AlphaCorrelationRecordView",
+    "TableView",
     "TableView",
     "AlphaDetailView",
     "TableView",
@@ -65,7 +65,6 @@ from .common_view import TableSchemaView, TableView
 from .core import WorldQuantClient, wq_client
 from .models import (
     AlphaCheckItemView,
-    AlphaCorrelationRecordView,
     AlphaDetailView,
     AlphaPropertiesPayload,
     AlphaSampleView,
@@ -104,4 +103,5 @@ from .models import (
     SimulationSettingsView,
     SingleSimulationPayload,
     SingleSimulationResultView,
+    TableView,
 )

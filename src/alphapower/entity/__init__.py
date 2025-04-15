@@ -32,6 +32,7 @@ __all__ = [
     "SimulationTaskStatus",
     "StatsData",
     "Pyramid",
+    "CheckRecord",
 ]
 
 # 数据库常量和会话管理工具
@@ -56,8 +57,6 @@ from .alphas import (
     alphas_classifications,
     alphas_competitions,
 )
-from .checks import Base as ChecksBase
-from .checks import Correlation
 
 # 数据相关实体
 from .data import Base as DataBase
@@ -70,6 +69,8 @@ from .data import (
     StatsData,
     dataset_research_papers,
 )
+from .evaluate import Base as ChecksBase
+from .evaluate import CheckRecord, Correlation
 
 # 模拟相关实体
 from .simulation import Base as SimulationBase
@@ -89,7 +90,7 @@ def register_all_entities() -> None:
         (AlphaBase, Database.ALPHAS),
         (DataBase, Database.DATA),
         (SimulationBase, Database.SIMULATION),
-        (ChecksBase, Database.CHECKS),
+        (ChecksBase, Database.EVALUATE),
     ]
 
     force_recreate_db: bool = settings.environment in [ENV_DEV, ENV_TEST]
