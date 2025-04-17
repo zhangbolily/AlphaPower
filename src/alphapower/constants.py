@@ -693,7 +693,7 @@ class DataFieldType(Enum):
     UNIVERSE = "UNIVERSE"
 
 
-class CheckRecordType(Enum):
+class AlphaCheckType(Enum):
     """检查记录类型枚举。
     定义了系统中可能使用的检查记录类型。
 
@@ -713,7 +713,7 @@ class CheckRecordType(Enum):
     SUBMISSION = "SUBMISSION"  # 提交检查
 
 
-class CheckType(Enum):
+class SampleCheckType(Enum):
     """检查类型枚举。
     定义了系统中可能使用的检查类型。
     Attributes:
@@ -813,6 +813,62 @@ class CompetitionScoring(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CHALLENGE = "CHALLENGE"  # 挑战赛
     PERFORMANCE = "PERFORMANCE"  # 性能赛
+
+
+# -----------------------------------------------------------------------------
+# 评估相关枚举
+# -----------------------------------------------------------------------------
+
+
+class EvaluationStatus(Enum):
+    """评估记录的状态枚举。
+
+    Attributes:
+        PENDING: 待处理
+        RUNNING: 运行中
+        COMPLETED: 已完成
+        FAILED: 失败
+        SKIPPED: 已跳过 (根据刷新策略)
+        BACKGROUND: 在后台运行中 (用于 RUN_ASYNC_IF_MISSING 策略)
+    """
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+    BACKGROUND = "BACKGROUND"
+
+
+class RefreshPolicy(Enum):
+    """评估检查的刷新策略枚举。
+
+    Attributes:
+        USE_EXISTING: 如果存在有效的最新记录，则使用它；否则运行检查。
+        FORCE_REFRESH: 强制重新运行检查，忽略现有记录。
+        SKIP_IF_MISSING: 如果不存在记录，则跳过检查。
+        RUN_ASYNC_IF_MISSING: 如果不存在记录，则在后台异步运行检查，并立即返回 PENDING 状态。
+    """
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    USE_EXISTING = "USE_EXISTING"
+    FORCE_REFRESH = "FORCE_REFRESH"
+    SKIP_IF_MISSING = "SKIP_IF_MISSING"
+    RUN_ASYNC_IF_MISSING = "RUN_ASYNC_IF_MISSING"
+
+
+class CorrelationSource(Enum):
+    """相关性计算来源枚举。
+
+    Attributes:
+        API: 通过外部 WorldQuant API 计算。
+        LOCAL: 通过本地实现的逻辑计算。
+    """
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    API = "API"
+    LOCAL = "LOCAL"
 
 
 # -----------------------------------------------------------------------------
@@ -1100,6 +1156,7 @@ def get_neutralization_for_instrument_region(
     """
     if instrument_type is None or instrument_type == InstrumentType.DEFAULT:
         raise ValueError("instrument_type不能为None或DEFAULT")
+
     if region is None or region == Region.DEFAULT:
         raise ValueError("region不能为None或DEFAULT")
 
@@ -1139,5 +1196,10 @@ if __name__ == "__main__":
         if inst_type != InstrumentType.DEFAULT:
             regions = get_regions_for_instrument_type(inst_type)
             assert len(regions) > 0, f"证券类型 {inst_type} 没有关联的地区"
+
+    # 验证新增枚举的默认值
+    assert EvaluationStatus.DEFAULT.value == "DEFAULT"
+    assert RefreshPolicy.DEFAULT.value == "DEFAULT"
+    assert CorrelationSource.DEFAULT.value == "DEFAULT"
 
     print("所有常量检查通过!")

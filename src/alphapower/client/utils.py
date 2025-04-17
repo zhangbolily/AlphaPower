@@ -6,12 +6,12 @@ import asyncio
 from functools import wraps
 from typing import Any, Awaitable, Callable
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 from .models import RateLimit
 
 # 配置日志
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 def rate_limit_handler(

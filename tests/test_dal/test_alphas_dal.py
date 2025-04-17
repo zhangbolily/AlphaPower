@@ -25,7 +25,6 @@ from alphapower.constants import (
     CompetitionScoring,
     CompetitionStatus,
     Database,
-    Decay,
     Delay,
     Grade,
     InstrumentType,
@@ -87,7 +86,7 @@ async def fixture_test_setting(alphas_session: AsyncSession) -> Setting:
     """
     setting = Setting(
         language=RegularLanguage.PYTHON,
-        decay=Decay.DEFAULT.value,
+        decay=10,
         truncation=0.01,
         visualization=False,
         instrument_type=InstrumentType.EQUITY,

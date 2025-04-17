@@ -11,9 +11,9 @@ from alphapower.client import WorldQuantClient, wq_client
 from alphapower.engine.simulation.task.provider import DatabaseTaskProvider
 from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker_pool import WorkerPool
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 async def task_start_worker_pool(

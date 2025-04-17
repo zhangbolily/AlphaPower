@@ -34,3 +34,12 @@
 文档规范：
 - 总是编写模块文档
 - 总是编写类和方法的文档
+
+项目结构：
+- 数据实体定义在 src/alphapower/entity
+- 数据查询层定义在 src/alphapower/dal 统一使用 DALFactory 生成实体 DAL
+- 应用配置定义在 src/alphapower/settings.py
+- 数据库会话定义 src/alphapower/internal/db_session.py
+- 日志对象管理 src/alphapower/internal/logging.py
+- 大部分的 View 类 src/alphapower/client
+- 单元测试 tests

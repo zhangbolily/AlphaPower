@@ -51,7 +51,7 @@ def add_coroutine_id(
     return event_dict
 
 
-def setup_logging(
+def get_logger(
     module_name: str, enable_console: bool = True
 ) -> structlog.stdlib.BoundLogger:
     """

@@ -25,10 +25,10 @@ from typing import Any, Awaitable, Callable, TypeVar
 
 from aiohttp import ClientResponseError
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 # 配置日志
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar("T", bound=Callable[..., Awaitable])
 

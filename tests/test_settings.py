@@ -1,9 +1,9 @@
 import os
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 from alphapower.settings import settings
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 def test_settings() -> None:

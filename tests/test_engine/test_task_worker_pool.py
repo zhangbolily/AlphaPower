@@ -29,10 +29,10 @@ from alphapower.engine.simulation.task.scheduler import PriorityScheduler
 from alphapower.engine.simulation.task.worker import AbstractWorker, Worker
 from alphapower.engine.simulation.task.worker_pool import WorkerPool
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 # 禁用日志以避免测试输出混乱
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 # pylint: disable=protected-access
 

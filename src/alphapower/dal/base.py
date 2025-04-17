@@ -4,7 +4,18 @@
 """
 
 import traceback
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union, cast
+from typing import (
+    Any,
+    AsyncGenerator,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +24,7 @@ from sqlalchemy.sql.expression import ColumnExpressionArgument, Delete, Select, 
 from structlog.stdlib import BoundLogger
 from typing_extensions import Protocol
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 # pylint: disable=E1102
 
@@ -57,7 +68,7 @@ class BaseDAL(Generic[T]):
         self.session: AsyncSession = session
 
         # 使用 setup_logging 获取 structlog 的 logger
-        self.logger: BoundLogger = setup_logging(
+        self.logger: BoundLogger = get_logger(
             f"alphapower.dal.{self.__class__.__name__}"
         )
         self.logger.info(
@@ -69,18 +80,12 @@ class BaseDAL(Generic[T]):
     @classmethod
     def create_dal(
         cls: Type["BaseDAL[T]"],
-        entity_type: Optional[Type[T]] = None,
-        session: Optional[AsyncSession] = None,
+        session: AsyncSession,  # session 变为必需参数
     ) -> "BaseDAL[T]":
         """
         创建 DAL 实例的工厂方法。
 
-        支持两种调用方式:
-        1. create(entity_type, session) - 标准方式
-        2. create(session) - 当子类已明确指定了实体类型时
-
         Args:
-            entity_type: 实体类的类型或会话对象。如果是会话对象，则后面的session参数应为None。
             session: SQLAlchemy 异步会话对象。
 
         Returns:
@@ -90,11 +95,10 @@ class BaseDAL(Generic[T]):
             ValueError: 当参数不足或会话对象缺失时。
         """
         # 使用 setup_logging 获取 structlog 的 logger
-        logger = setup_logging(f"alphapower.dal.{cls.__name__}")
+        logger = get_logger(f"alphapower.dal.{cls.__name__}")
         logger.debug(
             "调用DAL工厂方法",
             dal_class=cls.__name__,
-            entity_type=entity_type.__name__ if entity_type else None,
             emoji="🏭",
         )
 
@@ -108,16 +112,8 @@ class BaseDAL(Generic[T]):
             raise ValueError("会话对象必须提供且必须是AsyncSession实例")
 
         # 确定实体类型
-        actual_entity_type = None
-        if isinstance(entity_type, type):
-            # 如果明确提供了实体类型，则使用它
-            logger.debug(
-                "使用提供的实体类型",
-                entity_type=entity_type.__name__,
-                emoji="✅",
-            )
-            actual_entity_type = entity_type
-        elif cls.entity_class is not None:
+        actual_entity_type: Optional[Type[T]] = None  # 添加类型注解
+        if cls.entity_class is not None:
             # 如果子类定义了实体类型，则使用它
             logger.debug(
                 "使用子类定义的实体类型",
@@ -135,11 +131,12 @@ class BaseDAL(Generic[T]):
             raise ValueError(f"子类 {cls.__name__} 必须提供实体类型或定义entity_class")
         else:
             # 对于基类，必须提供实体类型
+            # 基类不应该直接调用 create_dal 来创建实例
             logger.error(
-                "基类需要提供实体类型",
+                "BaseDAL 不能直接创建实例，请使用子类或提供 entity_type 给构造函数",
                 emoji="❌",
             )
-            raise ValueError("BaseDAL需要提供实体类型")
+            raise TypeError("BaseDAL 不能直接创建实例，请使用子类")
 
         # 创建实例并返回
         logger.info(
@@ -148,6 +145,7 @@ class BaseDAL(Generic[T]):
             entity_type=actual_entity_type.__name__,
             emoji="✅",
         )
+        # 传递 entity_type 给构造函数
         return cls(entity_type=actual_entity_type, session=session)
 
     async def create_entity(self, **kwargs: Any) -> T:
@@ -726,6 +724,20 @@ class BaseDAL(Generic[T]):
         result = await actual_session.execute(query)
         return list(result.scalars().all())
 
+    async def execute_stream_query(self, query: Select) -> AsyncGenerator[T, None]:
+        """
+        执行自定义查询，返回异步生成器。
+
+        Args:
+            query: SQLAlchemy Select 查询对象。
+
+        Yields:
+            查询结果列表。
+        """
+        result = await self.session.stream_scalars(query)
+        async for entity in result:
+            yield entity
+
 
 # 为 DALFactory 创建的泛型类型变量
 D = TypeVar("D", bound=BaseDAL)
@@ -747,7 +759,7 @@ class DALFactory:
         Returns:
             新创建的 DAL 实例，类型与传入的 dal_class 一致。
         """
-        logger = setup_logging(f"alphapower.dal.{dal_class.__name__}")
+        logger = get_logger(f"alphapower.dal.{dal_class.__name__}")
         logger.debug(
             "创建 DAL 实例",
             dal_class=dal_class.__name__,
@@ -763,7 +775,7 @@ class DALFactory:
             )
             raise ValueError("会话对象必须提供且必须是AsyncSession实例")
 
-        dal_instance = cast(D, dal_class.create_dal(session=session))
+        dal_instance: D = dal_class.create_dal(session=session)  # 修正调用方式
         logger.info(
             "DAL 实例创建成功",
             dal_class=dal_class.__name__,
@@ -786,34 +798,41 @@ class EntityDAL(BaseDAL[T]):
         Args:
             session: SQLAlchemy 异步会话对象。
         """
+        if self.entity_class is None:
+            # 在构造函数中检查 entity_class
+            logger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
+            logger.error(
+                "未定义实体类型",
+                dal_class=self.__class__.__name__,
+                emoji="❌",
+            )
+            raise ValueError(f"子类 {self.__class__.__name__} 必须定义 entity_class")
         super().__init__(self.entity_class, session)
+        # self.logger 在 super().__init__ 中初始化，这里可以直接使用
         self.logger.info(
             "初始化实体 DAL 实例",
-            entity_class=self.entity_class.__name__ if self.entity_class else None,
+            entity_class=self.entity_class.__name__,
             emoji="✅",
         )
 
     @classmethod
     def create_dal(
         cls: Type["EntityDAL[T]"],
-        entity_type: Optional[Union[Type[T]]] = None,
-        session: Optional[AsyncSession] = None,
+        session: AsyncSession,  # session 变为必需参数
     ) -> "EntityDAL[T]":
         """
         创建实体 DAL 实例的统一工厂方法。
 
         Args:
-            entity_type: 实体类型或会话对象。
             session: SQLAlchemy 异步会话对象。
 
         Returns:
             特定类型的 DAL 实例。
         """
-        logger = setup_logging(f"alphapower.dal.{cls.__name__}")
+        logger = get_logger(f"alphapower.dal.{cls.__name__}")
         logger.debug(
             "调用实体 DAL 工厂方法",
             dal_class=cls.__name__,
-            entity_type=entity_type.__name__ if entity_type else None,
             emoji="🏭",
         )
 
@@ -825,21 +844,13 @@ class EntityDAL(BaseDAL[T]):
             )
             raise ValueError("会话对象必须提供且必须是AsyncSession实例")
 
-        if isinstance(entity_type, type):
-            logger.debug(
-                "使用提供的实体类型",
-                entity_type=entity_type.__name__,
-                emoji="✅",
-            )
-            return cls(session=session)
-
         if cls.entity_class is None:
             logger.error(
                 "未定义实体类型",
                 dal_class=cls.__name__,
                 emoji="❌",
             )
-            raise ValueError(f"子类 {cls.__name__} 必须提供实体类型或定义 entity_class")
+            raise ValueError(f"子类 {cls.__name__} 必须定义 entity_class")
 
         logger.info(
             "实体 DAL 实例创建成功",
@@ -847,4 +858,5 @@ class EntityDAL(BaseDAL[T]):
             entity_class=cls.entity_class.__name__,
             emoji="✅",
         )
+        # 直接使用 cls 创建实例
         return cls(session=session)

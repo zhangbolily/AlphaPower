@@ -35,9 +35,9 @@ from alphapower.dal.alphas import CompetitionDAL
 from alphapower.dal.base import DALFactory
 from alphapower.entity import Competition
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
-logger: BoundLogger = setup_logging(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 async def create_competition(view: CompetitionView) -> Competition:

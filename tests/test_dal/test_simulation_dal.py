@@ -16,6 +16,7 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
+    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -74,13 +75,13 @@ class TestSimulationTaskDAL:
                     # 添加缺失的必填字段
                     instrument_type=InstrumentType.EQUITY,
                     region=Region.GLB,
-                    universe=Universe.TOP500,
+                    universe=Universe.TOP3000,
                     delay=Delay.ONE,
                     neutralization=Neutralization.MARKET,
                     pasteurization=Switch.OFF,
                     unit_handling=UnitHandling.VERIFY,
                     max_trade=Switch.OFF,
-                    language="python",
+                    language=RegularLanguage.PYTHON,
                     visualization=False,
                 )
                 for i in range(1, 3)
@@ -119,13 +120,13 @@ class TestSimulationTaskDAL:
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.GLB,
-                universe=Universe.TOP500,
+                universe=Universe.TOP3000,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language="python",
+                language=RegularLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -163,13 +164,13 @@ class TestSimulationTaskDAL:
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=False,
         )
         simulation_session.add(task)
@@ -205,13 +206,13 @@ class TestSimulationTaskDAL:
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.GLB,
-                universe=Universe.TOP500,
+                universe=Universe.TOP3000,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language="python",
+                language=RegularLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -228,13 +229,13 @@ class TestSimulationTaskDAL:
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=False,
         )
 
@@ -271,13 +272,13 @@ class TestSimulationTaskDAL:
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.GLB,
-                universe=Universe.TOP500,
+                universe=Universe.TOP3000,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language="python",
+                language=RegularLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -294,13 +295,13 @@ class TestSimulationTaskDAL:
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=False,
         )
 
@@ -340,13 +341,13 @@ class TestSimulationTaskDAL:
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.GLB,
-                universe=Universe.TOP500,
+                universe=Universe.TOP3000,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language="python",
+                language=RegularLanguage.PYTHON,
                 visualization=False,
             )
             simulation_session.add(task)
@@ -371,7 +372,10 @@ class TestSimulationTaskDAL:
         task_dal = SimulationTaskDAL(simulation_session)
 
         # 创建测试数据
-        group_key = "TEST_GROUP"
+        group_key = (
+            f"{Region.GLB.value}_{Delay.ONE.value}_"
+            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+        )
         tasks = [
             SimulationTask(
                 alpha_id=f"GROUP_ALPHA_{i}",
@@ -385,13 +389,13 @@ class TestSimulationTaskDAL:
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.GLB,
-                universe=Universe.TOP500,
+                universe=Universe.TOP3000,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language="python",
+                language=RegularLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -409,13 +413,13 @@ class TestSimulationTaskDAL:
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=False,
         )
 
@@ -458,13 +462,13 @@ class TestSimulationTaskDAL:
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=False,
         )
 
@@ -481,13 +485,13 @@ class TestSimulationTaskDAL:
                 # 添加缺失的必填字段
                 instrument_type=InstrumentType.EQUITY,
                 region=Region.GLB,
-                universe=Universe.TOP500,
+                universe=Universe.TOP3000,
                 delay=Delay.ONE,
                 neutralization=Neutralization.MARKET,
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language="python",
+                language=RegularLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 3)
@@ -505,13 +509,13 @@ class TestSimulationTaskDAL:
             # 添加缺失的必填字段
             instrument_type=InstrumentType.EQUITY,
             region=Region.GLB,
-            universe=Universe.TOP500,
+            universe=Universe.TOP3000,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language="python",
+            language=RegularLanguage.PYTHON,
             visualization=False,
         )
 

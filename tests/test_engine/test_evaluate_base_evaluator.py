@@ -24,9 +24,8 @@ from alphapower.client import (
 from alphapower.client.checks_view import StatsView  # 导入 StatsView
 from alphapower.constants import (
     ALPHA_ID_LENGTH,
+    AlphaCheckType,
     AlphaType,
-    CheckRecordType,
-    CheckType,
     Color,
     CompetitionScoring,
     CompetitionStatus,
@@ -47,7 +46,7 @@ from alphapower.constants import (
 )
 from alphapower.dal.base import DALFactory
 from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
-from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
+from alphapower.engine.evaluate.original_base_evaluator import BaseEvaluator
 from alphapower.entity import (
     Alpha,
     Check,
@@ -200,7 +199,7 @@ def sample_check_matches(sample_competition: Competition) -> Check:
     return Check(
         id=1,
         sample_id=1,  # 假设关联的 Sample ID 为 1
-        name=CheckType.MATCHES_COMPETITION.value,
+        name=AlphaCheckType.MATCHES_COMPETITION.value,
         result="PASS",
         competitions=competitions_json,
     )
@@ -376,7 +375,7 @@ class TestBaseEvaluator:
         sample_sample.checks = [
             c
             for c in sample_sample.checks
-            if c.name != CheckType.MATCHES_COMPETITION.value
+            if c.name != AlphaCheckType.MATCHES_COMPETITION.value
         ]
         competitions = await base_evaluator.matched_competitions()
         assert competitions == []
@@ -387,7 +386,7 @@ class TestBaseEvaluator:
     ) -> None:
         """测试匹配竞赛检查项存在但列表为空的情况。"""
         for check in sample_sample.checks:
-            if check.name == CheckType.MATCHES_COMPETITION.value:
+            if check.name == AlphaCheckType.MATCHES_COMPETITION.value:
                 check.competitions = "[]"  # 设置为空列表 JSON
         competitions = await base_evaluator.matched_competitions()
         assert competitions == []
@@ -398,7 +397,7 @@ class TestBaseEvaluator:
     ) -> None:
         """测试匹配竞赛检查项 JSON 无效的情况。"""
         for check in sample_sample.checks:
-            if check.name == CheckType.MATCHES_COMPETITION.value:
+            if check.name == AlphaCheckType.MATCHES_COMPETITION.value:
                 check.competitions = "invalid json"
         with pytest.raises(ValueError, match="竞赛列表 JSON 无效"):
             await base_evaluator.matched_competitions()
@@ -462,7 +461,7 @@ class TestBaseEvaluator:
         # 验证 CheckRecord 内容
         created_check_record: CheckRecord = mock_check_record_dal.create.call_args[0][0]
         assert created_check_record.alpha_id == sample_alpha.alpha_id
-        assert created_check_record.record_type == CheckRecordType.CORRELATION_SELF
+        assert created_check_record.record_type == AlphaCheckType.CORRELATION_SELF
         assert created_check_record.content == mock_result.model_dump(mode="python")
 
         # 验证 Correlation 内容
@@ -524,7 +523,7 @@ class TestBaseEvaluator:
 
         created_check_record: CheckRecord = mock_check_record_dal.create.call_args[0][0]
         assert created_check_record.alpha_id == sample_alpha.alpha_id
-        assert created_check_record.record_type == CheckRecordType.CORRELATION_PROD
+        assert created_check_record.record_type == AlphaCheckType.CORRELATION_PROD
         assert created_check_record.content == mock_result.model_dump(mode="python")
 
     @pytest.mark.asyncio
@@ -766,7 +765,7 @@ class TestBaseEvaluator:
         assert created_check_record.alpha_id == sample_alpha.alpha_id
         assert (
             created_check_record.record_type
-            == CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE
+            == AlphaCheckType.BEFORE_AND_AFTER_PERFORMANCE
         )
         assert created_check_record.content == mock_result.model_dump(mode="python")
 

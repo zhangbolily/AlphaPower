@@ -35,9 +35,9 @@ from sqlalchemy.orm import DeclarativeBase
 from alphapower.constants import Database
 from alphapower.settings import DatabaseConfig, settings
 
-from .logging import setup_logging
+from .logging import get_logger
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 db_engines: Dict[Database, AsyncEngine] = {}
 async_session_factories: Dict[Database, async_sessionmaker[AsyncSession]] = {}

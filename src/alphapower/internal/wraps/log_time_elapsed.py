@@ -3,9 +3,9 @@ import time
 from functools import wraps
 from typing import Any, Callable, Coroutine, TypeVar, cast
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
-logger = setup_logging(__name__, enable_console=False)
+logger = get_logger(__name__, enable_console=False)
 
 F = TypeVar("F", bound=Callable[..., Coroutine[Any, Any, Any]])
 

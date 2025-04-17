@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from alphapower.config.settings import DATABASES
 from alphapower.entity import AlphaBase, DataBase, SimulationBase
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 # 配置日志
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 # 创建异步数据库引擎
 engines = {

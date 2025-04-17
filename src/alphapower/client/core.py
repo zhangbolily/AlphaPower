@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 from aiohttp import BasicAuth, ClientSession
 
 from alphapower.constants import CorrelationType
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
 
@@ -57,7 +57,7 @@ from .raw_api import (
 )
 from .utils import rate_limit_handler
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 class WorldQuantClient:

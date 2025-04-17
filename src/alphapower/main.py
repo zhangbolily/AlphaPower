@@ -15,7 +15,7 @@ from typing import Optional
 
 import asyncclick as click  # 替换为 asyncclick
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 from alphapower.internal.storage import close_resources
 from alphapower.internal.utils import safe_async_run
 from alphapower.services.sync_alphas import sync_alphas
@@ -25,7 +25,7 @@ from alphapower.services.task_worker_pool import (
     task_start_worker_pool,
 )
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 async def handle_exit_signal(signum: int, frame: Optional[types.FrameType]) -> None:

@@ -25,14 +25,14 @@ from typing import (
 
 from alphapower.client import SingleSimulationResultView, WorldQuantClient
 from alphapower.entity import SimulationTask
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 from .scheduler_abc import AbstractScheduler
 from .worker import Worker
 from .worker_abc import AbstractWorker
 from .worker_pool_abc import AbstractWorkerPool
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 # 类型变量定义
 T = TypeVar("T")

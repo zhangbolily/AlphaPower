@@ -27,9 +27,17 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncAttrs
 
 # 导入 validates 装饰器
-from sqlalchemy.orm import DeclarativeBase, MappedColumn, mapped_column
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    MappedColumn,
+    mapped_column,
+)
 
-from alphapower.constants import ALPHA_ID_LENGTH, CheckRecordType, CorrelationCalcType
+from alphapower.constants import (
+    ALPHA_ID_LENGTH,
+    AlphaCheckType,
+    CorrelationCalcType,
+)
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -152,8 +160,8 @@ class CheckRecord(Base):
         nullable=False,
         comment="Alpha ID",  # 添加字段注释
     )
-    record_type: MappedColumn[CheckRecordType] = mapped_column(
-        Enum(CheckRecordType),
+    record_type: MappedColumn[AlphaCheckType] = mapped_column(
+        Enum(AlphaCheckType),
         nullable=False,
         comment="记录类型",  # 添加字段注释
     )

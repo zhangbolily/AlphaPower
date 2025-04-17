@@ -35,12 +35,12 @@ from alphapower.constants import (
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 from .scheduler_abc import AbstractScheduler
 from .worker_abc import AbstractWorker
 
-logger = setup_logging(__name__)
+logger = get_logger(__name__)
 
 
 def build_single_simulation_payload(task: SimulationTask) -> SingleSimulationPayload:

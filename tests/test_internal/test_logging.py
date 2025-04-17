@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from structlog.stdlib import BoundLogger
 
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 # pylint: disable=W0613
 
@@ -104,7 +104,7 @@ class TestSetupLogging:
         mock_get_logger.return_value = mock_logger
 
         # 执行测试函数
-        result: BoundLogger = setup_logging(module_name, enable_console=True)
+        result: BoundLogger = get_logger(module_name, enable_console=True)
 
         # 验证结果
         assert result == mock_logger
@@ -155,7 +155,7 @@ class TestSetupLogging:
         mock_get_logger.return_value = mock_logger
 
         # 执行测试函数
-        _: BoundLogger = setup_logging(module_name, enable_console=False)
+        _: BoundLogger = get_logger(module_name, enable_console=False)
 
         # 验证结果
         logger: logging.Logger = logging.getLogger(module_name)
@@ -185,7 +185,7 @@ class TestSetupLogging:
         """
         # 模拟目录不存在
         with patch("os.path.exists", return_value=False):
-            setup_logging("test_log_dir")
+            get_logger("test_log_dir")
             # 验证目录创建调用
             mock_makedirs.assert_called_once_with(mock_settings.log_dir)
 
@@ -202,7 +202,7 @@ class TestSetupLogging:
             logger_cleanup: 日志清理夹具
         """
         # 使用真实的结构化日志配置
-        logger: BoundLogger = setup_logging("test_async")
+        logger: BoundLogger = get_logger("test_async")
 
         # 简单测试日志输出
         await asyncio.sleep(0.1)  # 确保在异步上下文中

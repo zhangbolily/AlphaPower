@@ -7,11 +7,11 @@ __all__ = [
     "get_db_session",
     "log_time_elapsed",
     "Propagation",
-    "setup_logging",
+    "get_logger",
     "Transactional",
 ]
 from .db_session import get_db_session
-from .logging import setup_logging
+from .logging import get_logger
 from .wraps.exception import exception_handler
 from .wraps.log_time_elapsed import log_time_elapsed
 from .wraps.transactional import Propagation, Transactional

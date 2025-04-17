@@ -22,14 +22,14 @@ from alphapower.client import (
 from alphapower.constants import DB_DATA
 from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import log_time_elapsed  # 引入公共方法
 
 from .utils import get_or_create_entity  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
-logger = setup_logging(f"{__name__}_file", enable_console=False)
-console_logger = setup_logging(f"{__name__}_console", enable_console=True)
+logger = get_logger(f"{__name__}_file", enable_console=False)
+console_logger = get_logger(f"{__name__}_console", enable_console=True)
 
 
 @log_time_elapsed

@@ -9,12 +9,12 @@ from typing import Dict, List, Optional
 from structlog.stdlib import BoundLogger
 
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 from .provider_abc import AbstractTaskProvider
 from .scheduler_abc import AbstractScheduler
 
-logger: BoundLogger = setup_logging(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class PriorityScheduler(AbstractScheduler):

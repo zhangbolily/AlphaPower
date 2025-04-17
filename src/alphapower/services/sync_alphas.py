@@ -47,14 +47,14 @@ from alphapower.entity import (
     Setting,
 )
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 from .sync_competition import competition_data_expire_check, sync_competition
 from .utils import create_sample
 
 # 配置日志
-console_logger: BoundLogger = setup_logging(__name__, enable_console=True)
-file_logger: BoundLogger = setup_logging(__name__, enable_console=False)
+console_logger: BoundLogger = get_logger(__name__, enable_console=True)
+file_logger: BoundLogger = get_logger(__name__, enable_console=False)
 
 # TODO(Ball Chang): 支持全量和增量同步，努力提高数据同步并发度和写入性能
 # TODO(Ball Chang): 找一个好的解决方案来判断因子回测配置是否相同

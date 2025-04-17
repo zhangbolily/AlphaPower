@@ -66,7 +66,7 @@ async def fixture_dal(alphas_session: AsyncSession) -> BaseDAL:
     Returns:
         BaseDAL: 初始化好的数据访问层实例。
     """
-    return BaseDAL.create_dal(Setting, alphas_session)
+    return BaseDAL(Setting, alphas_session)
 
 
 class TestBaseDAL:
@@ -539,38 +539,55 @@ class TestBaseDAL:
         assert all(a.type == AlphaType.REGULAR for a in results)
         assert any(a.alpha_id.startswith("QUERY_TEST_") for a in results)
 
-    async def test_dal_create_method(self, alphas_session: AsyncSession) -> None:
-        """测试 BaseDAL.create 工厂方法。
+    async def test_execute_stream_query(self, alphas_session: AsyncSession) -> None:
+        """测试流式查询执行方法。
 
-        验证 create 方法是否能够正确创建 DAL 实例，并处理不同的参数情况。
+        验证 execute_stream_query 方法是否能够正确执行查询并返回异步生成器。
 
         Args:
             alphas_session: 数据库会话对象。
         """
-        # 测试使用实体类型和会话创建
-        dal1 = BaseDAL.create_dal(Setting, alphas_session)
-        assert isinstance(dal1, BaseDAL)
-        assert dal1.entity_type is Setting
-        assert dal1.session is alphas_session
+        # 创建 DAL 实例
+        alpha_dal = AlphaDAL(alphas_session)
 
-        # 测试只使用会话创建（对于子类）
-        dal2 = SettingDAL.create_dal(session=alphas_session)
-        assert isinstance(dal2, SettingDAL)
-        assert dal2.entity_type is Setting
-        assert dal2.session is alphas_session
+        # 创建测试数据
+        stream_alphas = [
+            Alpha(
+                alpha_id=f"STREAM_TEST_{i}",
+                type=AlphaType.REGULAR,
+                author=f"stream_author_{i}",
+                name=f"流式查询测试_{i}",
+                favorite=False,
+                hidden=False,
+                color=Color.NONE,
+                grade=Grade.DEFAULT,
+                stage=Stage.DEFAULT,
+                status=Status.DEFAULT,
+                date_created=datetime.now(),
+                settings_id=1,
+                regular_id=1,
+            )
+            for i in range(1, 4)
+        ]
+        alphas_session.add_all(stream_alphas)
+        await alphas_session.flush()
 
-        # 测试参数顺序交换
-        dal3 = BaseDAL.create_dal(session=alphas_session, entity_type=Setting)
-        assert isinstance(dal3, BaseDAL)
-        assert dal3.entity_type is Setting
+        # 构建查询
+        query = alpha_dal.query().where(Alpha.author.like("stream_author_%"))
 
-        # 测试错误情况 - 缺少会话
-        with pytest.raises(ValueError):
-            BaseDAL.create_dal(Setting)
+        # 执行流式查询并验证结果
+        count = 0
+        streamed_ids = set()
+        async for alpha in alpha_dal.execute_stream_query(query):
+            assert isinstance(alpha, Alpha)
+            assert alpha.author.startswith("stream_author_")
+            assert alpha.alpha_id.startswith("STREAM_TEST_")
+            streamed_ids.add(alpha.alpha_id)
+            count += 1
 
-        # 测试错误情况 - 缺少实体类型
-        with pytest.raises(ValueError):
-            BaseDAL.create_dal(session=alphas_session)
+        # 验证数量和内容
+        assert count == 3
+        assert streamed_ids == {"STREAM_TEST_1", "STREAM_TEST_2", "STREAM_TEST_3"}
 
     async def test_upsert(self, alphas_session: AsyncSession) -> None:
         """测试 upsert 方法。

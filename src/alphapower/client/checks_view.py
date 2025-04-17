@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Type
 
 from pydantic import AliasChoices, BaseModel, Field
 
-from alphapower.constants import CheckRecordType, CompetitionScoring
+from alphapower.constants import AlphaCheckType, CompetitionScoring
 
 from .common_view import TableView
 from .models import AlphaCheckItemView
@@ -163,8 +163,8 @@ class BeforeAndAfterPerformanceView(BaseModel):
     score: Optional[ScoreView] = None
 
 
-CheckTypeViewMap: Dict[CheckRecordType, Type[BaseModel]] = {
-    CheckRecordType.CORRELATION_SELF: TableView,
-    CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE: BeforeAndAfterPerformanceView,
-    CheckRecordType.SUBMISSION: SubmissionCheckResultView,
+CheckTypeViewMap: Dict[AlphaCheckType, Type[BaseModel]] = {
+    AlphaCheckType.CORRELATION_SELF: TableView,
+    AlphaCheckType.BEFORE_AND_AFTER_PERFORMANCE: BeforeAndAfterPerformanceView,
+    AlphaCheckType.SUBMISSION: SubmissionCheckResultView,
 }

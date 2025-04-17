@@ -26,13 +26,13 @@ from alphapower.client import (
 from alphapower.constants import DB_DATA
 from alphapower.entity import Category, DataField, Dataset
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging  # 修复导入
+from alphapower.internal.logging import get_logger  # 修复导入
 
 from .utils import get_or_create_entity
 
 # 配置日志
-file_logger = setup_logging(f"{__name__}_file", enable_console=False)  # 文件日志
-console_logger = setup_logging(f"{__name__}_console", enable_console=True)  # 控制台日志
+file_logger = get_logger(f"{__name__}_file", enable_console=False)  # 文件日志
+console_logger = get_logger(f"{__name__}_console", enable_console=True)  # 控制台日志
 
 
 async def create_datafield(

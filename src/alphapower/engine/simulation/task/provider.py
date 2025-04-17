@@ -15,11 +15,11 @@ from alphapower.constants import Database
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.db_session import get_db_session
-from alphapower.internal.logging import setup_logging
+from alphapower.internal.logging import get_logger
 
 from .provider_abc import AbstractTaskProvider
 
-logger: BoundLogger = setup_logging(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class DatabaseTaskProvider(AbstractTaskProvider):
