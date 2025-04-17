@@ -9,7 +9,7 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import abc
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, AsyncGenerator
 
 # SQLAlchemy 列元素，用于构建数据库查询条件
 from sqlalchemy import Select
@@ -46,7 +46,7 @@ class AbstractAlphaFetcher(abc.ABC):
     @abc.abstractmethod
     async def _build_alpha_select_query(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> Select:
         """构建用于筛选 Alpha 的 SQLAlchemy 查询对象 (Select Object)。
 
@@ -66,7 +66,7 @@ class AbstractAlphaFetcher(abc.ABC):
     @abc.abstractmethod
     async def fetch_alphas(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> AsyncGenerator[Alpha, None]:
         """异步获取符合筛选条件的 Alpha 实体。
 
@@ -89,7 +89,7 @@ class AbstractAlphaFetcher(abc.ABC):
     @abc.abstractmethod
     async def total_alpha_count(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> int:
         """获取符合筛选条件的 Alpha 总数量。
 
@@ -109,7 +109,7 @@ class AbstractAlphaFetcher(abc.ABC):
     @abc.abstractmethod
     async def fetched_alpha_count(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> int:
         """获取当前已通过 `fetch_alphas` 获取的 Alpha 数量。
 
@@ -127,7 +127,7 @@ class AbstractAlphaFetcher(abc.ABC):
     @abc.abstractmethod
     async def remaining_alpha_count(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> int:
         """获取尚未通过 `fetch_alphas` 获取的剩余 Alpha 数量。
 

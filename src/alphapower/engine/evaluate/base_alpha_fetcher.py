@@ -8,7 +8,7 @@
 
 from __future__ import annotations  # 解决类型前向引用问题
 
-from typing import Any, AsyncGenerator, Dict, List, cast
+from typing import Any, AsyncGenerator, List, cast
 
 from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, select
 
@@ -48,40 +48,25 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
 
     async def _build_alpha_select_query(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> Select:
-        """构建用于筛选 Alpha 的 SQLAlchemy 查询对象 (Select Object) (待实现)。
+        """构建用于筛选 Alpha 的 SQLAlchemy 查询对象 (Select Object)。
 
-        世坤 (WorldQuant) 顾问因子过滤基本要求
-        适用于除中国 (CHN) 区域外的 Alpha:
-            - 适应度 (Fitness): 延迟 0 (delay 0) 时 alpha > 1.5，延迟 1 (delay 1) 时 alpha > 1
-            - 夏普比率 (Sharpe Ratio): 延迟 0 时 alpha > 2.69，延迟 1 时 alpha > 1.58
-            - 换手率 (Turnover): 大于 1% 且小于 70%
-            - 权重 (Weight): 任何单一股票的最大权重 < 10%。衡量是否有足够数量的股票被赋予显著权重。
-            具体数量取决于模拟范围 (如 top 3000, top 2000 等)。
-            - 子宇宙测试 (Sub-universe Test): 在不同的子市场或股票池中的夏普比率必须高于特定阈值。
-            这些阈值会随着子宇宙规模的减小而降低。
-            - 自相关性 (Self-correlation): PNL (Profit and Loss, 盈亏) 序列与用户其他 Alpha 的相关性 < 0.7，
-            或者夏普比率至少比用户提交的其他相关 Alpha 高 10%。
-            - 生产相关性 (Prod-correlation): 与自相关标准相同，但适用于 BRAIN 平台中提交的所有 Alpha，
-            而不仅仅是用户自己的 Alpha。
-            - 样本内夏普比率/阶梯测试 (IS-Sharpe or IS-Ladder Test): 样本内最近 2, 3, ..., 10 年的夏普比率
-            应高于为延迟 1 (D1) 和延迟 0 (D0) 设置的夏普比率阈值。
-            - 偏差测试 (Bias Test): 测量 Alpha 中是否存在任何前向偏差 (Forward Bias)。
-            对于表达式生成的 Alpha (Expression Alphas)，此测试不应失败。
-        适用于中国 (CHN) 地区的 Alpha:
-            - 由于中国市场交易成本较高，要求的回报也更高。
-            - 延迟 1 (D1) 提交标准: 夏普比率 >= 2.08, 收益率 (Returns) >= 8%, 适应度 (Fitness) >= 1.0
-            - 延迟 0 (D0) 提交标准: 夏普比率 >= 3.5, 收益率 (Returns) >= 12%, 适应度 (Fitness) >= 1.5
-            - 附加测试: 稳健宇宙检验性能 (Robust Universe Test Performance) - 如果稳健宇宙 (Robust Universe)
-            成分保留了提交版本至少 40% 的收益和夏普值，则认为 Alpha 表现良好。
-        超级 Alpha (Superalphas):
-            - 适用与普通 Alpha 相同的提交标准，但换手率要求更严格: 2% <= Turnover < 40%。
+        根据世坤 (WorldQuant) 的顾问因子过滤要求构建查询。
+
+        Args:
+            **kwargs: 额外的筛选参数 (当前未使用，但保留以备将来扩展)。
+
+        Returns:
+            构建好的 SQLAlchemy Select 查询对象。
+
+        Raises:
+            NotImplementedError: 如果子类没有实现具体的筛选逻辑 (虽然基类提供了实现)。
         """
-        await logger.debug(
-            "🚧 _build_alpha_select_query 方法尚未实现",
-            emoji="🚧",
-            kwargs=kwargs,
+        await logger.adebug(
+            "🏗️ 开始构建 Alpha 筛选查询",
+            emoji="🏗️",
+            filter_kwargs=kwargs,
         )
 
         # 定义连接条件别名，提高可读性
@@ -152,12 +137,20 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         # 使用 and_() 将所有条件组合起来
         final_query: Select = query.where(and_(*criteria))
 
-        logger.debug("顾问因子筛选查询构建完成", emoji="✅", query=str(final_query))
+        # 注意：如果查询字符串过长，考虑只记录关键部分或哈希值
+        query_str = str(final_query)
+        log_query = query_str[:70] + "..." if len(query_str) > 70 else query_str
+        await logger.adebug(
+            "✅ Alpha 筛选查询构建完成",
+            emoji="✅",
+            query=log_query,
+            full_query_len=len(query_str),
+        )
         return final_query
 
     async def fetch_alphas(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> AsyncGenerator[Alpha, None]:
         """异步获取符合筛选条件的 Alpha 实体。
 
@@ -168,38 +161,48 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
 
         Yields:
             逐个返回符合筛选条件的 `Alpha` 实体对象。
+
+        Raises:
+            Exception: 如果在数据库查询或流式处理过程中发生错误。
         """
-        await logger.ainfo("🚀 开始获取 Alpha 数据流", emoji="🚀", **kwargs)
+        await logger.ainfo("🚀 <= 开始执行 fetch_alphas", emoji="🚀", **kwargs)
         query: Select = await self._build_alpha_select_query(**kwargs)
-        await logger.adebug("构建的 Alpha 查询", query=str(query))
+        query_str = str(query)
+        log_query = query_str[:70] + "..." if len(query_str) > 70 else query_str
+        await logger.adebug(
+            "构建的 Alpha 查询",
+            query=log_query,
+            full_query_len=len(query_str),
+        )
 
         try:
             async for alpha in self.alpha_dal.execute_stream_query(query):
                 self._fetched_count += 1
                 await logger.adebug(
-                    "获取到 Alpha",
+                    "🔍 获取到 Alpha",
                     emoji="🔍",
                     alpha_id=alpha.id,
-                    fetched_count=self._fetched_count,
+                    current_fetched_count=self._fetched_count,
                 )
                 yield alpha
             await logger.ainfo(
-                "✅ Alpha 数据流获取完成",
+                "✅ => fetch_alphas 执行完成",
                 emoji="✅",
                 total_fetched=self._fetched_count,
             )
         except Exception as e:
             await logger.aerror(
-                "❌ 获取 Alpha 数据流时发生错误",
+                "❌ fetch_alphas 执行时发生错误",
                 emoji="❌",
-                error=e,
-                exc_info=True,
+                error=str(e),  # 记录错误信息字符串
+                kwargs=kwargs,
+                exc_info=True,  # 包含堆栈信息
             )
-            raise  # 重新抛出异常
+            raise  # 重新抛出异常，让上层处理
 
     async def total_alpha_count(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> int:
         """获取符合筛选条件的 Alpha 总数量。
 
@@ -235,7 +238,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
 
     async def fetched_alpha_count(
         self,
-        **kwargs: Dict[str, Any],  # pylint: disable=unused-argument
+        **kwargs: Any,  # pylint: disable=unused-argument
     ) -> int:
         """获取已获取的 Alpha 数量。
 
@@ -250,7 +253,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
 
     async def remaining_alpha_count(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> int:
         """计算剩余待获取的 Alpha 数量。
 
