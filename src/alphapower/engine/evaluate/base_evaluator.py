@@ -4,7 +4,12 @@ import asyncio
 from enum import Enum, auto
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from alphapower.client import BeforeAndAfterPerformanceView, TableView, WorldQuantClient
+from alphapower.client import (
+    BeforeAndAfterPerformanceView,
+    SubmissionCheckResultView,
+    TableView,
+    WorldQuantClient,
+)
 from alphapower.constants import (
     CONSULTANT_MAX_PROD_CORRELATION,
     CONSULTANT_MAX_SELF_CORRELATION,
@@ -866,20 +871,278 @@ class BaseEvaluator(AbstractEvaluator):
         )
         return check_result
 
+    async def _refresh_submission_check_data(
+        self,
+        alpha: Alpha,
+        **kwargs: Any,
+    ) -> Optional[SubmissionCheckResultView]:
+        await log.adebug(
+            "开始刷新 Alpha 提交检查数据",
+            emoji="🔄",
+            alpha_id=alpha.alpha_id,
+            kwargs=kwargs,
+        )
+        try:
+            async with self.client:
+                finished: bool = False
+                retry_after: Optional[float] = None
+                result: Optional[SubmissionCheckResultView] = None
+
+                while not finished:
+                    finished, retry_after, result = (
+                        await self.client.alpha_fetch_submission_check_result(
+                            alpha_id=alpha.alpha_id,
+                        )
+                    )
+
+                    if finished:
+                        if isinstance(result, SubmissionCheckResultView):
+                            await log.ainfo(
+                                "成功获取 Alpha 提交检查数据",
+                                emoji="✅",
+                                alpha_id=alpha.alpha_id,
+                            )
+
+                            # TODO: 更新 Alpha 中 Sample 的逻辑太复杂，后面有时间再说
+                            check_record: CheckRecord = CheckRecord(
+                                alpha_id=alpha.alpha_id,
+                                record_type=CheckRecordType.SUBMISSION,
+                                content=result.model_dump(),
+                            )
+                            await self.check_record_dal.create(check_record)
+                            await log.adebug(
+                                "提交检查记录已保存",
+                                emoji="💾",
+                                alpha_id=alpha.alpha_id,
+                                check_record_id=check_record.id,
+                            )
+                            return result
+                        else:
+                            await log.aerror(
+                                "Alpha 提交检查 API 返回结果类型不匹配",
+                                emoji="❌",
+                                alpha_id=alpha.alpha_id,
+                                result_type=type(result).__name__,
+                            )
+                            raise TypeError(
+                                f"预期结果类型 SubmissionCheckResultView，实际为 {type(result)}"
+                            )
+                    elif retry_after and retry_after > 0.0:
+                        await log.adebug(
+                            "Alpha 提交检查未完成，等待重试...",
+                            emoji="⏳",
+                            alpha_id=alpha.alpha_id,
+                            retry_after=retry_after,
+                        )
+                        await asyncio.sleep(retry_after)
+                    else:
+                        await log.awarning(
+                            "Alpha 提交检查 API 返回异常状态：未完成且无重试时间",
+                            emoji="⚠️",
+                            alpha_id=alpha.alpha_id,
+                            finished=finished,
+                            retry_after=retry_after,
+                        )
+                        raise RuntimeError(f"Alpha {alpha.id} 提交检查失败")
+                # 如果循环结束，说明任务被取消或发生了其他异常
+                await log.aerror(
+                    "Alpha 提交检查刷新任务被取消或发生异常",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    finished=finished,
+                    retry_after=retry_after,
+                )
+                raise RuntimeError(f"Alpha {alpha.id} 提交检查刷新任务被取消或发生异常")
+        except asyncio.CancelledError:
+            await log.ainfo(
+                "Alpha 提交检查刷新任务被取消",
+                emoji="🚫",
+                alpha_id=alpha.alpha_id,
+            )
+            raise
+        except Exception as e:
+            await log.aerror(
+                "刷新 Alpha 提交检查数据时发生异常",
+                emoji="💥",
+                alpha_id=alpha.alpha_id,
+                error=str(e),
+                exc_info=True,  # 添加堆栈信息
+            )
+            raise
+        await log.adebug(
+            "结束刷新 Alpha 提交检查数据",
+            emoji="🏁",
+            alpha_id=alpha.alpha_id,
+            success=bool(result),
+        )
+        # 结束刷新
+        return result
+
+    async def _determine_submission_pass_status(
+        self,
+        submission_check_view: SubmissionCheckResultView,
+        **kwargs: Any,
+    ) -> bool:
+        # 使用同步日志，因为这是纯计算方法
+        await log.aerror(
+            "提交检查逻辑必须由子类实现",
+            emoji="❌",
+            submission_check_view=submission_check_view,
+        )
+        raise NotImplementedError("提交检查逻辑必须由子类实现")
+
     async def _check_submission(
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:
+        check_type_name: str = "提交检查"  # 用于日志
+        record_type: CheckRecordType = CheckRecordType.SUBMISSION
         await log.adebug(
-            "🚧 _check_submission 方法尚未实现，需要子类覆盖",
-            emoji="🚧",
+            f"开始检查 Alpha {check_type_name}",
+            emoji="🔍",
+            alpha_obj_id=alpha.id,
             alpha_id=alpha.alpha_id,
             policy=policy,
             kwargs=kwargs,
         )
-        raise NotImplementedError("子类必须实现 _check_submission 方法")
+        check_result: bool = False  # 初始化检查结果
+        submission_check_view: Optional[SubmissionCheckResultView] = None
+        try:
+            # 1. 查找现有的检查记录
+            exist_check_record: Optional[CheckRecord] = (
+                await self.check_record_dal.find_one_by(
+                    alpha_id=alpha.alpha_id,
+                    record_type=record_type,
+                    order_by=CheckRecord.created_at.desc(),
+                )
+            )
+            await log.adebug(
+                f"查询现有{check_type_name}检查记录结果",
+                emoji="💾" if exist_check_record else "❓",
+                alpha_id=alpha.alpha_id,
+                record_type=record_type,
+                record_found=bool(exist_check_record),
+            )
+
+            # 2. 根据策略决定执行什么操作
+            action: BaseEvaluator.CheckAction = await self._determine_check_action(
+                policy=policy,
+                exist_check_record=exist_check_record,
+                check_type_name=check_type_name,
+                alpha_id=alpha.alpha_id,
+            )
+
+            # 3. 根据操作执行逻辑
+            if action == BaseEvaluator.CheckAction.REFRESH:
+                submission_check_view = await self._refresh_submission_check_data(
+                    alpha=alpha, **kwargs
+                )
+                if not submission_check_view:
+                    await log.awarning(
+                        f"{check_type_name}数据刷新失败，检查不通过",
+                        emoji="⚠️",
+                        alpha_id=alpha.alpha_id,
+                    )
+                    check_result = False
+                    return check_result  # 刷新失败直接返回
+
+            elif action == BaseEvaluator.CheckAction.USE_EXISTING:
+                # _determine_check_action 保证了 exist_check_record 在此非空
+                await log.adebug(
+                    f"根据策略使用现有{check_type_name}数据",
+                    emoji="💾",
+                    alpha_id=alpha.alpha_id,
+                    policy=policy,
+                )
+                try:
+                    # 从记录中加载数据用于后续判断
+                    assert exist_check_record is not None
+                    submission_check_view = SubmissionCheckResultView(
+                        **exist_check_record.content
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                    KeyError,
+                ) as parse_err:  # 捕获解析/验证错误
+                    await log.aerror(
+                        f"解析现有{check_type_name}记录时出错",
+                        emoji="❌",
+                        alpha_id=alpha.alpha_id,
+                        record_id=(
+                            exist_check_record.id if exist_check_record else "N/A"
+                        ),
+                        error=str(parse_err),
+                        exc_info=True,
+                    )
+                    check_result = False  # 解析失败视为检查不通过
+                    submission_check_view = None
+                # 注意：如果解析失败，submission_check_view 将为 None
+            elif action == BaseEvaluator.CheckAction.SKIP:
+                # 日志已在 _determine_check_action 中记录
+                check_result = False
+                return check_result  # 跳过直接返回
+            elif action == BaseEvaluator.CheckAction.FAIL_MISSING:
+                # 日志已在 _determine_check_action 中记录
+                check_result = False
+                return check_result  # 失败直接返回
+            elif action == BaseEvaluator.CheckAction.ERROR:
+                # 日志已在 _determine_check_action 中记录
+                check_result = False
+                return check_result
+                # 可以选择抛出异常或直接返回 False
+                # raise ValueError(f"无效的检查策略 '{policy}' 或状态组合")
+            # 4. 执行检查逻辑 (如果成功获取或加载了 submission_check_view)
+            if submission_check_view:
+                check_result = await self._determine_submission_pass_status(
+                    submission_check_view=submission_check_view,
+                    **kwargs,
+                )
+                await log.ainfo(
+                    "Alpha 提交检查判定完成",
+                    emoji="✅" if check_result else "❌",
+                    alpha_id=alpha.alpha_id,
+                    check_passed=check_result,
+                )
+                return check_result  # 返回检查结果
+            # 如果 submission_check_view 仍然是 None (例如刷新失败、解析失败)
+            # 之前的逻辑应该已经处理并可能返回了，但为了健壮性，再次检查
+            # 仅在 check_result 仍为 False 时记录错误 (避免重复记录)
+            if not check_result:
+                await log.aerror(
+                    f"未能获取或加载{check_type_name}数据，无法执行检查",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    policy=policy,
+                    action=action.name,  # 记录导致此状态的动作
+                )
+            # check_result 保持之前的状态 (通常是 False)
+        except asyncio.CancelledError:
+            await log.ainfo(
+                f"Alpha {check_type_name}检查任务被取消",
+                emoji="🚫",
+                alpha_id=alpha.alpha_id,
+            )
+            check_result = False
+            raise  # 重新抛出 CancelledError，让上层处理
+        except Exception as e:
+            await log.aerror(
+                f"检查 Alpha {check_type_name}时发生未预期异常",
+                emoji="💥",
+                alpha_id=alpha.alpha_id,
+                policy=policy,
+                error=str(e),
+                exc_info=True,  # 添加堆栈信息
+            )
+            check_result = False
+            raise  # 重新抛出未捕获的异常，表明评估流程中出现严重问题
+        await log.adebug(
+            f"结束检查 Alpha {check_type_name}", emoji="🏁", check_result=check_result
+        )
+        # 结束检查
+        return check_result
 
     async def _determine_check_action(
         self,

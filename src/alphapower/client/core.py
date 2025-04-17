@@ -13,7 +13,7 @@ from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
 
-from .checks_view import BeforeAndAfterPerformanceView
+from .checks_view import BeforeAndAfterPerformanceView, SubmissionCheckResultView
 from .common_view import TableView
 from .models import (
     AlphaDetailView,
@@ -41,6 +41,7 @@ from .raw_api import (
     alpha_fetch_before_and_after_performance,
     alpha_fetch_competitions,
     alpha_fetch_correlations,
+    alpha_fetch_submission_check_result,
     authentication,
     create_multi_simulation,
     create_single_simulation,
@@ -509,6 +510,31 @@ class WorldQuantClient:
             await alpha_fetch_before_and_after_performance(
                 self.session, competition_id, alpha_id
             )
+        )
+        return finished, retry_after, result, rate_limit
+
+    @exception_handler
+    @rate_limit_handler
+    async def alpha_fetch_submission_check_result(
+        self, alpha_id: str
+    ) -> Tuple[bool, Optional[float], Optional[SubmissionCheckResultView], RateLimit]:
+        """
+        获取 Alpha 的提交检查结果。
+
+        参数:
+        alpha_id (str): Alpha ID。
+
+        返回:
+        Tuple: 包含完成状态、重试时间、检查结果和速率限制信息的元组。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        finished, retry_after, result, rate_limit = (
+            await alpha_fetch_submission_check_result(self.session, alpha_id)
         )
         return finished, retry_after, result, rate_limit
 

@@ -31,10 +31,10 @@ from alphapower.client import (
     TableView,
 )
 from alphapower.client.raw_api import (
-    alpha_check_submission,
     alpha_fetch_before_and_after_performance,
     alpha_fetch_competitions,
     alpha_fetch_correlations,
+    alpha_fetch_submission_check_result,
     get_alpha_detail,
     get_self_alphas,
     get_simulation_progress,
@@ -201,7 +201,7 @@ async def test_alpha_check_submission(setup_mock_responses: str) -> None:
         session: ClientSession = ClientSession()
 
         for alpha_id in alpha_ids:
-            finished, retry_after, result, rate_limit = await alpha_check_submission(
+            finished, retry_after, result, rate_limit = await alpha_fetch_submission_check_result(
                 session, alpha_id
             )
 

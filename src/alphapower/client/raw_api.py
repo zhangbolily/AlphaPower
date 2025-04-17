@@ -290,7 +290,7 @@ async def set_alpha_properties(
         ), RateLimit.from_headers(response.headers)
 
 
-async def alpha_check_submission(
+async def alpha_fetch_submission_check_result(
     session: aiohttp.ClientSession, alpha_id: str
 ) -> Tuple[bool, float, Optional[SubmissionCheckResultView], RateLimit]:
     """
