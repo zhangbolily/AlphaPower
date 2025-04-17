@@ -1,917 +1,541 @@
-"""
-模块名称: test_evaluate_base_evaluator
-
-模块功能:
-    为 BaseEvaluator 类提供单元测试。
-"""
+"""测试 BaseEvaluator 的单元测试模块。"""
 
 import asyncio
-from datetime import datetime, timedelta
-from typing import Any, AsyncGenerator, Generator, List
+from datetime import datetime  # 导入 datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import TypeAdapter
-from sqlalchemy import Select
 
-from alphapower.client import TableSchemaView  # 导入 TableSchemaView
 from alphapower.client import (
     BeforeAndAfterPerformanceView,
-    CompetitionRefView,
+    TableSchemaView,
     TableView,
-    WorldQuantClient,
 )
-from alphapower.client.checks_view import StatsView  # 导入 StatsView
-from alphapower.constants import (
-    ALPHA_ID_LENGTH,
-    AlphaCheckType,
+from alphapower.client.checks_view import StatsView
+from alphapower.constants import (  # 导入所需的枚举
     AlphaType,
+    CheckRecordType,
     Color,
-    CompetitionScoring,
-    CompetitionStatus,
-    CorrelationCalcType,
-    CorrelationType,
-    Delay,
     Grade,
-    InstrumentType,
-    Neutralization,
-    Region,
-    RegularLanguage,
+    RefreshPolicy,
     Stage,
     Status,
-    Switch,
-    UnitHandling,
-    Universe,
-    UserRole,
 )
-from alphapower.dal.base import DALFactory
 from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
-from alphapower.engine.evaluate.original_base_evaluator import BaseEvaluator
-from alphapower.entity import (
-    Alpha,
-    Check,
-    CheckRecord,
-    Competition,
-    Correlation,
-    Regular,
-    Sample,
-    Setting,
-)
+from alphapower.engine.evaluate.alpha_fetcher_abc import AbstractAlphaFetcher
+from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
+from alphapower.entity import Alpha
+from alphapower.entity.evaluate import CheckRecord
 
-# pylint: disable=W0621, R0913, C0301, W0613
+# type: ignore[attr-defined]
+# pylint: disable=W0212
 
 
-@pytest.fixture
-def mock_wq_client() -> MagicMock:
-    """提供一个 WorldQuantClient 的模拟对象。"""
-    client = MagicMock(spec=WorldQuantClient)
-    client.alpha_correlation_check = AsyncMock()
-    client.alpha_fetch_before_and_after_performance = AsyncMock()
+@pytest.fixture(name="mock_fetcher")
+def fixture_mock_fetcher() -> MagicMock:
+    """提供一个 AbstractAlphaFetcher 的模拟对象。"""
+    return MagicMock(spec=AbstractAlphaFetcher)
+
+
+@pytest.fixture(name="mock_correlation_dal")
+def fixture_mock_correlation_dal() -> AsyncMock:
+    """提供一个 CorrelationDAL 的异步模拟对象。"""
+    return AsyncMock(spec=CorrelationDAL)
+
+
+@pytest.fixture(name="mock_check_record_dal")
+def fixture_mock_check_record_dal() -> AsyncMock:
+    """提供一个 CheckRecordDAL 的异步模拟对象。"""
+    return AsyncMock(spec=CheckRecordDAL)
+
+
+@pytest.fixture(name="mock_client")
+def fixture_mock_client() -> MagicMock:
+    """提供一个 WorldQuantClient 的模拟对象，包含异步上下文管理器。"""
+    mock = MagicMock()
     # 模拟异步上下文管理器
-    client.__aenter__ = AsyncMock(return_value=client)
-
-    # 修改 __aexit__ 以正确处理异常
-    # 它接收 exc_type, exc_val, exc_tb 三个参数
-    # 如果 exc_type 不为 None，表示上下文中发生了异常
-    # 默认行为是不处理异常（返回 None 或 False），让异常继续传播
-    # 如果需要模拟抑制异常，可以让它返回 True
-    async def mock_aexit(exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        # 默认不抑制异常，让其传播
-        pass
-
-    client.__aexit__ = AsyncMock(side_effect=mock_aexit)
-    return client
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=None)
+    # 模拟需要的方法
+    mock.alpha_fetch_before_and_after_performance = AsyncMock()
+    return mock
 
 
-@pytest.fixture
-def mock_db_session() -> Generator[dict[str, AsyncMock], None, None]:
-    """提供一个数据库会话和 DAL 的模拟对象。"""
-    session = AsyncMock()
-    session.stream_scalars = AsyncMock()
-    session.add = AsyncMock()
-    session.merge = AsyncMock()
-    session.flush = AsyncMock()
-    session.commit = AsyncMock()  # 添加 commit 的模拟
-
-    mock_check_record_dal = MagicMock(spec=CheckRecordDAL)
-    mock_check_record_dal.create = AsyncMock()
-
-    mock_correlation_dal = MagicMock(spec=CorrelationDAL)
-    mock_correlation_dal.bulk_upsert = AsyncMock()
-
-    # 模拟 DALFactory.create_dal
-    def create_dal_side_effect(session: AsyncMock, dal_class: type) -> MagicMock:
-        if dal_class == CheckRecordDAL:
-            return mock_check_record_dal
-        if dal_class == CorrelationDAL:
-            return mock_correlation_dal
-        raise TypeError(f"未知的 DAL 类型: {dal_class}")
-
-    with patch(
-        "alphapower.engine.evaluate.base_evaluator.get_db_session"
-    ) as mock_get_session:
-        mock_get_session.return_value.__aenter__.return_value = session
-        with patch(
-            "alphapower.engine.evaluate.base_evaluator.DALFactory", spec=DALFactory
-        ) as mock_dal_factory:
-            mock_dal_factory.create_dal.side_effect = create_dal_side_effect
-            yield {
-                "session": session,
-                "check_record_dal": mock_check_record_dal,
-                "correlation_dal": mock_correlation_dal,
-                "mock_dal_factory": mock_dal_factory,
-                "mock_get_session": mock_get_session,
-            }
-
-
-@pytest.fixture
-def sample_setting() -> Setting:
-    """创建一个示例 Setting 对象。"""
-    return Setting(
-        id=1,
-        instrument_type=InstrumentType.EQUITY,
-        region=Region.USA,
-        universe=Universe.TOP3000,
-        delay=Delay.ONE,  # 修复: 使用正确的枚举值 Delay.ONE
-        decay=4,
-        neutralization=Neutralization.MARKET,
-        truncation=0.01,
-        pasteurization=Switch.ON,
-        unit_handling=UnitHandling.VERIFY,  # 修复: 使用正确的枚举值 UnitHandling.VERIFY
-        nan_handling=Switch.OFF,
-        language=RegularLanguage.PYTHON,
-        visualization=False,
-        test_period="2010-2020",
-        max_trade=Switch.ON,
-    )
-
-
-@pytest.fixture
-def sample_regular() -> Regular:
-    """创建一个示例 Regular 对象。"""
-    return Regular(
-        id=1,
-        code="ts_mean(close, 10)",
-        description="10日收盘价均值",
-        operator_count=2,
-    )
-
-
-@pytest.fixture
-def sample_competition() -> Competition:
-    """创建一个示例 Competition 对象。"""
-    return Competition(
-        id=1,
-        competition_id="COMP001",
-        name="全球Alpha竞赛",
-        description="一个测试竞赛",
-        universities=["MIT", "Stanford"],
-        countries=["USA", "CAN"],
-        excluded_countries=["CHN"],
-        status=CompetitionStatus.ACCEPTED,  # 修复: 使用正确的枚举值 CompetitionStatus.ACCEPTED
-        team_based=False,
-        start_date=datetime(2023, 1, 1),
-        end_date=datetime(2023, 12, 31),
-        sign_up_start_date=datetime(2022, 11, 1),
-        sign_up_end_date=datetime(2022, 12, 31),
-        scoring=CompetitionScoring.PERFORMANCE,  # 修复: 使用正确的枚举值 CompetitionScoring.PERFORMANCE
-        prize_board=True,
-        university_board=True,
-        submissions=True,
-        faq="http://example.com/faq",
-    )
-
-
-@pytest.fixture
-def sample_check_matches(sample_competition: Competition) -> Check:
-    """创建一个示例 Check 对象 (MATCHES_COMPETITION)。"""
-    competitions_list = [
-        CompetitionRefView(
-            id=sample_competition.competition_id, name=sample_competition.name
-        )
-    ]
-    competitions_adapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
-        List[CompetitionRefView]
-    )
-    competitions_json = competitions_adapter.dump_json(competitions_list).decode(
-        "utf-8"
-    )
-    return Check(
-        id=1,
-        sample_id=1,  # 假设关联的 Sample ID 为 1
-        name=AlphaCheckType.MATCHES_COMPETITION.value,
-        result="PASS",
-        competitions=competitions_json,
-    )
-
-
-@pytest.fixture
-def sample_check_other() -> Check:
-    """创建一个示例 Check 对象 (非 MATCHES_COMPETITION)。"""
-    return Check(
-        id=2,
-        sample_id=1,
-        name="SOME_OTHER_CHECK",
-        result="PASS",
-        value=0.5,
-        limit=0.8,
-    )
-
-
-@pytest.fixture
-def sample_sample(sample_check_matches: Check, sample_check_other: Check) -> Sample:
-    """创建一个示例 Sample 对象。"""
-    return Sample(
-        id=1,
-        long_count=100,
-        short_count=50,
-        pnl=10000.0,
-        book_size=1000000.0,
-        turnover=0.15,
-        returns=0.1,
-        drawdown=0.05,
-        margin=0.2,
-        sharpe=2.1,
-        fitness=1.6,
-        self_correration=0.2,
-        prod_correration=0.3,
-        os_is_sharpe_ratio=1.1,
-        pre_close_sharpe_ratio=2.0,
-        start_date=datetime(2022, 1, 1),
-        checks=[sample_check_matches, sample_check_other],
-    )
-
-
-@pytest.fixture
-def sample_alpha(
-    sample_setting: Setting,
-    sample_regular: Regular,
-    sample_sample: Sample,
-    sample_competition: Competition,
-) -> Alpha:
-    """创建一个示例 Alpha 对象。"""
-    # 确保 alpha_id 长度符合要求
-    alpha_id = "TESTALP"[:ALPHA_ID_LENGTH]  # 修复: 确保 alpha_id 长度正确
+@pytest.fixture(name="test_alpha")
+def fixture_test_alpha() -> Alpha:
+    """提供一个测试用的 Alpha 实例。"""
+    # 创建一个符合 Alpha 实体定义的实例
     return Alpha(
-        id=1,
-        alpha_id=alpha_id,
-        author="test_user",
-        settings_id=sample_setting.id,
-        settings=sample_setting,
-        regular_id=sample_regular.id,
-        regular=sample_regular,
-        date_created=datetime.now(),
-        name="测试Alpha",
-        favorite=False,
-        hidden=False,
-        color=Color.BLUE,
-        category="PRICE_MOMENTUM",  # 修复: 使用 Category 枚举值或有效字符串
-        tags=["高频", "美股"],
-        grade=Grade.GOOD,  # 修复: 使用正确的枚举值 Grade.GOOD
-        stage=Stage.IS,  # 修复: 使用正确的枚举值 Stage.IS
-        status=Status.ACTIVE,
-        type=AlphaType.REGULAR,
-        in_sample_id=sample_sample.id,
-        in_sample=sample_sample,
-        # 关联其他 Sample 和 Competition
+        alpha_id="test001",  # 使用 alpha_id 字段
+        author="test_user",  # 使用 author 字段
+        settings_id=1,  # 提供外键 ID
+        regular_id=1,  # 提供外键 ID
+        date_created=datetime.now(),  # 提供创建日期
+        favorite=False,  # 提供布尔值
+        hidden=False,  # 提供布尔值
+        type=AlphaType.REGULAR,  # 使用 AlphaType 枚举
+        color=Color.NONE,  # 使用 Color 枚举
+        grade=Grade.GOOD,  # 使用 Grade 枚举
+        stage=Stage.IS,  # 使用 Stage 枚举
+        status=Status.ACTIVE,  # 使用 Status 枚举
+        # 以下字段是可选的或通过关系加载，测试中可以省略或设为 None
+        name="测试Alpha名称",
+        category="PRICE_MOMENTUM",
+        tags=["测试标签1", "测试标签2"],
+        themes=None,
+        pyramids=None,
+        team=None,
+        date_submitted=None,
+        date_modified=None,
+        settings=None,  # 关系字段在测试中通常不需要完整对象
+        regular=None,  # 关系字段在测试中通常不需要完整对象
+        in_sample_id=None,
+        in_sample=None,
         out_sample_id=None,
+        out_sample=None,
         train_id=None,
+        train=None,
         test_id=None,
+        test=None,
         prod_id=None,
+        prod=None,
         classifications=[],
-        competitions=[sample_competition],
+        competitions=[],
     )
 
 
-@pytest.fixture
-def base_evaluator(sample_alpha: Alpha) -> BaseEvaluator:
-    """创建一个 BaseEvaluator 实例。"""
-    return BaseEvaluator(alpha=sample_alpha)
+@pytest.fixture(name="performance_view")
+def fixture_performance_view() -> BeforeAndAfterPerformanceView:
+    """提供一个测试用的 BeforeAndAfterPerformanceView 实例。"""
+    # 创建符合 StatsView 结构的示例数据
+    stats_data = StatsView(
+        book_size=10000,
+        pnl=150.5,
+        long_count=50,
+        short_count=45,
+        drawdown=0.1,
+        turnover=0.5,
+        returns=0.05,
+        margin=0.02,
+        sharpe=1.2,
+        fitness=0.8,
+    )
+    # 创建符合 TableView 结构的示例数据
+    table_schema = TableSchemaView(
+        name="test_table",
+        title="测试表格",
+        properties=[
+            TableSchemaView.Property(name="col1", title="列1", data_type="integer"),
+            TableSchemaView.Property(name="col2", title="列2", data_type="string"),
+        ],
+    )
+    table_data = TableView(
+        table_schema=table_schema, records=[[1, "a"], [2, "b"]], min=1.0, max=2.0
+    )
+
+    return BeforeAndAfterPerformanceView(
+        stats=BeforeAndAfterPerformanceView.Stats(before=stats_data, after=stats_data),
+        yearly_stats=BeforeAndAfterPerformanceView.YearlyStats(
+            before=table_data, after=table_data
+        ),
+        pnl=table_data,
+        partition=["year", "month"],
+        # 可选字段，根据需要添加
+        # competition=BeforeAndAfterPerformanceView.CompetitionRefView(...),
+        # score=BeforeAndAfterPerformanceView.ScoreView(...),
+    )
 
 
-class TestBaseEvaluator:
-    """BaseEvaluator 的测试类。"""
+@pytest.fixture(name="base_evaluator")
+def fixture_base_evaluator(
+    mock_fetcher: MagicMock,
+    mock_correlation_dal: AsyncMock,
+    mock_check_record_dal: AsyncMock,
+    mock_client: MagicMock,
+) -> BaseEvaluator:
+    """提供一个 BaseEvaluator 的实例，注入模拟依赖。"""
+    return BaseEvaluator(
+        fetcher=mock_fetcher,
+        correlation_dal=mock_correlation_dal,
+        check_record_dal=mock_check_record_dal,
+        client=mock_client,
+    )
 
-    @pytest.mark.asyncio
-    async def test_fetch_alphas_for_evaluation_consultant(
-        self, mock_db_session: dict, sample_alpha: Alpha
-    ) -> None:
-        """测试顾问角色的 Alpha 获取。"""
-        mock_session = mock_db_session["session"]
-        alphas_to_yield = [sample_alpha]
 
-        # 模拟 stream_scalars 返回异步生成器
-        async def async_gen() -> AsyncGenerator[Alpha, None]:
-            for alpha in alphas_to_yield:
-                yield alpha
+@pytest.mark.asyncio
+class TestBaseEvaluatorCheckAlphaPoolPerformanceDiff:
+    """测试 BaseEvaluator._check_alpha_pool_performance_diff 方法的类。"""
 
-        mock_session.stream_scalars.return_value = async_gen()
+    COMPETITION_ID: str = "test_comp_id"  # 保留 COMPETITION_ID 用于方法调用
 
-        # 确保查询对象被正确构建和传递
-        # 这里我们不直接验证查询字符串，而是验证 stream_scalars 被调用
-        result_alphas = []
-        async for alpha in BaseEvaluator.fetch_alphas_for_evaluation(
-            role=UserRole.CONSULTANT,
-            alpha_type=AlphaType.REGULAR,
-            start_time=datetime.now() - timedelta(days=1),
-            end_time=datetime.now(),
-        ):
-            result_alphas.append(alpha)
-
-        assert result_alphas == alphas_to_yield
-        mock_session.stream_scalars.assert_called_once()
-        # 检查调用 stream_scalars 时使用的查询是否是 Select 对象
-        call_args, _ = mock_session.stream_scalars.call_args
-        assert isinstance(call_args[0], Select)
-
-    @pytest.mark.asyncio
-    async def test_fetch_alphas_for_evaluation_user_not_implemented(self) -> None:
-        """测试用户角色的 Alpha 获取是否引发 NotImplementedError。"""
-        with pytest.raises(NotImplementedError):
-            async for _ in BaseEvaluator.fetch_alphas_for_evaluation(
-                role=UserRole.USER,
-                alpha_type=AlphaType.REGULAR,
-                start_time=datetime.now() - timedelta(days=1),
-                end_time=datetime.now(),
-            ):
-                pass  # pragma: no cover
-
-    @pytest.mark.asyncio
-    async def test_fetch_alphas_for_evaluation_no_query(self) -> None:
-        """测试顾问查询未初始化时是否引发 ValueError。"""
-        original_query = BaseEvaluator.consultant_alpha_select_query
-        BaseEvaluator.consultant_alpha_select_query = None  # 强制设为 None
-        with pytest.raises(ValueError, match="顾问因子筛选查询未初始化"):
-            async for _ in BaseEvaluator.fetch_alphas_for_evaluation(
-                role=UserRole.CONSULTANT,
-                alpha_type=AlphaType.REGULAR,
-                start_time=datetime.now() - timedelta(days=1),
-                end_time=datetime.now(),
-            ):
-                pass  # pragma: no cover
-        BaseEvaluator.consultant_alpha_select_query = original_query  # 恢复
-
-    def test_init(self, sample_alpha: Alpha) -> None:
-        """测试 BaseEvaluator 初始化。"""
-        evaluator = BaseEvaluator(alpha=sample_alpha)
-        assert evaluator._alpha == sample_alpha
-
-    @pytest.mark.asyncio
-    async def test_matched_competitions_found(
-        self, base_evaluator: BaseEvaluator, sample_competition: Competition
-    ) -> None:
-        """测试找到匹配竞赛的情况。"""
-        competitions = await base_evaluator.matched_competitions()
-        assert len(competitions) == 1
-        assert competitions[0].id == sample_competition.competition_id
-        assert competitions[0].name == sample_competition.name
-
-    @pytest.mark.asyncio
-    async def test_matched_competitions_not_found(
-        self, base_evaluator: BaseEvaluator, sample_sample: Sample
-    ) -> None:
-        """测试未找到匹配竞赛检查项的情况。"""
-        # 移除匹配竞赛的检查项
-        sample_sample.checks = [
-            c
-            for c in sample_sample.checks
-            if c.name != AlphaCheckType.MATCHES_COMPETITION.value
-        ]
-        competitions = await base_evaluator.matched_competitions()
-        assert competitions == []
-
-    @pytest.mark.asyncio
-    async def test_matched_competitions_empty(
-        self, base_evaluator: BaseEvaluator, sample_sample: Sample
-    ) -> None:
-        """测试匹配竞赛检查项存在但列表为空的情况。"""
-        for check in sample_sample.checks:
-            if check.name == AlphaCheckType.MATCHES_COMPETITION.value:
-                check.competitions = "[]"  # 设置为空列表 JSON
-        competitions = await base_evaluator.matched_competitions()
-        assert competitions == []
-
-    @pytest.mark.asyncio
-    async def test_matched_competitions_invalid_json(
-        self, base_evaluator: BaseEvaluator, sample_sample: Sample
-    ) -> None:
-        """测试匹配竞赛检查项 JSON 无效的情况。"""
-        for check in sample_sample.checks:
-            if check.name == AlphaCheckType.MATCHES_COMPETITION.value:
-                check.competitions = "invalid json"
-        with pytest.raises(ValueError, match="竞赛列表 JSON 无效"):
-            await base_evaluator.matched_competitions()
-
-    @pytest.mark.asyncio
-    async def test_matched_competitions_no_in_sample(
-        self, base_evaluator: BaseEvaluator, sample_alpha: Alpha
-    ) -> None:
-        """测试 Alpha 缺少 in_sample 数据的情况。"""
-        sample_alpha.in_sample = None  # type: ignore
-        competitions = await base_evaluator.matched_competitions()
-        assert competitions == []
-
-    @pytest.mark.asyncio
-    async def test_correlation_check_self_finished(
+    async def test_check_performance_diff_use_existing_found(
         self,
         base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
+        performance_view: BeforeAndAfterPerformanceView,
     ) -> None:
-        """测试自相关性检查立即完成。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        mock_correlation_dal = mock_db_session["correlation_dal"]
-        mock_get_session = mock_db_session["mock_get_session"]
-
-        # 模拟 API 返回 - 修复 TableView 结构
-        mock_result = TableView(
-            table_schema=TableSchemaView(  # 使用 TableSchemaView
-                name="correlation_schema",
-                title="Correlation Data",
-                properties=[
-                    TableSchemaView.Property(
-                        name="id", title="Alpha ID", data_type="string"
-                    ),
-                    TableSchemaView.Property(
-                        name="correlation", title="Correlation", data_type="number"
-                    ),
-                ],
-            ),
-            records=[["ALPHA_1", 0.5], ["ALPHA_2", 0.6]],
-            # total_count 不是 TableView 的直接字段，通常在响应的顶层
+        """测试策略 USE_EXISTING 且找到记录的情况。"""
+        # 安排 (Arrange)
+        check_record = CheckRecord(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            content=performance_view.model_dump(),
         )
-        mock_wq_client.alpha_correlation_check.return_value = (True, None, mock_result)
+        mock_check_record_dal.find_one_by.return_value = check_record
 
-        # 使用 patch 模拟 wq_client 上下文管理器
-        with patch(
-            "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-        ):
-            await base_evaluator.correlation_check(CorrelationType.SELF)
-
-        # 验证 API 调用
-        mock_wq_client.alpha_correlation_check.assert_called_once_with(
-            alpha_id=sample_alpha.alpha_id, corr_type=CorrelationType.SELF
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,  # 方法调用仍需 competition_id
+            policy=RefreshPolicy.USE_EXISTING,
         )
-        # 验证数据库操作
-        mock_get_session.assert_called()  # 确保调用了 get_db_session
-        mock_check_record_dal.create.assert_called_once()
-        mock_correlation_dal.bulk_upsert.assert_called_once()
 
-        # 验证 CheckRecord 内容
-        created_check_record: CheckRecord = mock_check_record_dal.create.call_args[0][0]
-        assert created_check_record.alpha_id == sample_alpha.alpha_id
-        assert created_check_record.record_type == AlphaCheckType.CORRELATION_SELF
-        assert created_check_record.content == mock_result.model_dump(mode="python")
+        # 断言 (Assert)
+        # 注意：此断言现在可能会失败，因为 CheckRecordDAL 的 find_one_by
+        # 可能需要 competition_id，但 CheckRecord 实体本身没有此字段。
+        # 需要根据 DAL 的实际实现调整测试或实体。
+        mock_check_record_dal.find_one_by.assert_awaited_once_with(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+        )
+        # 确认没有调用刷新方法
+        base_evaluator.client.alpha_fetch_before_and_after_performance.assert_not_awaited()
+        # 确认没有调用创建记录方法
+        mock_check_record_dal.create.assert_not_awaited()
+        # 默认检查逻辑返回 True
+        assert result is True
 
-        # 验证 Correlation 内容
-        created_correlations: List[Correlation] = (
-            mock_correlation_dal.bulk_upsert.call_args[0][0]
-        )
-        assert len(created_correlations) == 2
-        assert created_correlations[0].alpha_id_a == min(
-            sample_alpha.alpha_id, "ALPHA_1"
-        )
-        assert created_correlations[0].alpha_id_b == max(
-            sample_alpha.alpha_id, "ALPHA_2"
-        )
-        assert created_correlations[0].correlation == 0.5
-        assert created_correlations[0].calc_type == CorrelationCalcType.PLATFORM
-
-    @pytest.mark.asyncio
-    async def test_correlation_check_prod_finished(
+    async def test_check_performance_diff_use_existing_not_found(
         self,
         base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
     ) -> None:
-        """测试生产相关性检查立即完成。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        mock_correlation_dal = mock_db_session["correlation_dal"]
+        """测试策略 USE_EXISTING 但未找到记录的情况。"""
+        # 安排 (Arrange)
+        mock_check_record_dal.find_one_by.return_value = None
 
-        # 模拟 API 返回 (生产相关性通常不返回具体列表) - 修复 TableView 结构
-        mock_result = TableView(
-            table_schema=TableSchemaView(  # 使用 TableSchemaView
-                name="prod_correlation_schema",
-                title="Prod Correlation Data",
-                properties=[
-                    TableSchemaView.Property(
-                        name="range", title="Range", data_type="string"
-                    ),
-                    TableSchemaView.Property(
-                        name="count", title="Count", data_type="integer"
-                    ),
-                ],
-            ),
-            records=[["0.0-0.1", 10], ["0.1-0.2", 5]],
-            # total_count 不是 TableView 的直接字段
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.USE_EXISTING,
         )
-        mock_wq_client.alpha_correlation_check.return_value = (True, None, mock_result)
 
-        with patch(
-            "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-        ):
-            await base_evaluator.correlation_check(CorrelationType.PROD)
-
-        mock_wq_client.alpha_correlation_check.assert_called_once_with(
-            alpha_id=sample_alpha.alpha_id, corr_type=CorrelationType.PROD
+        # 断言 (Assert)
+        mock_check_record_dal.find_one_by.assert_awaited_once_with(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
         )
-        mock_check_record_dal.create.assert_called_once()
-        # 生产相关性不写入 Correlation 表
-        mock_correlation_dal.bulk_upsert.assert_not_called()
+        # 确认没有调用刷新方法
+        base_evaluator.client.alpha_fetch_before_and_after_performance.assert_not_awaited()
+        # 确认没有调用创建记录方法
+        mock_check_record_dal.create.assert_not_awaited()
+        # 因为没有数据，无法执行检查，应返回 False
+        assert result is False
 
-        created_check_record: CheckRecord = mock_check_record_dal.create.call_args[0][0]
-        assert created_check_record.alpha_id == sample_alpha.alpha_id
-        assert created_check_record.record_type == AlphaCheckType.CORRELATION_PROD
-        assert created_check_record.content == mock_result.model_dump(mode="python")
-
-    @pytest.mark.asyncio
-    async def test_correlation_check_retry_then_finished(
+    async def test_check_performance_diff_force_refresh(
         self,
         base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
+        mock_check_record_dal: AsyncMock,
+        mock_client: MagicMock,
+        test_alpha: Alpha,
+        performance_view: BeforeAndAfterPerformanceView,
     ) -> None:
-        """测试相关性检查需要重试。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        mock_correlation_dal = mock_db_session["correlation_dal"]
-
-        mock_result = TableView(
-            table_schema=TableSchemaView(  # 使用 TableSchemaView
-                name="correlation_schema",
-                title="Correlation Data",
-                properties=[
-                    TableSchemaView.Property(
-                        name="id", title="Alpha ID", data_type="string"
-                    ),
-                    TableSchemaView.Property(
-                        name="correlation", title="Correlation", data_type="number"
-                    ),
-                ],
-            ),
-            records=[["OTHERALPHA1", 0.5]],
-            # total_count 不是 TableView 的直接字段
+        """测试策略 FORCE_REFRESH 的情况。"""
+        # 安排 (Arrange)
+        # 即使记录存在，也应该强制刷新
+        check_record = CheckRecord(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            content=performance_view.model_dump(),
         )
-        # 第一次返回未完成，需要重试
-        # 第二次返回完成
-        mock_wq_client.alpha_correlation_check.side_effect = [
-            (False, 0.1, None),  # retry_after 0.1 秒
-            (True, None, mock_result),
-        ]
-
-        with (
-            patch(
-                "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-            ),
-            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-        ):  # 模拟 sleep
-            await base_evaluator.correlation_check(CorrelationType.SELF)
-
-        assert mock_wq_client.alpha_correlation_check.call_count == 2
-        mock_sleep.assert_called_once_with(0.1)  # 验证 sleep 被调用且时间正确
-        mock_check_record_dal.create.assert_called_once()
-        mock_correlation_dal.bulk_upsert.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_correlation_check_api_error(
-        self,
-        base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
-    ) -> None:
-        """测试相关性检查 API 调用出错。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        mock_correlation_dal = mock_db_session["correlation_dal"]
-
-        mock_wq_client.alpha_correlation_check.side_effect = Exception("API Error")
-
-        with patch(
-            "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-        ):
-            # 异常应该被捕获，不向上抛出，但会记录错误日志
-            await base_evaluator.correlation_check(CorrelationType.SELF)
-
-        mock_wq_client.alpha_correlation_check.assert_called_once()
-        # 数据库操作不应被调用
-        mock_check_record_dal.create.assert_not_called()
-        mock_correlation_dal.bulk_upsert.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_correlation_check_cancelled(
-        self,
-        base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        sample_alpha: Alpha,
-    ) -> None:
-        """测试相关性检查在 sleep 时被取消。"""
-        # 第一次返回未完成，需要重试
-        mock_wq_client.alpha_correlation_check.return_value = (
-            False,
-            10.0,
-            None,
-        )  # retry_after 10 秒
-
-        async def cancel_during_sleep(*args: Any, **kwargs: Any) -> None:
-            """模拟取消操作的协程函数。"""
-            # 模拟 sleep，并在执行时引发 CancelledError
-            raise asyncio.CancelledError
-
-        with (
-            patch(
-                "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-            ),
-            patch("asyncio.sleep", side_effect=cancel_during_sleep),
-        ):
-            with pytest.raises(asyncio.CancelledError):
-                await base_evaluator.correlation_check(CorrelationType.SELF)
-
-        mock_wq_client.alpha_correlation_check.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_self_correlation_check(self, base_evaluator: BaseEvaluator) -> None:
-        """测试 self_correlation_check 方法。"""
-        with patch.object(
-            base_evaluator, "correlation_check", new_callable=AsyncMock
-        ) as mock_corr_check:
-            await base_evaluator.self_correlation_check()
-            mock_corr_check.assert_called_once_with(CorrelationType.SELF)
-
-    @pytest.mark.asyncio
-    async def test_prod_correlation_check(self, base_evaluator: BaseEvaluator) -> None:
-        """测试 prod_correlation_check 方法。"""
-        with patch.object(
-            base_evaluator, "correlation_check", new_callable=AsyncMock
-        ) as mock_corr_check:
-            await base_evaluator.prod_correlation_check()
-            mock_corr_check.assert_called_once_with(CorrelationType.PROD)
-
-    @pytest.mark.asyncio
-    async def test_before_and_after_performance_check_finished(
-        self,
-        base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
-        sample_competition: Competition,
-    ) -> None:
-        """测试前后性能检查立即完成。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        competition_id = sample_competition.competition_id
-
-        # 模拟 API 返回 - 修复 BeforeAndAfterPerformanceView 及其子对象结构
-        mock_result = BeforeAndAfterPerformanceView(
-            stats=BeforeAndAfterPerformanceView.Stats(
-                before=StatsView(  # 使用 StatsView
-                    book_size=100,
-                    pnl=10.0,
-                    long_count=5,
-                    short_count=2,
-                    drawdown=0.1,
-                    turnover=0.2,
-                    returns=0.05,
-                    margin=0.3,
-                    sharpe=1.5,
-                    fitness=1.1,
-                ),
-                after=StatsView(  # 使用 StatsView
-                    book_size=110,
-                    pnl=11.0,
-                    long_count=6,
-                    short_count=3,
-                    drawdown=0.09,
-                    turnover=0.21,
-                    returns=0.06,
-                    margin=0.31,
-                    sharpe=1.6,
-                    fitness=1.2,
-                ),
-            ),
-            yearly_stats=BeforeAndAfterPerformanceView.YearlyStats(
-                before=TableView(
-                    table_schema=TableSchemaView(  # 使用 TableSchemaView
-                        name="yearly_stats_schema",
-                        title="Yearly Stats",
-                        properties=[
-                            TableSchemaView.Property(
-                                name="year", title="Year", data_type="integer"
-                            ),
-                            TableSchemaView.Property(
-                                name="sharpe", title="Sharpe", data_type="number"
-                            ),
-                        ],
-                    ),
-                    records=[[2022, 1.4], [2023, 1.6]],
-                ),
-                after=TableView(
-                    table_schema=TableSchemaView(  # 使用 TableSchemaView
-                        name="yearly_stats_schema",
-                        title="Yearly Stats",
-                        properties=[
-                            TableSchemaView.Property(
-                                name="year", title="Year", data_type="integer"
-                            ),
-                            TableSchemaView.Property(
-                                name="sharpe", title="Sharpe", data_type="number"
-                            ),
-                        ],
-                    ),
-                    records=[[2022, 1.5], [2023, 1.7]],
-                ),
-            ),
-            pnl=TableView(
-                table_schema=TableSchemaView(  # 使用 TableSchemaView
-                    name="pnl_schema",
-                    title="PnL Data",
-                    properties=[
-                        TableSchemaView.Property(
-                            name="date", title="Date", data_type="string"
-                        ),
-                        TableSchemaView.Property(
-                            name="pnl", title="PnL", data_type="number"
-                        ),
-                    ],
-                ),
-                records=[["2023-01-01", 1.0], ["2023-01-02", -0.5]],
-            ),
-            partition=["region", "sector"],
-            competition=BeforeAndAfterPerformanceView.CompetitionRefView(
-                id=competition_id,
-                name="Test Comp",
-                scoring=CompetitionScoring.PERFORMANCE,  # 修复：使用正确的枚举值
-            ),
-            score=BeforeAndAfterPerformanceView.ScoreView(before=1.5, after=1.6),
-        )
-        mock_wq_client.alpha_fetch_before_and_after_performance.return_value = (
+        mock_check_record_dal.find_one_by.return_value = check_record
+        # 模拟 API 返回成功
+        mock_client.alpha_fetch_before_and_after_performance.return_value = (
             True,
             None,
-            mock_result,
+            performance_view,
+        )
+
+        # 行动 (Act)
+        # 使用 patch 模拟 _refresh_alpha_pool_performance_diff 内部的数据库写入
+        with patch.object(
+            base_evaluator.check_record_dal, "create", new_callable=AsyncMock
+        ) as mock_create:
+            result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+                alpha=test_alpha,
+                competition_id=self.COMPETITION_ID,
+                policy=RefreshPolicy.FORCE_REFRESH,
+            )
+
+            # 断言 (Assert)
+            mock_check_record_dal.find_one_by.assert_awaited_once_with(
+                alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+                record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            )
+            # 确认调用了刷新方法
+            mock_client.alpha_fetch_before_and_after_performance.assert_awaited_once_with(
+                alpha_id=test_alpha.alpha_id,
+                competition_id=self.COMPETITION_ID,  # 使用 alpha_id 属性
+            )
+            # 确认调用了创建记录方法 (在 _refresh... 内部)
+            mock_create.assert_awaited_once()
+            # 默认检查逻辑返回 True
+            assert result is True
+
+    async def test_check_performance_diff_refresh_async_if_missing_found(
+        self,
+        base_evaluator: BaseEvaluator,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
+        performance_view: BeforeAndAfterPerformanceView,
+    ) -> None:
+        """测试策略 REFRESH_ASYNC_IF_MISSING 且找到记录的情况。"""
+        # 安排 (Arrange)
+        check_record = CheckRecord(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            content=performance_view.model_dump(),
+        )
+        mock_check_record_dal.find_one_by.return_value = check_record
+
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
+        )
+
+        # 断言 (Assert)
+        mock_check_record_dal.find_one_by.assert_awaited_once_with(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+        )
+        # 确认没有调用刷新方法
+        base_evaluator.client.alpha_fetch_before_and_after_performance.assert_not_awaited()
+        # 确认没有调用创建记录方法
+        mock_check_record_dal.create.assert_not_awaited()
+        # 默认检查逻辑返回 True
+        assert result is True
+
+    async def test_check_performance_diff_refresh_async_if_missing_not_found(
+        self,
+        base_evaluator: BaseEvaluator,
+        mock_check_record_dal: AsyncMock,
+        mock_client: MagicMock,
+        test_alpha: Alpha,
+        performance_view: BeforeAndAfterPerformanceView,
+    ) -> None:
+        """测试策略 REFRESH_ASYNC_IF_MISSING 但未找到记录的情况。"""
+        # 安排 (Arrange)
+        mock_check_record_dal.find_one_by.return_value = None
+        # 模拟 API 返回成功
+        mock_client.alpha_fetch_before_and_after_performance.return_value = (
+            True,
             None,
+            performance_view,
         )
 
-        with patch(
-            "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-        ):
-            await base_evaluator.before_and_after_performance_check(competition_id)
+        # 行动 (Act)
+        with patch.object(
+            base_evaluator.check_record_dal, "create", new_callable=AsyncMock
+        ) as mock_create:
+            result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+                alpha=test_alpha,
+                competition_id=self.COMPETITION_ID,
+                policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
+            )
 
-        mock_wq_client.alpha_fetch_before_and_after_performance.assert_called_once_with(
-            alpha_id=sample_alpha.alpha_id, competition_id=competition_id
-        )
-        mock_check_record_dal.create.assert_called_once()
+            # 断言 (Assert)
+            mock_check_record_dal.find_one_by.assert_awaited_once_with(
+                alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+                record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            )
+            # 确认调用了刷新方法
+            mock_client.alpha_fetch_before_and_after_performance.assert_awaited_once_with(
+                alpha_id=test_alpha.alpha_id,
+                competition_id=self.COMPETITION_ID,  # 使用 alpha_id 属性
+            )
+            # 确认调用了创建记录方法
+            mock_create.assert_awaited_once()
+            # 默认检查逻辑返回 True
+            assert result is True
 
-        created_check_record: CheckRecord = mock_check_record_dal.create.call_args[0][0]
-        assert created_check_record.alpha_id == sample_alpha.alpha_id
-        assert (
-            created_check_record.record_type
-            == AlphaCheckType.BEFORE_AND_AFTER_PERFORMANCE
-        )
-        assert created_check_record.content == mock_result.model_dump(mode="python")
-
-    @pytest.mark.asyncio
-    async def test_before_and_after_performance_check_retry(
+    async def test_check_performance_diff_skip_if_missing_found(
         self,
         base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
-        sample_competition: Competition,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
+        performance_view: BeforeAndAfterPerformanceView,
     ) -> None:
-        """测试前后性能检查需要重试。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        competition_id = sample_competition.competition_id
-
-        mock_result = BeforeAndAfterPerformanceView(
-            stats=BeforeAndAfterPerformanceView.Stats(
-                before=StatsView(  # 使用 StatsView
-                    book_size=100,
-                    pnl=10.0,
-                    long_count=5,
-                    short_count=2,
-                    drawdown=0.1,
-                    turnover=0.2,
-                    returns=0.05,
-                    margin=0.3,
-                    sharpe=1.5,
-                    fitness=1.1,
-                ),
-                after=StatsView(  # 使用 StatsView
-                    book_size=110,
-                    pnl=11.0,
-                    long_count=6,
-                    short_count=3,
-                    drawdown=0.09,
-                    turnover=0.21,
-                    returns=0.06,
-                    margin=0.31,
-                    sharpe=1.6,
-                    fitness=1.2,
-                ),
-            ),
-            yearly_stats=BeforeAndAfterPerformanceView.YearlyStats(
-                before=TableView(
-                    table_schema=TableSchemaView(  # 使用 TableSchemaView
-                        name="yearly_stats_schema",
-                        title="Yearly Stats",
-                        properties=[
-                            TableSchemaView.Property(
-                                name="year", title="Year", data_type="integer"
-                            ),
-                            TableSchemaView.Property(
-                                name="sharpe", title="Sharpe", data_type="number"
-                            ),
-                        ],
-                    ),
-                    records=[[2022, 1.4], [2023, 1.6]],
-                ),
-                after=TableView(
-                    table_schema=TableSchemaView(  # 使用 TableSchemaView
-                        name="yearly_stats_schema",
-                        title="Yearly Stats",
-                        properties=[
-                            TableSchemaView.Property(
-                                name="year", title="Year", data_type="integer"
-                            ),
-                            TableSchemaView.Property(
-                                name="sharpe", title="Sharpe", data_type="number"
-                            ),
-                        ],
-                    ),
-                    records=[[2022, 1.5], [2023, 1.7]],
-                ),
-            ),
-            pnl=TableView(
-                table_schema=TableSchemaView(  # 使用 TableSchemaView
-                    name="pnl_schema",
-                    title="PnL Data",
-                    properties=[
-                        TableSchemaView.Property(
-                            name="date", title="Date", data_type="string"
-                        ),
-                        TableSchemaView.Property(
-                            name="pnl", title="PnL", data_type="number"
-                        ),
-                    ],
-                ),
-                records=[["2023-01-01", 1.0], ["2023-01-02", -0.5]],
-            ),
-            partition=["region", "sector"],
-            # competition 和 score 在重试成功后才会有，第一次调用时为 None
+        """测试策略 SKIP_IF_MISSING 且找到记录的情况。"""
+        # 安排 (Arrange)
+        check_record = CheckRecord(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            content=performance_view.model_dump(),
         )
-        mock_wq_client.alpha_fetch_before_and_after_performance.side_effect = [
-            (False, 0.1, None, None),
-            (True, None, mock_result, None),
-        ]
+        mock_check_record_dal.find_one_by.return_value = check_record
 
-        with (
-            patch(
-                "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-            ),
-            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
-        ):
-            await base_evaluator.before_and_after_performance_check(competition_id)
-
-        assert mock_wq_client.alpha_fetch_before_and_after_performance.call_count == 2
-        mock_sleep.assert_called_once_with(0.1)
-        mock_check_record_dal.create.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_before_and_after_performance_check_api_error(
-        self,
-        base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
-        sample_alpha: Alpha,
-        sample_competition: Competition,
-    ) -> None:
-        """测试前后性能检查 API 调用出错。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
-        competition_id = sample_competition.competition_id
-
-        mock_wq_client.alpha_fetch_before_and_after_performance.side_effect = Exception(
-            "API Error"
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.SKIP_IF_MISSING,
         )
 
-        with patch(
-            "alphapower.engine.evaluate.base_evaluator.wq_client", mock_wq_client
-        ):
-            await base_evaluator.before_and_after_performance_check(competition_id)
+        # 断言 (Assert)
+        mock_check_record_dal.find_one_by.assert_awaited_once_with(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+        )
+        # 确认没有调用刷新方法
+        base_evaluator.client.alpha_fetch_before_and_after_performance.assert_not_awaited()
+        # 确认没有调用创建记录方法
+        mock_check_record_dal.create.assert_not_awaited()
+        # 默认检查逻辑返回 True
+        assert result is True
 
-        mock_wq_client.alpha_fetch_before_and_after_performance.assert_called_once()
-        mock_check_record_dal.create.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_before_and_after_performance_check_no_competition_id(
+    async def test_check_performance_diff_skip_if_missing_not_found(
         self,
         base_evaluator: BaseEvaluator,
-        mock_wq_client: MagicMock,
-        mock_db_session: dict,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
     ) -> None:
-        """测试前后性能检查 competition_id 为 None。"""
-        mock_check_record_dal = mock_db_session["check_record_dal"]
+        """测试策略 SKIP_IF_MISSING 但未找到记录的情况。"""
+        # 安排 (Arrange)
+        mock_check_record_dal.find_one_by.return_value = None
 
-        await base_evaluator.before_and_after_performance_check(None)  # type: ignore
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.SKIP_IF_MISSING,
+        )
 
-        mock_wq_client.alpha_fetch_before_and_after_performance.assert_not_called()
-        mock_check_record_dal.create.assert_not_called()
+        # 断言 (Assert)
+        mock_check_record_dal.find_one_by.assert_awaited_once_with(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+        )
+        # 确认没有调用刷新方法
+        base_evaluator.client.alpha_fetch_before_and_after_performance.assert_not_awaited()
+        # 确认没有调用创建记录方法
+        mock_check_record_dal.create.assert_not_awaited()
+        # 未找到记录且策略为跳过，应返回 False
+        assert result is False
+
+    async def test_check_performance_diff_refresh_raises_exception(
+        self,
+        base_evaluator: BaseEvaluator,
+        mock_check_record_dal: AsyncMock,
+        mock_client: MagicMock,
+        test_alpha: Alpha,
+    ) -> None:
+        """测试刷新数据时发生异常的情况。"""
+        # 安排 (Arrange)
+        mock_check_record_dal.find_one_by.return_value = None
+        mock_client.alpha_fetch_before_and_after_performance.side_effect = RuntimeError(
+            "API 错误"
+        )
+
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
+        )
+
+        # 断言 (Assert)
+        mock_check_record_dal.find_one_by.assert_awaited_once()
+        mock_client.alpha_fetch_before_and_after_performance.assert_awaited_once()
+        # 发生异常，检查应视为失败
+        assert result is False
+
+    async def test_check_performance_diff_refresh_cancelled(
+        self,
+        base_evaluator: BaseEvaluator,
+        mock_check_record_dal: AsyncMock,
+        mock_client: MagicMock,
+        test_alpha: Alpha,
+    ) -> None:
+        """测试刷新数据时任务被取消的情况。"""
+        # 安排 (Arrange)
+        mock_check_record_dal.find_one_by.return_value = None
+        mock_client.alpha_fetch_before_and_after_performance.side_effect = (
+            asyncio.CancelledError("任务取消")
+        )
+
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
+        )
+
+        # 断言 (Assert)
+        mock_check_record_dal.find_one_by.assert_awaited_once()
+        mock_client.alpha_fetch_before_and_after_performance.assert_awaited_once()
+        # 任务取消，检查应视为失败
+        assert result is False
+
+    async def test_check_performance_diff_invalid_policy_raises_error(
+        self,
+        base_evaluator: BaseEvaluator,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
+    ) -> None:
+        """测试传入无效策略时是否按预期处理（当前实现会抛 ValueError）。"""
+        # 安排 (Arrange)
+        mock_check_record_dal.find_one_by.return_value = None
+        invalid_policy_value = "INVALID_POLICY"  # 模拟一个无效值
+
+        # 行动 & 断言 (Act & Assert)
+        with pytest.raises(
+            ValueError, match=f"不支持的刷新策略 '{invalid_policy_value}' 或状态组合"
+        ):
+            # 使用 patch 绕过 RefreshPolicy 枚举的类型检查，模拟无效值传入
+            with patch(
+                "alphapower.engine.evaluate.base_evaluator.RefreshPolicy",
+                MagicMock(),
+            ):
+                await base_evaluator._check_alpha_pool_performance_diff(
+                    alpha=test_alpha,
+                    competition_id=self.COMPETITION_ID,
+                    policy=invalid_policy_value,  # type: ignore
+                )
+
+    # 注意：由于 _check_alpha_pool_performance_diff 内部的实际检查逻辑
+    # (标记为 TODO 的部分) 尚未实现，且当前默认返回 True，
+    # 因此无法直接测试检查逻辑失败的情况，除非修改该方法或添加更复杂的 mock。
+    # 以下测试假设检查逻辑存在且可以被模拟或依赖于 performance_view 的内容。
+    # 目前，这些测试将验证在获取数据后，默认逻辑是否返回 True。
+
+    async def test_check_performance_diff_logic_passes_with_data(
+        self,
+        base_evaluator: BaseEvaluator,
+        mock_check_record_dal: AsyncMock,
+        test_alpha: Alpha,
+        performance_view: BeforeAndAfterPerformanceView,
+    ) -> None:
+        """测试在获取到数据后，默认检查逻辑是否通过（当前为 True）。"""
+        # 安排 (Arrange) - 使用现有数据
+        check_record = CheckRecord(
+            alpha_id=test_alpha.alpha_id,  # 使用 alpha_id 属性
+            record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+            content=performance_view.model_dump(),
+        )
+        mock_check_record_dal.find_one_by.return_value = check_record
+
+        # 行动 (Act)
+        result: bool = await base_evaluator._check_alpha_pool_performance_diff(
+            alpha=test_alpha,
+            competition_id=self.COMPETITION_ID,
+            policy=RefreshPolicy.USE_EXISTING,
+        )
+
+        # 断言 (Assert)
+        # 确认检查逻辑（当前默认）返回 True
+        assert result is True

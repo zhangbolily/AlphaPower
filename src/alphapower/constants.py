@@ -693,7 +693,7 @@ class DataFieldType(Enum):
     UNIVERSE = "UNIVERSE"
 
 
-class AlphaCheckType(Enum):
+class CheckRecordType(Enum):
     """检查记录类型枚举。
     定义了系统中可能使用的检查记录类型。
 
@@ -848,14 +848,14 @@ class RefreshPolicy(Enum):
         USE_EXISTING: 如果存在有效的最新记录，则使用它；否则运行检查。
         FORCE_REFRESH: 强制重新运行检查，忽略现有记录。
         SKIP_IF_MISSING: 如果不存在记录，则跳过检查。
-        RUN_ASYNC_IF_MISSING: 如果不存在记录，则在后台异步运行检查，并立即返回 PENDING 状态。
+        REFRESH_ASYNC_IF_MISSING: 如果不存在记录，则在后台异步运行检查，并立即返回 PENDING 状态。
     """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     USE_EXISTING = "USE_EXISTING"
     FORCE_REFRESH = "FORCE_REFRESH"
     SKIP_IF_MISSING = "SKIP_IF_MISSING"
-    RUN_ASYNC_IF_MISSING = "RUN_ASYNC_IF_MISSING"
+    REFRESH_ASYNC_IF_MISSING = "REFRESH_ASYNC_IF_MISSING"
 
 
 class CorrelationSource(Enum):

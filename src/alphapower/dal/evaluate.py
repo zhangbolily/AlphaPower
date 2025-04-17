@@ -1,8 +1,8 @@
 from typing import List, Optional, Type
 
-from sqlalchemy import and_, max, or_, select
+from sqlalchemy import and_, func, or_, select
 
-from alphapower.constants import AlphaCheckType
+from alphapower.constants import CheckRecordType
 from alphapower.dal.base import EntityDAL
 from alphapower.entity import CheckRecord, Correlation
 
@@ -51,7 +51,7 @@ class CorrelationDAL(EntityDAL[Correlation]):
     async def get_latest_max_corr(
         self,
         alpha_id: str,
-        calc_type: AlphaCheckType,
+        calc_type: CheckRecordType,
     ) -> Optional[Correlation]:
         """
         获取指定 Alpha 对的最新相关性记录。
@@ -77,7 +77,8 @@ class CorrelationDAL(EntityDAL[Correlation]):
                         self.entity_class.alpha_id_b == alpha_id,
                     ),
                     self.entity_class.calc_type == calc_type,
-                    self.entity_class.correlation == max(self.entity_class.correlation),
+                    self.entity_class.correlation
+                    == func.max(self.entity_class.correlation),
                 )
             )
             .order_by(self.entity_class.created_at.desc())

@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Type
 
 from pydantic import AliasChoices, BaseModel, Field
 
-from alphapower.constants import AlphaCheckType, CompetitionScoring
+from alphapower.constants import CheckRecordType, CompetitionScoring
 
 from .common_view import TableView
 from .models import AlphaCheckItemView
@@ -87,10 +87,14 @@ class StatsView(BaseModel):
         fitness: 适应度。
     """
 
-    book_size: int = Field(..., validation_alias="bookSize")
+    book_size: int = Field(..., validation_alias=AliasChoices("bookSize", "book_size"))
     pnl: float
-    long_count: int = Field(..., validation_alias="longCount")
-    short_count: int = Field(..., validation_alias="shortCount")
+    long_count: int = Field(
+        ..., validation_alias=AliasChoices("longCount", "long_count")
+    )
+    short_count: int = Field(
+        ..., validation_alias=AliasChoices("shortCount", "short_count")
+    )
     drawdown: float
     turnover: float
     returns: float
@@ -156,15 +160,17 @@ class BeforeAndAfterPerformanceView(BaseModel):
         after: float
 
     stats: Stats
-    yearly_stats: YearlyStats = Field(..., validation_alias="yearlyStats")
+    yearly_stats: YearlyStats = Field(
+        ..., validation_alias=AliasChoices("yearlyStats", "yearly_stats")
+    )
     pnl: TableView
     partition: List[str]
     competition: Optional[CompetitionRefView] = None
     score: Optional[ScoreView] = None
 
 
-CheckTypeViewMap: Dict[AlphaCheckType, Type[BaseModel]] = {
-    AlphaCheckType.CORRELATION_SELF: TableView,
-    AlphaCheckType.BEFORE_AND_AFTER_PERFORMANCE: BeforeAndAfterPerformanceView,
-    AlphaCheckType.SUBMISSION: SubmissionCheckResultView,
+CheckTypeViewMap: Dict[CheckRecordType, Type[BaseModel]] = {
+    CheckRecordType.CORRELATION_SELF: TableView,
+    CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE: BeforeAndAfterPerformanceView,
+    CheckRecordType.SUBMISSION: SubmissionCheckResultView,
 }

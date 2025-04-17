@@ -35,7 +35,7 @@ from sqlalchemy.orm import (
 
 from alphapower.constants import (
     ALPHA_ID_LENGTH,
-    AlphaCheckType,
+    CheckRecordType,
     CorrelationCalcType,
 )
 
@@ -160,8 +160,8 @@ class CheckRecord(Base):
         nullable=False,
         comment="Alpha ID",  # 添加字段注释
     )
-    record_type: MappedColumn[AlphaCheckType] = mapped_column(
-        Enum(AlphaCheckType),
+    record_type: MappedColumn[CheckRecordType] = mapped_column(
+        Enum(CheckRecordType),
         nullable=False,
         comment="记录类型",  # 添加字段注释
     )

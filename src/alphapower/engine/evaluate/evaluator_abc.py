@@ -12,7 +12,8 @@ from __future__ import annotations  # 解决类型前向引用问题
 import abc
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from alphapower.constants import AlphaCheckType, CorrelationType, RefreshPolicy
+from alphapower.client import WorldQuantClient
+from alphapower.constants import CheckRecordType, CorrelationType, RefreshPolicy
 from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
 from alphapower.entity import Alpha
 
@@ -35,6 +36,7 @@ class AbstractEvaluator(abc.ABC):
         fetcher: AbstractAlphaFetcher,
         correlation_dal: CorrelationDAL,
         check_record_dal: CheckRecordDAL,
+        client: WorldQuantClient,
     ):
         """初始化 Evaluator。
 
@@ -46,13 +48,14 @@ class AbstractEvaluator(abc.ABC):
         self.fetcher = fetcher
         self.correlation_dal = correlation_dal
         self.check_record_dal = check_record_dal
+        self.client = client
 
     @abc.abstractmethod
     async def evaluate_many(
         self,
         policy: RefreshPolicy,
         concurrency: int,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> AsyncGenerator[Alpha, None]:
         """异步批量评估通过 `fetcher` 获取的 Alpha。
 
@@ -80,7 +83,7 @@ class AbstractEvaluator(abc.ABC):
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> bool:
         """异步评估单个 Alpha 对象。
 
@@ -105,7 +108,7 @@ class AbstractEvaluator(abc.ABC):
     @abc.abstractmethod
     async def to_evaluate_alpha_count(
         self,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> int:
         """获取待评估的 Alpha 总数量。
 
@@ -122,8 +125,8 @@ class AbstractEvaluator(abc.ABC):
 
     @abc.abstractmethod
     async def _get_checks_to_run(
-        self, alpha: Alpha, **kwargs: Dict[str, Any]
-    ) -> Tuple[List[AlphaCheckType], RefreshPolicy]:
+        self, alpha: Alpha, **kwargs: Any
+    ) -> Tuple[List[CheckRecordType], RefreshPolicy]:
         """确定针对给定 Alpha 需要运行的检查类型及应用的刷新策略。
 
         子类必须实现此方法，以根据 Alpha 的具体属性（例如状态 `status`、类型 `type`）
@@ -148,10 +151,10 @@ class AbstractEvaluator(abc.ABC):
     async def _execute_checks(
         self,
         alpha: Alpha,
-        checks: List[AlphaCheckType],
+        checks: List[CheckRecordType],
         policy: RefreshPolicy,
-        **kwargs: Dict[str, Any],
-    ) -> Dict[AlphaCheckType, bool]:
+        **kwargs: Any,
+    ) -> Dict[CheckRecordType, bool]:
         """执行指定的检查类型列表，并返回各项检查的结果。
 
         此方法负责根据 `checks` 列表中的每个 `AlphaCheckType`，
@@ -177,7 +180,7 @@ class AbstractEvaluator(abc.ABC):
         alpha: Alpha,
         corr_type: CorrelationType,
         policy: RefreshPolicy,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> bool:
         """执行 Alpha 与其他 Alpha 之间的相关性检查。
 
@@ -207,7 +210,7 @@ class AbstractEvaluator(abc.ABC):
         alpha: Alpha,
         competition_id: Optional[str],
         policy: RefreshPolicy,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> bool:
         """检查将此 Alpha 加入指定因子池 (Alpha Pool) 后，因子池业绩表现的前后差异。
 
@@ -237,7 +240,7 @@ class AbstractEvaluator(abc.ABC):
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> bool:
         """检查 Alpha 是否满足提交 (Submission) 的条件。
 
