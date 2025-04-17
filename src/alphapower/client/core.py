@@ -486,7 +486,7 @@ class WorldQuantClient:
     @exception_handler
     @rate_limit_handler
     async def alpha_fetch_before_and_after_performance(
-        self, competition_id: str, alpha_id: str
+        self, competition_id: Optional[str], alpha_id: str
     ) -> Tuple[
         bool, Optional[float], Optional[BeforeAndAfterPerformanceView], RateLimit
     ]:

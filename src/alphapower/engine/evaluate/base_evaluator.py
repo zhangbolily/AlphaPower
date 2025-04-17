@@ -1,21 +1,21 @@
-"""Alpha 数据获取器 (Fetcher) 与评估器 (Evaluator) 的基础实现。
-
-此模块提供了 `AbstractAlphaFetcher` 和 `AbstractEvaluator` 抽象基类的
-基础实现版本：`BaseAlphaFetcher` 和 `BaseEvaluator`。
-这些基础类旨在被继承，子类需要根据具体的业务逻辑覆盖其中的抽象方法
-或带有 `NotImplementedError` 的方法，以实现完整的 Alpha 评估流程。
-"""
-
 from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
+from enum import Enum, auto
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from alphapower.client import BeforeAndAfterPerformanceView, WorldQuantClient
-from alphapower.constants import CheckRecordType, CorrelationType, RefreshPolicy
+from alphapower.client import BeforeAndAfterPerformanceView, TableView, WorldQuantClient
+from alphapower.constants import (
+    CONSULTANT_MAX_PROD_CORRELATION,
+    CONSULTANT_MAX_SELF_CORRELATION,
+    CheckRecordType,
+    CorrelationCalcType,
+    CorrelationType,
+    RefreshPolicy,
+)
 from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
 from alphapower.entity import Alpha
-from alphapower.entity.evaluate import CheckRecord
+from alphapower.entity.evaluate import CheckRecord, Correlation
 from alphapower.internal.logging import get_logger
 
 from .alpha_fetcher_abc import AbstractAlphaFetcher
@@ -26,18 +26,15 @@ log = get_logger(module_name=__name__)
 
 
 class BaseEvaluator(AbstractEvaluator):
-    """Alpha 评估器的基础实现。
 
-    继承自 `AbstractEvaluator`，为所有抽象方法提供了默认的
-    `NotImplementedError` 实现。子类应覆盖这些方法以提供具体的
-    评估和检查逻辑。
+    class CheckAction(Enum):
+        """指示检查数据时应执行的操作"""
 
-    Attributes:
-        fetcher: 用于获取 Alpha 的数据获取器实例。
-        correlation_dal: Correlation 数据访问层对象。
-        check_record_dal: CheckRecord 数据访问层对象。
-        client: WorldQuant 客户端实例。
-    """
+        REFRESH = auto()  # 需要刷新数据
+        USE_EXISTING = auto()  # 使用已存在的记录
+        SKIP = auto()  # 根据策略跳过检查 (当记录不存在时)
+        FAIL_MISSING = auto()  # 因记录不存在且策略不允许刷新而失败
+        ERROR = auto()  # 无效的策略或状态组合
 
     def __init__(
         self,
@@ -46,14 +43,6 @@ class BaseEvaluator(AbstractEvaluator):
         check_record_dal: CheckRecordDAL,
         client: WorldQuantClient,
     ):
-        """初始化 BaseEvaluator。
-
-        Args:
-            fetcher: 用于获取 Alpha 的数据获取器实例。
-            correlation_dal: Correlation 数据访问层对象。
-            check_record_dal: CheckRecord 数据访问层对象。
-            client: WorldQuant 客户端实例。
-        """
         super().__init__(fetcher, correlation_dal, check_record_dal, client)
         # 使用同步日志记录器，因为 __init__ 通常是同步的
         log.info("📊 BaseEvaluator 初始化完成", emoji="📊")
@@ -64,24 +53,6 @@ class BaseEvaluator(AbstractEvaluator):
         concurrency: int,
         **kwargs: Any,
     ) -> AsyncGenerator[Alpha, None]:
-        """异步批量评估通过 `fetcher` 获取的 Alpha (待实现)。
-
-        此方法应作为评估流程的入口点，协调 `fetcher` 获取 Alpha 数据，
-        并使用 `evaluate_one` 对每个 Alpha 进行并发评估。
-
-        子类应覆盖此方法，实现并发评估逻辑。
-
-        Args:
-            policy: 应用于本次批量评估中所有检查的默认刷新策略。
-            concurrency: 并发执行 `evaluate_one` 任务的最大数量。
-            **kwargs: 传递给 `self.fetcher.fetch_alphas` 和 `self.evaluate_one` 的参数字典。
-
-        Yields:
-            逐个返回已成功通过所有评估检查的 `Alpha` 对象。
-
-        Raises:
-            NotImplementedError: 此方法尚未在子类中实现。
-        """
         await log.adebug(
             "🚧 evaluate_many 方法尚未实现，需要子类覆盖",
             emoji="🚧",
@@ -100,24 +71,6 @@ class BaseEvaluator(AbstractEvaluator):
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:
-        """异步评估单个 Alpha 对象 (待实现)。
-
-        此方法应协调调用 `_get_checks_to_run` 来确定需要执行的检查，
-        然后调用 `_execute_checks` 来执行这些检查，并最终返回评估结果。
-
-        子类应覆盖此方法，实现调用检查逻辑并返回结果。
-
-        Args:
-            alpha: 需要评估的 `Alpha` 实体对象。
-            policy: 默认的刷新策略。
-            **kwargs: 传递给 `self._get_checks_to_run` 和 `self._execute_checks` 的参数字典。
-
-        Returns:
-            布尔值 (bool)，指示此 `Alpha` 是否通过了所有必需的评估检查。
-
-        Raises:
-            NotImplementedError: 此方法尚未在子类中实现。
-        """
         await log.adebug(
             "🚧 evaluate_one 方法尚未实现，需要子类覆盖",
             emoji="🚧",
@@ -131,16 +84,6 @@ class BaseEvaluator(AbstractEvaluator):
         self,
         **kwargs: Any,
     ) -> int:
-        """获取待评估的 Alpha 总数量。
-
-        此方法委托给注入的 `self.fetcher.total_alpha_count`。
-
-        Args:
-            **kwargs: 传递给 `self.fetcher.total_alpha_count` 的参数字典。
-
-        Returns:
-            符合 `fetcher` 筛选条件的 Alpha 实体总数。
-        """
         await log.adebug(
             "准备调用 fetcher 获取待评估 Alpha 总数", emoji="🔢", kwargs=kwargs
         )
@@ -152,24 +95,6 @@ class BaseEvaluator(AbstractEvaluator):
     async def _get_checks_to_run(
         self, alpha: Alpha, **kwargs: Any
     ) -> Tuple[List[CheckRecordType], RefreshPolicy]:
-        """确定针对给定 Alpha 需要运行的检查类型及应用的刷新策略 (待实现)。
-
-        子类应覆盖此方法，根据 Alpha 属性、评估上下文（可能在 kwargs 中）
-        以及可能的外部配置或规则，来决定需要执行哪些检查 (`CheckRecordType`)
-        以及使用何种刷新策略 (`RefreshPolicy`)。
-
-        Args:
-            alpha: 当前正在评估的 `Alpha` 对象。
-            **kwargs: 包含可选参数的字典，可能影响检查的选择和策略。
-
-        Returns:
-            一个元组 (Tuple)，包含：
-            - `List[CheckRecordType]`: 需要执行的检查类型列表。
-            - `RefreshPolicy`: 应用于这些检查的刷新策略。
-
-        Raises:
-            NotImplementedError: 此方法尚未在子类中实现。
-        """
         await log.adebug(
             "🚧 _get_checks_to_run 方法尚未实现，需要子类覆盖",
             emoji="🚧",
@@ -185,26 +110,6 @@ class BaseEvaluator(AbstractEvaluator):
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> Dict[CheckRecordType, bool]:
-        """执行指定的检查类型列表，并返回各项检查的结果 (待实现)。
-
-        子类应覆盖此方法。此方法通常会遍历 `checks` 列表，
-        根据每个 `CheckRecordType` 调用相应的内部检查方法
-        （例如 `_check_correlation`, `_check_alpha_pool_performance_diff`, `_check_submission`），
-        并将结果收集到一个字典中。需要正确处理 `policy` 参数。
-
-        Args:
-            alpha: 当前正在评估的 `Alpha` 对象。
-            checks: 需要执行的检查类型列表 (`List[CheckRecordType]`)。
-            policy: 应用于本次检查执行的刷新策略 (`RefreshPolicy`)。
-            **kwargs: 传递给具体检查方法的参数字典。
-
-        Returns:
-            一个字典 (`Dict[CheckRecordType, bool]`)，键是执行的 `CheckRecordType`，
-            值是该项检查的结果 (True 表示通过，False 表示未通过)。
-
-        Raises:
-            NotImplementedError: 此方法尚未在子类中实现。
-        """
         await log.adebug(
             "🚧 _execute_checks 方法尚未实现，需要子类覆盖",
             emoji="🚧",
@@ -222,60 +127,453 @@ class BaseEvaluator(AbstractEvaluator):
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:
-        """执行 Alpha 与其他 Alpha 之间的相关性检查 (待实现)。
-
-        子类应覆盖此方法，实现具体的相关性计算和判断逻辑。这可能涉及：
-        1. 根据 `policy` 决定是重新计算还是使用缓存的相关性数据。
-        2. 从数据库 (`correlation_dal`) 或其他来源获取相关性数据。
-        3. 如果需要，调用 WorldQuant API 或内部计算引擎来计算相关性。
-        4. 将计算结果与阈值比较，判断是否通过检查。
-        5. （可选）将新的相关性数据存入数据库。
-
-        Args:
-            alpha: 当前正在评估的 `Alpha` 对象。
-            corr_type: 指定相关性检查的类型 (`CorrelationType`)。
-            policy: 应用于本次检查的刷新策略 (`RefreshPolicy`)。
-            **kwargs: 可能包含相关性计算所需的额外参数，例如相关性阈值、
-                      用于比较的 Alpha 集合等。
-
-        Returns:
-            布尔值 (bool)，指示 Alpha 是否通过了指定类型的相关性检查。
-
-        Raises:
-            NotImplementedError: 此方法尚未在子类中实现。
-        """
+        record_type = (
+            CheckRecordType.CORRELATION_SELF
+            if corr_type == CorrelationType.SELF
+            else CheckRecordType.CORRELATION_PROD
+        )
+        check_type_name = "相关性"  # 用于日志
         await log.adebug(
-            "🚧 _check_correlation 方法尚未实现，需要子类覆盖",
-            emoji="🚧",
+            f"开始检查 Alpha {check_type_name}",
+            emoji="🔗",
             alpha_id=alpha.alpha_id,
-            corr_type=corr_type,
+            correlation_type=corr_type,
             policy=policy,
             kwargs=kwargs,
         )
-        raise NotImplementedError("子类必须实现 _check_correlation 方法")
+
+        check_result: bool = False
+        correlation_content: Optional[TableView] = None
+
+        try:
+            # 1. 查找现有的检查记录
+            exist_check_record: Optional[CheckRecord] = (
+                await self.check_record_dal.find_one_by(
+                    alpha_id=alpha.alpha_id,
+                    record_type=record_type,
+                    order_by=CheckRecord.created_at.desc(),
+                )
+            )
+            await log.adebug(
+                f"查询现有{check_type_name}检查记录结果",
+                emoji="💾" if exist_check_record else "❓",
+                alpha_id=alpha.alpha_id,
+                record_type=record_type,
+                record_found=bool(exist_check_record),
+            )
+
+            # 2. 根据策略决定执行什么操作
+            action: BaseEvaluator.CheckAction = await self._determine_check_action(
+                policy=policy,
+                exist_check_record=exist_check_record,
+                check_type_name=check_type_name,
+                alpha_id=alpha.alpha_id,
+            )
+
+            # 3. 根据操作执行逻辑
+            if action == BaseEvaluator.CheckAction.REFRESH:
+                refreshed_result: Optional[TableView] = (
+                    await self._refresh_correlation_data(alpha, corr_type)
+                )
+                if refreshed_result:
+                    correlation_content = refreshed_result
+                else:
+                    await log.awarning(
+                        f"{check_type_name}数据刷新失败，检查不通过",
+                        emoji="⚠️",
+                        alpha_id=alpha.alpha_id,
+                        correlation_type=corr_type,
+                    )
+                    check_result = False
+                    return check_result  # 刷新失败直接返回
+
+            elif (
+                action == BaseEvaluator.CheckAction.USE_EXISTING and exist_check_record
+            ):
+                correlation_content = TableView.model_validate(
+                    exist_check_record.content
+                )
+
+            elif action == BaseEvaluator.CheckAction.SKIP:
+                check_result = False  # 跳过视为不通过
+                return check_result  # 跳过直接返回
+
+            elif action == BaseEvaluator.CheckAction.FAIL_MISSING:
+                check_result = False  # 因缺失而失败
+                return check_result  # 失败直接返回
+
+            elif action == BaseEvaluator.CheckAction.ERROR:
+                await log.aerror(
+                    f"处理 {check_type_name} 检查遇到错误状态",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    policy=policy,
+                )
+                check_result = False
+                # 可以选择抛出异常或直接返回 False
+                # raise ValueError(f"无效的检查策略 '{policy}' 或状态组合")
+                return check_result
+
+            # 4. 判断检查是否通过 (如果获取或加载了内容)
+            if correlation_content:
+                check_result = self._determine_correlation_pass_status(
+                    correlation_content, corr_type, **kwargs
+                )
+                await log.ainfo(
+                    "Alpha 相关性检查判定完成",
+                    emoji="✅" if check_result else "❌",
+                    alpha_id=alpha.alpha_id,
+                    correlation_type=corr_type,
+                    check_passed=check_result,
+                )
+            else:
+                # 如果 correlation_content 仍然是 None (理论上不应发生，除非刷新失败已返回)
+                await log.aerror(
+                    "未能获取或加载相关性数据，无法执行检查",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    correlation_type=corr_type,
+                    policy=policy,
+                )
+                check_result = False
+
+        except asyncio.CancelledError:
+            await log.ainfo(
+                "Alpha 相关性检查任务被取消",
+                emoji="🚫",
+                alpha_id=alpha.alpha_id,
+                correlation_type=corr_type,
+            )
+            check_result = False  # 取消视为检查不通过
+            # 不向上抛出，评估流程应能处理
+        except Exception as e:
+            await log.aerror(
+                "检查 Alpha 相关性时发生异常",
+                emoji="💥",
+                alpha_id=alpha.alpha_id,
+                correlation_type=corr_type,
+                policy=policy,
+                error=str(e),
+                exc_info=True,
+            )
+            check_result = False  # 异常视为检查不通过
+            # 可以选择是否向上抛出，取决于评估流程设计
+            # raise
+
+        await log.adebug("结束检查 Alpha 相关性", emoji="🏁", check_result=check_result)
+        return check_result
+
+    async def _refresh_correlation_data(
+        self, alpha: Alpha, corr_type: CorrelationType
+    ) -> Optional[TableView]:
+        await log.adebug(
+            "开始刷新 Alpha 相关性数据",
+            emoji="🔄",
+            alpha_id=alpha.alpha_id,
+            correlation_type=corr_type,
+        )
+        record_type = (
+            CheckRecordType.CORRELATION_SELF
+            if corr_type == CorrelationType.SELF
+            else CheckRecordType.CORRELATION_PROD
+        )
+        final_result: Optional[TableView] = None
+
+        try:
+            # 注意：这里的 self.client 应该由外部管理生命周期
+            # async with self.client: # 假设 client 实例是持久的或由外部管理
+            while True:
+                await log.adebug(
+                    "执行单次相关性检查 API 调用",
+                    emoji="📞",
+                    alpha_id=alpha.alpha_id,
+                    corr_type=corr_type,
+                )
+                finished: bool
+                retry_after: Optional[float]
+                api_result: Optional[TableView]
+                finished, retry_after, api_result = (
+                    await self.client.alpha_correlation_check(
+                        alpha_id=alpha.alpha_id,
+                        corr_type=corr_type,
+                    )
+                )
+                await log.adebug(
+                    "相关性检查 API 调用返回",
+                    emoji="📥",
+                    alpha_id=alpha.alpha_id,
+                    corr_type=corr_type,
+                    finished=finished,
+                    retry_after=retry_after,
+                    # result=api_result # 可能包含大量数据，谨慎打印
+                )
+
+                if finished:
+                    if api_result:
+                        await log.ainfo(
+                            "相关性数据 API 获取成功",
+                            emoji="🎉",
+                            alpha_id=alpha.alpha_id,
+                            corr_type=corr_type,
+                        )
+                        final_result = api_result
+                        # --- 存储结果 ---
+                        check_record: CheckRecord = CheckRecord(
+                            alpha_id=alpha.alpha_id,
+                            record_type=record_type,
+                            content=final_result.model_dump(mode="python"),
+                        )
+                        await self.check_record_dal.create(
+                            check_record,
+                        )
+                        await log.adebug(
+                            "相关性检查记录已保存",
+                            emoji="💾",
+                            alpha_id=alpha.alpha_id,
+                            record_type=record_type,
+                        )
+
+                        # 如果是自相关性，解析并存储具体的相关性值
+                        if corr_type == CorrelationType.SELF and final_result.records:
+                            correlations: List[Correlation] = (
+                                self._parse_self_correlation_result(
+                                    alpha.alpha_id, final_result
+                                )
+                            )
+                            if correlations:
+                                await self.correlation_dal.bulk_upsert(correlations)
+                                await log.adebug(
+                                    "自相关性详细数据已批量更新/插入",
+                                    emoji="💾",
+                                    alpha_id=alpha.alpha_id,
+                                    count=len(correlations),
+                                )
+                        # --- 存储结束 ---
+                        break  # 成功获取并处理，退出循环
+                    else:
+                        # API 完成但无结果
+                        await log.awarning(
+                            "相关性检查 API 声称完成，但未返回有效结果",
+                            emoji="❓",
+                            alpha_id=alpha.alpha_id,
+                            corr_type=corr_type,
+                        )
+                        final_result = None  # 明确标记失败
+                        break  # 退出循环
+
+                elif retry_after and retry_after > 0:
+                    # 检查未完成，按建议时间等待后重试
+                    await log.adebug(
+                        "相关性检查未完成，将在指定时间后重试",
+                        emoji="⏳",
+                        alpha_id=alpha.alpha_id,
+                        corr_type=corr_type,
+                        retry_after=round(retry_after, 2),
+                    )
+                    await asyncio.sleep(retry_after)
+                else:
+                    # API 返回既未完成也无重试时间，视为异常情况
+                    await log.awarning(
+                        "相关性检查 API 返回异常状态：未完成且无重试时间",
+                        emoji="❓",
+                        alpha_id=alpha.alpha_id,
+                        corr_type=corr_type,
+                        finished=finished,
+                        retry_after=retry_after,
+                    )
+                    final_result = None  # 明确标记失败
+                    break  # 退出循环
+        except asyncio.CancelledError:
+            await log.ainfo(
+                "刷新相关性数据任务被取消",
+                emoji="🚫",
+                alpha_id=alpha.alpha_id,
+                correlation_type=corr_type,
+            )
+            final_result = None  # 标记失败
+            raise  # 重新抛出，让上层处理取消状态
+        except Exception as e:
+            await log.aerror(
+                "刷新相关性数据过程中发生未预期异常",
+                emoji="💥",
+                alpha_id=alpha.alpha_id,
+                correlation_type=corr_type,
+                error=str(e),
+                exc_info=True,
+            )
+            final_result = None  # 标记失败
+            # 不再向上抛出，返回 None 表示刷新失败
+
+        await log.adebug(
+            "结束刷新 Alpha 相关性数据",
+            emoji="🏁",
+            alpha_id=alpha.alpha_id,
+            correlation_type=corr_type,
+            success=bool(final_result),
+        )
+        return final_result
+
+    def _parse_self_correlation_result(
+        self, alpha_id_a: str, result: TableView
+    ) -> List[Correlation]:
+        correlations: List[Correlation] = []
+        try:
+            corr_index: int = result.table_schema.index_of("correlation")
+            alpha_id_index: int = result.table_schema.index_of("id")
+
+            if corr_index == -1 or alpha_id_index == -1:
+                log.error(  # 使用同步日志，因为这是纯计算方法
+                    "自相关性检查结果中缺少必要的字段",
+                    emoji="❌",
+                    alpha_id=alpha_id_a,
+                    schema=result.table_schema.model_dump(mode="python"),
+                )
+                raise ValueError("自相关性检查结果中缺少必要的字段，无法解析相关性数据")
+
+            if not result.records:
+                log.error(
+                    "自相关性检查结果为空",
+                    emoji="❌",
+                    alpha_id=alpha_id_a,
+                )
+                raise ValueError("自相关性检查结果为空，无法解析相关性数据")
+
+            for record in result.records:
+                try:
+                    # 确保 record 是列表或元组，并且索引有效
+                    if isinstance(record, (list, tuple)) and len(record) > max(
+                        alpha_id_index, corr_index
+                    ):
+                        alpha_id_b: str = str(record[alpha_id_index])  # 确保是字符串
+                        corr_value_raw: Any = record[corr_index]
+                        # 尝试将相关性值转换为浮点数
+                        corr_value: float = float(corr_value_raw)
+
+                        # 忽略与自身的相关性 (通常为 1 或未定义)
+                        if alpha_id_a == alpha_id_b:
+                            continue
+
+                        correlation: Correlation = Correlation(
+                            alpha_id_a=alpha_id_a,
+                            alpha_id_b=alpha_id_b,
+                            correlation=corr_value,
+                            calc_type=CorrelationCalcType.PLATFORM,  # 标记为平台计算
+                        )
+                        correlations.append(correlation)
+                    else:
+                        log.error(
+                            "自相关性检查结果记录格式无效",
+                            emoji="❌",
+                            alpha_id=alpha_id_a,
+                            record=record,
+                        )
+                        raise ValueError(
+                            "自相关性检查结果记录格式无效，无法解析相关性数据"
+                        )
+                except (ValueError, TypeError, IndexError) as parse_err:
+                    log.error(
+                        "解析自相关性检查结果记录时发生错误",
+                        emoji="❌",
+                        alpha_id=alpha_id_a,
+                        record=record,
+                        error=str(parse_err),
+                    )
+                    raise ValueError(
+                        "解析自相关性检查结果记录时发生错误，无法解析相关性数据"
+                    ) from parse_err
+
+        except Exception as e:
+            log.error(
+                "解析自相关性结果时发生未预期异常",
+                emoji="💥",
+                alpha_id=alpha_id_a,
+                error=str(e),
+                exc_info=True,
+            )
+            raise
+
+        return correlations
+
+    def _determine_correlation_pass_status(
+        self, content: TableView, corr_type: CorrelationType, **kwargs: Any
+    ) -> bool:
+        # 使用同步日志，因为这是纯计算方法
+        log.debug(
+            "开始判定相关性检查是否通过",
+            emoji="🤔",
+            correlation_type=corr_type,
+            kwargs=kwargs,
+        )
+        try:
+            max_corr: float = content.max or 0.0
+            min_corr: float = content.min or 0.0
+
+            if corr_type == CorrelationType.SELF:
+                if max_corr > CONSULTANT_MAX_SELF_CORRELATION:
+                    log.error(
+                        "相关性检查未通过，最大相关性超过阈值",
+                        emoji="❌",
+                        correlation_type=corr_type,
+                        max_corr=max_corr,
+                        min_corr=min_corr,
+                    )
+                    return False
+
+                log.info(
+                    "相关性检查通过",
+                    emoji="✅",
+                    correlation_type=corr_type,
+                    max_corr=max_corr,
+                    min_corr=min_corr,
+                )
+                return True  # 通过
+            elif corr_type == CorrelationType.PROD:
+                if max_corr > CONSULTANT_MAX_PROD_CORRELATION:
+                    log.error(
+                        "相关性检查未通过，最大相关性超过阈值",
+                        emoji="❌",
+                        correlation_type=corr_type,
+                        max_corr=max_corr,
+                        min_corr=min_corr,
+                    )
+                    return False
+
+                log.info(
+                    "相关性检查通过",
+                    emoji="✅",
+                    correlation_type=corr_type,
+                    max_corr=max_corr,
+                    min_corr=min_corr,
+                )
+                return True
+            else:
+                log.error("未知的相关性类型", emoji="❓", correlation_type=corr_type)
+                return False  # 未知类型视为失败
+
+        except Exception as e:
+            log.error(
+                "判定相关性检查状态时发生异常",
+                emoji="💥",
+                correlation_type=corr_type,
+                error=str(e),
+                exc_info=True,
+            )
+            return False  # 异常视为失败
+
+    async def _determine_performance_diff_pass_status(
+        self,
+        alpha: Alpha,
+        perf_diff_view: BeforeAndAfterPerformanceView,
+        **kwargs: Any,
+    ) -> bool:
+        # 使用同步日志，因为这是纯计算方法
+        raise NotImplementedError("绩效差异检查逻辑必须由子类实现")
 
     async def _refresh_alpha_pool_performance_diff(
         self,
         alpha: Alpha,
         competition_id: Optional[str],
     ) -> BeforeAndAfterPerformanceView:
-        """通过 WorldQuant API 获取指定 Alpha 加入因子池前后的业绩表现差异数据。
-
-        此方法会持续轮询 API 直到获取到最终结果或发生错误。
-        获取成功后，会将结果作为 `CheckRecord` 存入数据库。
-
-        Args:
-            alpha: 需要获取业绩差异数据的 `Alpha` 对象。
-            competition_id: 目标竞争或因子池的 ID。如果为 None，可能表示
-                            与默认或全局池比较。
-
-        Returns:
-            包含业绩前后对比数据的 `BeforeAndAfterPerformanceView` 对象。
-
-        Raises:
-            asyncio.CancelledError: 如果任务在完成前被取消。
-            Exception: 如果 API 调用或数据库操作过程中发生其他未处理的异常。
-        """
         await log.adebug(
             "准备刷新 Alpha 因子池绩效差异数据",
             emoji="🔄",
@@ -388,29 +686,10 @@ class BaseEvaluator(AbstractEvaluator):
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:
-        """检查将此 Alpha 加入指定因子池后，因子池业绩表现的前后差异是否满足要求。
-
-        此方法会根据 `policy` 决定是使用已有的检查记录、强制刷新数据，
-        还是在记录不存在时异步刷新。然后根据获取到的业绩差异数据
-        （或记录是否存在）以及 `kwargs` 中可能定义的阈值来判断检查是否通过。
-
-        Args:
-            alpha: 当前正在评估的 `Alpha` 对象。
-            competition_id: 目标竞争或因子池的 ID。
-            policy: 应用于本次检查的刷新策略 (`RefreshPolicy`)。
-            **kwargs: 可能包含性能差异检查所需的额外参数，例如夏普比率 (Sharpe Ratio)
-                      提升阈值、最大回撤 (Max Drawdown) 限制等。
-
-        Returns:
-            布尔值 (bool)，指示 Alpha 加入因子池后的业绩表现差异是否符合要求。
-            如果策略为 `SKIP_IF_MISSING` 且记录不存在，则返回 False。
-
-        Raises:
-            ValueError: 如果传入了不支持的 `policy`。
-            Exception: 如果在刷新数据或处理过程中发生未预期的错误。
-        """
+        check_type_name: str = "因子池绩效差异"  # 用于日志
+        record_type: CheckRecordType = CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE
         await log.adebug(
-            "开始检查 Alpha 因子池绩效差异",
+            f"开始检查 Alpha {check_type_name}",
             emoji="🔍",
             alpha_obj_id=alpha.id,
             alpha_id=alpha.alpha_id,
@@ -418,140 +697,160 @@ class BaseEvaluator(AbstractEvaluator):
             policy=policy,
             kwargs=kwargs,
         )
+
         check_result: bool = False  # 初始化检查结果
+        perf_diff_view: Optional[BeforeAndAfterPerformanceView] = None
+
         try:
-            # 尝试查找现有的检查记录
-            # 注意：需要根据 competition_id 查找，假设 DAL 支持
+            # 1. 查找现有的检查记录
             exist_check_record: Optional[CheckRecord] = (
                 await self.check_record_dal.find_one_by(
                     alpha_id=alpha.alpha_id,
-                    record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+                    record_type=record_type,
+                    order_by=CheckRecord.created_at.desc(),
                 )
             )
             await log.adebug(
-                "查询现有绩效检查记录结果",
+                f"查询现有{check_type_name}检查记录结果",
                 emoji="💾" if exist_check_record else "❓",
                 alpha_id=alpha.alpha_id,
+                record_type=record_type,
                 record_found=bool(exist_check_record),
             )
 
-            perf_diff_view: Optional[BeforeAndAfterPerformanceView] = None
-
-            # 决策逻辑：是否需要刷新数据
-            should_refresh = policy == RefreshPolicy.FORCE_REFRESH or (
-                policy == RefreshPolicy.REFRESH_ASYNC_IF_MISSING
-                and not exist_check_record
+            # 2. 根据策略决定执行什么操作
+            action: BaseEvaluator.CheckAction = await self._determine_check_action(
+                policy=policy,
+                exist_check_record=exist_check_record,
+                alpha_id=alpha.alpha_id,
+                check_type_name=check_type_name,
             )
 
-            if should_refresh:
+            # 3. 根据操作执行逻辑
+            if action == BaseEvaluator.CheckAction.REFRESH:
+                try:
+                    perf_diff_view = await self._refresh_alpha_pool_performance_diff(
+                        alpha=alpha,
+                        competition_id=competition_id,
+                    )
+                    if not perf_diff_view:
+                        # 刷新函数返回 None 表示失败
+                        await log.awarning(
+                            f"{check_type_name}数据刷新失败，检查不通过",
+                            emoji="⚠️",
+                            alpha_id=alpha.alpha_id,
+                            competition_id=competition_id,
+                        )
+                        check_result = False
+                        return check_result  # 刷新失败直接返回
+                except (RuntimeError, TypeError) as refresh_err:
+                    # 捕获刷新函数可能抛出的已知业务或类型错误
+                    await log.awarning(
+                        f"{check_type_name}数据刷新失败，检查不通过",
+                        emoji="⚠️",
+                        alpha_id=alpha.alpha_id,
+                        competition_id=competition_id,
+                        error=str(refresh_err),
+                    )
+                    check_result = False
+                    return check_result  # 刷新失败直接返回
+                # 注意：CancelledError 和其他 Exception 会在外部 try...except 中捕获
+
+            elif action == BaseEvaluator.CheckAction.USE_EXISTING:
+                # _determine_check_action 保证了 exist_check_record 在此非空
                 await log.adebug(
-                    "根据策略需要刷新绩效数据",
-                    emoji="🔄",
-                    alpha_id=alpha.alpha_id,
-                    competition_id=competition_id,
-                    policy=policy,
-                    record_exists=bool(exist_check_record),
-                )
-                perf_diff_view = await self._refresh_alpha_pool_performance_diff(
-                    alpha=alpha,
-                    competition_id=competition_id,
-                )
-            elif exist_check_record and policy in (
-                RefreshPolicy.USE_EXISTING,
-                RefreshPolicy.REFRESH_ASYNC_IF_MISSING,  # 存在记录时，此策略等同于 USE_EXISTING
-                RefreshPolicy.SKIP_IF_MISSING,  # 存在记录时，此策略等同于 USE_EXISTING
-            ):
-                await log.adebug(
-                    "根据策略使用现有绩效数据",
+                    f"根据策略使用现有{check_type_name}数据",
                     emoji="💾",
                     alpha_id=alpha.alpha_id,
                     competition_id=competition_id,
                     policy=policy,
                 )
-                # 从记录中加载数据用于后续判断
-                perf_diff_view = BeforeAndAfterPerformanceView(
-                    **exist_check_record.content
-                )
-            elif not exist_check_record and policy == RefreshPolicy.SKIP_IF_MISSING:
-                await log.ainfo(
-                    "绩效数据不存在且策略为跳过，检查不通过",
-                    emoji="⏭️",
-                    alpha_id=alpha.alpha_id,
-                    competition_id=competition_id,
-                )
-                check_result = False  # 明确设置为 False
-                # 直接返回，不进行后续判断
-                await log.adebug(
-                    "结束检查 Alpha 因子池绩效差异",
-                    emoji="🏁",
-                    check_result=check_result,
-                )
+                try:
+                    # 从记录中加载数据用于后续判断
+                    # 断言确保类型检查器知道 exist_check_record 不为 None
+                    assert exist_check_record is not None
+                    perf_diff_view = BeforeAndAfterPerformanceView(
+                        **exist_check_record.content
+                    )
+                except (
+                    TypeError,
+                    ValueError,
+                    KeyError,
+                ) as parse_err:  # 捕获解析/验证错误
+                    await log.aerror(
+                        f"解析现有{check_type_name}记录时出错",
+                        emoji="❌",
+                        alpha_id=alpha.alpha_id,
+                        record_id=(
+                            exist_check_record.id if exist_check_record else "N/A"
+                        ),
+                        error=str(parse_err),
+                        exc_info=True,
+                    )
+                    check_result = False  # 解析失败视为检查不通过
+                    perf_diff_view = None  # 确保后续不执行判断逻辑
+
+            elif action == BaseEvaluator.CheckAction.SKIP:
+                # 日志已在 _determine_check_action 中记录
+                check_result = False  # 跳过视为不通过
+                return check_result  # 跳过直接返回
+
+            elif action == BaseEvaluator.CheckAction.FAIL_MISSING:
+                # 日志已在 _determine_check_action 中记录
+                check_result = False  # 因缺失而失败
+                return check_result  # 失败直接返回
+
+            elif action == BaseEvaluator.CheckAction.ERROR:
+                # 日志已在 _determine_check_action 中记录
+                check_result = False
+                # 可以选择抛出异常或直接返回 False
+                # raise ValueError(f"无效的检查策略 '{policy}' 或状态组合")
                 return check_result
-            else:
-                # 处理未预期的 policy 组合或逻辑错误
-                await log.aerror(
-                    "无效的刷新策略或状态组合",
-                    emoji="❌",
-                    alpha_id=alpha.alpha_id,
-                    competition_id=competition_id,
-                    policy=policy,
-                    record_exists=bool(exist_check_record),
-                )
-                raise ValueError(f"不支持的刷新策略 '{policy}' 或状态组合")
 
-            # 执行检查逻辑 (如果获取或加载了 perf_diff_view)
+            # 4. 执行检查逻辑 (如果成功获取或加载了 perf_diff_view)
             if perf_diff_view:
-                # --- 在这里添加具体的检查逻辑 ---
-                # 例如：检查加入后夏普是否提升，回撤是否可控等
-                # sharpe_threshold = kwargs.get("sharpe_threshold", 0.05)
-                # if (perf_diff_view.after_performance.sharpe - perf_diff_view.before_performance.sharpe) > sharpe_threshold:
-                #     check_result = True
-                # else:
-                #     check_result = False
-                # ------------------------------------
-                # TODO: 实现具体的绩效差异判断逻辑
-                await log.awarning(
-                    "绩效差异判断逻辑尚未实现，默认检查通过",
-                    emoji="⚠️",
-                    alpha_id=alpha.alpha_id,
+                check_result = await self._determine_performance_diff_pass_status(
+                    alpha=alpha,
+                    perf_diff_view=perf_diff_view,
                     competition_id=competition_id,
+                    **kwargs,
                 )
-                check_result = True  # 临时设置为 True
-
                 await log.ainfo(
-                    "Alpha 因子池绩效差异检查完成",
+                    "Alpha 绩效差异检查判定完成",
                     emoji="✅" if check_result else "❌",
                     alpha_id=alpha.alpha_id,
                     competition_id=competition_id,
                     check_passed=check_result,
-                    # 可以记录一些关键指标
-                    # before_sharpe=perf_diff_view.before_performance.sharpe,
-                    # after_sharpe=perf_diff_view.after_performance.sharpe,
                 )
-            else:
-                # 如果 perf_diff_view 仍然是 None (理论上不应发生，除非 SKIP_IF_MISSING)
-                # 但为了健壮性，处理此情况
+
+                return check_result  # 返回检查结果
+
+            # 如果 perf_diff_view 仍然是 None (例如刷新失败、解析失败)
+            # 之前的逻辑应该已经处理并可能返回了，但为了健壮性，再次检查
+            # 仅在 check_result 仍为 False 时记录错误 (避免重复记录)
+            if not check_result:
                 await log.aerror(
-                    "未能获取或加载绩效数据，无法执行检查",
+                    f"未能获取或加载{check_type_name}数据，无法执行检查",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
                     competition_id=competition_id,
                     policy=policy,
+                    action=action.name,  # 记录导致此状态的动作
                 )
-                check_result = False
+            # check_result 保持之前的状态 (通常是 False)
 
         except asyncio.CancelledError:
             await log.ainfo(
-                "Alpha 绩效差异检查任务被取消",
+                f"Alpha {check_type_name}检查任务被取消",
                 emoji="🚫",
                 alpha_id=alpha.alpha_id,
                 competition_id=competition_id,
             )
             check_result = False  # 取消视为检查不通过
-            # 不再向上抛出 CancelledError，因为这是评估流程的一部分
+            raise  # 重新抛出 CancelledError，让上层处理
         except Exception as e:
             await log.aerror(
-                "检查 Alpha 绩效差异时发生异常",
+                f"检查 Alpha {check_type_name}时发生未预期异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
                 competition_id=competition_id,
@@ -560,11 +859,10 @@ class BaseEvaluator(AbstractEvaluator):
                 exc_info=True,  # 添加堆栈信息
             )
             check_result = False  # 异常视为检查不通过
-            # 可以选择是否向上抛出异常，取决于评估流程的设计
-            raise
+            raise  # 重新抛出未捕获的异常，表明评估流程中出现严重问题
 
         await log.adebug(
-            "结束检查 Alpha 因子池绩效差异", emoji="🏁", check_result=check_result
+            f"结束检查 Alpha {check_type_name}", emoji="🏁", check_result=check_result
         )
         return check_result
 
@@ -574,24 +872,6 @@ class BaseEvaluator(AbstractEvaluator):
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:
-        """检查 Alpha 是否满足提交 (Submission) 的条件 (待实现)。
-
-        子类应覆盖此方法。这可能涉及检查 Alpha 的各种属性、
-        模拟提交结果（如果 API 支持）、或查询历史提交记录等。
-        需要根据 `policy` 处理数据刷新逻辑。
-
-        Args:
-            alpha: 当前正在评估的 `Alpha` 对象。
-            policy: 应用于本次检查的刷新策略 (`RefreshPolicy`)。
-            **kwargs: 可能包含提交检查所需的上下文参数，例如目标提交平台、
-                      特定的规则集 ID 等。
-
-        Returns:
-            布尔值 (bool)，指示 Alpha 是否满足所有提交要求。
-
-        Raises:
-            NotImplementedError: 此方法尚未在子类中实现。
-        """
         await log.adebug(
             "🚧 _check_submission 方法尚未实现，需要子类覆盖",
             emoji="🚧",
@@ -600,3 +880,103 @@ class BaseEvaluator(AbstractEvaluator):
             kwargs=kwargs,
         )
         raise NotImplementedError("子类必须实现 _check_submission 方法")
+
+    async def _determine_check_action(
+        self,
+        policy: RefreshPolicy,
+        exist_check_record: Optional[CheckRecord],
+        alpha_id: str,
+        check_type_name: str,
+    ) -> CheckAction:
+        """
+        根据刷新策略和现有检查记录，决定应执行的操作。
+
+        Args:
+            policy: 刷新策略。
+            exist_check_record: 数据库中存在的检查记录，如果不存在则为 None。
+            alpha_id: 正在检查的 Alpha 的 ID。
+            check_type_name: 正在执行的检查类型名称 (用于日志)。
+
+        Returns:
+            应执行的检查操作 (CheckAction)。
+        """
+        await log.adebug(
+            f"开始判断 {check_type_name} 检查操作",
+            emoji="🤔",
+            alpha_id=alpha_id,
+            policy=policy,
+            record_exists=bool(exist_check_record),
+        )
+        action: BaseEvaluator.CheckAction
+
+        if policy == RefreshPolicy.FORCE_REFRESH:
+            action = BaseEvaluator.CheckAction.REFRESH
+            await log.adebug(
+                f"策略为强制刷新，动作：刷新 {check_type_name} 数据",
+                emoji="🔄",
+                alpha_id=alpha_id,
+            )
+        elif policy == RefreshPolicy.REFRESH_ASYNC_IF_MISSING:
+            if not exist_check_record:
+                action = BaseEvaluator.CheckAction.REFRESH
+                await log.adebug(
+                    f"策略为缺失时刷新且记录不存在，动作：刷新 {check_type_name} 数据",
+                    emoji="🔄",
+                    alpha_id=alpha_id,
+                )
+            else:
+                action = BaseEvaluator.CheckAction.USE_EXISTING
+                await log.adebug(
+                    f"策略为缺失时刷新且记录存在，动作：使用现有 {check_type_name} 数据",
+                    emoji="💾",
+                    alpha_id=alpha_id,
+                )
+        elif policy == RefreshPolicy.USE_EXISTING:
+            if exist_check_record:
+                action = BaseEvaluator.CheckAction.USE_EXISTING
+                await log.adebug(
+                    f"策略为仅使用现有且记录存在，动作：使用现有 {check_type_name} 数据",
+                    emoji="💾",
+                    alpha_id=alpha_id,
+                )
+            else:
+                action = BaseEvaluator.CheckAction.FAIL_MISSING
+                await log.ainfo(
+                    f"策略为仅使用现有但记录不存在，动作：{check_type_name} 检查失败",
+                    emoji="🚫",
+                    alpha_id=alpha_id,
+                )
+        elif policy == RefreshPolicy.SKIP_IF_MISSING:
+            if exist_check_record:
+                action = BaseEvaluator.CheckAction.USE_EXISTING
+                await log.adebug(
+                    f"策略为缺失时跳过且记录存在，动作：使用现有 {check_type_name} 数据",
+                    emoji="💾",
+                    alpha_id=alpha_id,
+                )
+            else:
+                action = BaseEvaluator.CheckAction.SKIP
+                await log.ainfo(
+                    f"策略为缺失时跳过且记录不存在，动作：跳过 {check_type_name} 检查",
+                    emoji="⏭️",
+                    alpha_id=alpha_id,
+                )
+        else:
+            action = BaseEvaluator.CheckAction.ERROR
+            await log.aerror(
+                f"无效的 {check_type_name} 检查策略",
+                emoji="❌",
+                alpha_id=alpha_id,
+                policy=policy,
+                record_exists=bool(exist_check_record),
+            )
+            # 可以在这里抛出异常，或者让调用方处理 ERROR 状态
+            # raise ValueError(f"不支持的 {check_type_name} 检查策略 '{policy}'")
+
+        await log.adebug(
+            f"结束判断 {check_type_name} 检查操作",
+            emoji="🏁",
+            alpha_id=alpha_id,
+            action=action.name,
+        )
+        return action

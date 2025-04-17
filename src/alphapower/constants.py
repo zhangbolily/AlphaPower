@@ -31,7 +31,7 @@ from __future__ import annotations  # 添加此行解决前向引用问题
 
 from enum import Enum
 from functools import lru_cache  # 添加缓存支持
-from typing import Callable, Dict, Final, List, Tuple
+from typing import Callable, Dict, Final, List, Optional, Tuple
 
 # 类型别名定义，提高代码可读性
 # 注意：使用字符串作为类型注解，解决类型前向引用问题
@@ -116,8 +116,12 @@ ENDPOINT_ALPHA_SELF_CORRELATIONS: Final[Callable[[str, str], str]] = (
     lambda alpha_id, correlation_type: f"alphas/{alpha_id}/correlations/{correlation_type}"
 )
 ENDPOINT_COMPETITIONS: Final[str] = "competitions"  # 竞赛端点
-ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[str, str], str]] = (
-    lambda competition_id, alpha_id: f"/{competition_id}/alphas/{alpha_id}/before-and-after-performance"
+ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[Optional[str], str], str]] = (
+    lambda competition_id, alpha_id: (
+        f"/{competition_id}/alphas/{alpha_id}/before-and-after-performance"
+        if competition_id and alpha_id
+        else f"/users/self/alphas/{alpha_id}/before-and-after-performance"
+    )
 )
 
 # 模拟端点
@@ -187,17 +191,99 @@ class Color(Enum):
 # -----------------------------------------------------------------------------
 
 # 基于用户角色的最大模拟槽位数
-MAX_CONSULTANT_SIMULATION_SLOTS: Final[int] = 10
-MAX_USER_SIMULATION_SLOTS: Final[int] = 3
+MAX_CONSULTANT_SIMULATION_SLOTS: Final[int] = (
+    10  # 顾问角色 (Consultant) 的最大并发模拟槽位数
+)
+MAX_USER_SIMULATION_SLOTS: Final[int] = 3  # 普通用户角色 (User) 的最大并发模拟槽位数
+
+# 根据用户角色获取最大模拟槽位数的函数
+# 输入角色字符串 (例如 ROLE_CONSULTANT)，返回对应的槽位数
 MAX_SIMULATION_SLOTS: Final[Callable[[str], int]] = lambda role: (
     MAX_CONSULTANT_SIMULATION_SLOTS
     if role == ROLE_CONSULTANT
     else MAX_USER_SIMULATION_SLOTS
 )
 
+# 根据用户角色获取每个模拟槽位允许的最大作业数 (jobs) 的函数
+# 输入角色字符串 (例如 ROLE_CONSULTANT)，返回对应的最大作业数
 MAX_SIMULATION_JOBS_PER_SLOT: Final[Callable[[str], int]] = lambda role: (
     10 if role == ROLE_CONSULTANT else 1
 )
+
+# -----------------------------------------------------------------------------
+# 顾问因子过滤基本要求常量 (Consultant Alpha Filtering Requirements)
+# -----------------------------------------------------------------------------
+
+# --- 通用要求 (适用于除中国外的区域) ---
+
+# 适应度 (Fitness) 阈值
+CONSULTANT_FITNESS_THRESHOLD_DELAY_0: Final[float] = 1.5  # 延迟 0 时的最低适应度
+CONSULTANT_FITNESS_THRESHOLD_DELAY_1: Final[float] = 1.0  # 延迟 1 时的最低适应度
+
+# 夏普比率 (Sharpe Ratio) 阈值
+CONSULTANT_SHARPE_THRESHOLD_DELAY_0: Final[float] = 2.69  # 延迟 0 时的最低夏普比率
+CONSULTANT_SHARPE_THRESHOLD_DELAY_1: Final[float] = 1.58  # 延迟 1 时的最低夏普比率
+
+# 换手率 (Turnover) 范围 (%)
+CONSULTANT_TURNOVER_MIN_PERCENT: Final[float] = 1.0  # 最低换手率 (百分比)
+CONSULTANT_TURNOVER_MAX_PERCENT: Final[float] = 70.0  # 最高换手率 (百分比)
+
+# 权重 (Weight) 限制 (%)
+CONSULTANT_MAX_SINGLE_STOCK_WEIGHT_PERCENT: Final[float] = (
+    10.0  # 单一股票最大权重限制 (百分比)
+)
+# 注意: 子宇宙测试 (Sub-universe Test) 的具体阈值依赖于子宇宙规模，难以用单一常量表示
+
+# 相关性 (Correlation) 阈值
+CONSULTANT_MAX_SELF_CORRELATION: Final[float] = (
+    0.7  # 与用户其他 Alpha 的最大 PNL 相关性
+)
+CONSULTANT_MAX_PROD_CORRELATION: Final[float] = (
+    0.7  # 与平台所有 Alpha 的最大 PNL 相关性
+)
+CONSULTANT_CORRELATION_SHARPE_IMPROVEMENT_FACTOR: Final[float] = (
+    0.10  # 相关性高时，夏普比率需提高的比例 (10%)
+)
+
+# 样本内夏普比率/阶梯测试 (IS-Sharpe/Ladder Test)
+# 注意: 此测试涉及多个年份和 D0/D1 阈值，难以用简单常量表示，通常在检查逻辑中实现
+
+# 偏差测试 (Bias Test)
+# 注意: 这是一个布尔型检查 (不应失败)，没有数值阈值常量
+
+# --- 中国 (CHN) 区域特定要求 ---
+
+# 延迟 1 (D1) 提交标准
+CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_1: Final[float] = (
+    2.08  # 中国区延迟 1 最低夏普比率
+)
+CONSULTANT_CHN_RETURNS_MIN_PERCENT_DELAY_1: Final[float] = (
+    8.0  # 中国区延迟 1 最低收益率 (百分比)
+)
+CONSULTANT_CHN_FITNESS_THRESHOLD_DELAY_1: Final[float] = 1.0  # 中国区延迟 1 最低适应度
+
+# 延迟 0 (D0) 提交标准
+CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_0: Final[float] = 3.5  # 中国区延迟 0 最低夏普比率
+CONSULTANT_CHN_RETURNS_MIN_PERCENT_DELAY_0: Final[float] = (
+    12.0  # 中国区延迟 0 最低收益率 (百分比)
+)
+CONSULTANT_CHN_FITNESS_THRESHOLD_DELAY_0: Final[float] = 1.5  # 中国区延迟 0 最低适应度
+
+# 稳健宇宙检验性能 (Robust Universe Test Performance) 阈值 (%)
+CONSULTANT_CHN_ROBUST_UNIVERSE_MIN_RETENTION_PERCENT: Final[float] = (
+    40.0  # 稳健宇宙成分保留的原收益和夏普值的最低比例
+)
+
+# --- 超级 Alpha (Superalphas) 特定要求 ---
+
+# 超级 Alpha 换手率 (Turnover) 范围 (%)
+CONSULTANT_SUPERALPHA_TURNOVER_MIN_PERCENT: Final[float] = (
+    2.0  # 超级 Alpha 最低换手率 (百分比)
+)
+CONSULTANT_SUPERALPHA_TURNOVER_MAX_PERCENT: Final[float] = (
+    40.0  # 超级 Alpha 最高换手率 (百分比)
+)
+
 
 # -----------------------------------------------------------------------------
 # HTTP 错误代码映射关系

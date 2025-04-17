@@ -12,6 +12,7 @@ from typing import Any, AsyncGenerator, List, cast
 
 from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, select
 
+from alphapower import constants  # 导入常量模块
 from alphapower.constants import AlphaType, Region
 from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
 from alphapower.entity import Alpha, Sample, Setting
@@ -52,7 +53,8 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
     ) -> Select:
         """构建用于筛选 Alpha 的 SQLAlchemy 查询对象 (Select Object)。
 
-        根据世坤 (WorldQuant) 的顾问因子过滤要求构建查询。
+        根据世坤 (WorldQuant) 顾问因子过滤要求 (Consultant Alpha Filtering Requirements)
+        构建查询，使用 `alphapower.constants` 中定义的阈值。
 
         Args:
             **kwargs: 额外的筛选参数 (当前未使用，但保留以备将来扩展)。
@@ -64,14 +66,12 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
             NotImplementedError: 如果子类没有实现具体的筛选逻辑 (虽然基类提供了实现)。
         """
         await logger.adebug(
-            "🏗️ 开始构建 Alpha 筛选查询",
+            "🏗️ 开始构建 Alpha 筛选查询 (使用常量)",
             emoji="🏗️",
             filter_kwargs=kwargs,
         )
 
         # 定义连接条件别名，提高可读性
-        # 注意：这里使用 Alpha.in_sample 和 Alpha.settings 关系进行连接
-        # SQLAlchemy ORM 会自动处理外键关联
         query: Select = (
             select(Alpha)
             .join(Alpha.settings)  # 连接到 Alpha 的设置
@@ -79,12 +79,12 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         )
 
         # 构建筛选条件列表
-        # 注意：现在可以直接引用 Setting 和 Sample 的属性
+        # 注意：常量中的百分比值需要除以 100 转换为小数
         criteria: List[ColumnExpressionArgument] = [
-            # Sample 相关条件
-            Sample.self_correration < 0.7,
-            Sample.turnover > 0.01,
-            Sample.turnover < 0.7,
+            # Sample 相关条件 (通用)
+            Sample.self_correration < constants.CONSULTANT_MAX_SELF_CORRELATION,
+            Sample.turnover > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
+            Sample.turnover < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
             # 区域和延迟相关的条件 (使用 case 语句)
             case(
                 (
@@ -92,11 +92,21 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                     case(
                         (
                             Setting.delay == 0,  # 延迟为 0
-                            and_(Sample.sharpe > 2.69, Sample.fitness > 1.5),
+                            and_(
+                                Sample.sharpe
+                                > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_0,
+                                Sample.fitness
+                                > constants.CONSULTANT_FITNESS_THRESHOLD_DELAY_0,
+                            ),
                         ),
                         (
                             Setting.delay == 1,  # 延迟为 1
-                            and_(Sample.sharpe > 1.58, Sample.fitness > 1.0),
+                            and_(
+                                Sample.sharpe
+                                > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_1,
+                                Sample.fitness
+                                > constants.CONSULTANT_FITNESS_THRESHOLD_DELAY_1,
+                            ),
                         ),
                         else_=False,  # 如果 delay 不是 0 或 1，则不满足条件
                     ),
@@ -106,27 +116,48 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                     (
                         Setting.delay == 0,  # 延迟为 0
                         and_(
-                            Sample.sharpe > 3.5,
-                            Sample.returns > 0.12,
-                            Sample.fitness >= 1.5,
+                            Sample.sharpe
+                            > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_0,
+                            Sample.returns
+                            > (
+                                constants.CONSULTANT_CHN_RETURNS_MIN_PERCENT_DELAY_0
+                                / 100.0
+                            ),
+                            Sample.fitness
+                            >= constants.CONSULTANT_CHN_FITNESS_THRESHOLD_DELAY_0,
                         ),
                     ),
                     (
                         Setting.delay == 1,  # 延迟为 1
                         and_(
-                            Sample.sharpe > 2.08,
-                            Sample.returns > 0.08,
-                            Sample.fitness >= 1.0,
+                            Sample.sharpe
+                            > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_1,
+                            Sample.returns
+                            > (
+                                constants.CONSULTANT_CHN_RETURNS_MIN_PERCENT_DELAY_1
+                                / 100.0
+                            ),
+                            Sample.fitness
+                            >= constants.CONSULTANT_CHN_FITNESS_THRESHOLD_DELAY_1,
                         ),
                     ),
                     else_=False,  # 如果 delay 不是 0 或 1，则不满足条件
                 ),
             ),
-            # 超级 Alpha 的特殊换手率条件
+            # 超级 Alpha (Superalphas) 的特殊换手率条件
             case(
                 (
                     Alpha.type == AlphaType.SUPER,  # 如果是超级 Alpha
-                    and_(Sample.turnover >= 0.02, Sample.turnover < 0.4),
+                    and_(
+                        Sample.turnover
+                        >= (
+                            constants.CONSULTANT_SUPERALPHA_TURNOVER_MIN_PERCENT / 100.0
+                        ),
+                        Sample.turnover
+                        < (
+                            constants.CONSULTANT_SUPERALPHA_TURNOVER_MAX_PERCENT / 100.0
+                        ),
+                    ),
                 ),
                 # 如果不是超级 Alpha，则此条件为 True (不应用额外过滤)
                 else_=True,
@@ -134,14 +165,13 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         ]
 
         # 应用筛选条件到查询
-        # 使用 and_() 将所有条件组合起来
         final_query: Select = query.where(and_(*criteria))
 
-        # 注意：如果查询字符串过长，考虑只记录关键部分或哈希值
+        # 记录构建完成的查询 (截断长查询)
         query_str = str(final_query)
         log_query = query_str[:70] + "..." if len(query_str) > 70 else query_str
         await logger.adebug(
-            "✅ Alpha 筛选查询构建完成",
+            "✅ Alpha 筛选查询构建完成 (使用常量)",
             emoji="✅",
             query=log_query,
             full_query_len=len(query_str),

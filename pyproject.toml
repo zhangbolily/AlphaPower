@@ -29,6 +29,7 @@ dependencies = [
     "tqdm (~=4.67.1)",
     "aiosqlite (>=0.21.0,<0.22.0)",
     "pysqlite3 (>=0.5.4,<0.6.0)",
+    "pandas (>=2.2.3,<3.0.0)",
 ]
 
 [project.urls]
@@ -45,10 +46,12 @@ jobs = 0
 
 [tool.pylint."messages control"]
 disable = [
-    "R0902", # too-many-instance-attributes
-    "R0903", # too-few-public-methods
-    "W0718", # unnecessary-comprehension
-    "W0719", # broad-exception-raised
+    "R0902",  # too-many-instance-attributes
+    "R0903",  # too-few-public-methods
+    "W0718",  # unnecessary-comprehension
+    "W0719",  # broad-exception-raised
+    "C0115 ", # missing-module-docstring
+    "C0116 ", # missing-function-docstring
 ]
 
 [tool.poetry.group.dev.dependencies]

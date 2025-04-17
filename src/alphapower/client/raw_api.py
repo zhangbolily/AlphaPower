@@ -232,7 +232,7 @@ async def alpha_fetch_correlations(
 
 
 async def alpha_fetch_before_and_after_performance(
-    session: aiohttp.ClientSession, competition_id: str, alpha_id: str
+    session: aiohttp.ClientSession, competition_id: Optional[str], alpha_id: str
 ) -> Tuple[bool, Optional[float], Optional[BeforeAndAfterPerformanceView], RateLimit]:
     """
     获取指定 alpha 的前后性能数据。

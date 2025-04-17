@@ -10,6 +10,7 @@ Classes:
 
 from typing import Any, List, Optional
 
+import pandas as pd
 from pydantic import AliasChoices, BaseModel, Field
 
 
@@ -74,9 +75,26 @@ class TableView(BaseModel):
     """
 
     table_schema: TableSchemaView = Field(
+        ...,
         validation_alias=AliasChoices("schema", "table_schema"),
         serialization_alias="schema",
     )
     records: Optional[List[List[Any]]] = None
     min: Optional[float] = 0.0
     max: Optional[float] = 0.0
+
+    def to_dataframe(self) -> Optional[pd.DataFrame]:
+        """将表格视图转换为 Pandas DataFrame。
+
+        Returns:
+            pd.DataFrame: 转换后的 DataFrame，如果没有记录则返回 None。
+        """
+        if self.records is None:
+            return None
+        return pd.DataFrame(
+            self.records,
+            columns=[
+                prop.name
+                for prop in self.table_schema.properties  # pylint: disable=no-member
+            ],
+        )
