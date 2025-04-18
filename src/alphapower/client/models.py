@@ -25,6 +25,7 @@ from alphapower.constants import (
     Neutralization,
     Region,
     RegularLanguage,
+    SampleCheckResult,
     Stage,
     Status,
     Switch,
@@ -357,7 +358,7 @@ class AlphaCheckItemView(BaseModel):
     """
 
     name: str
-    result: str
+    result: SampleCheckResult
     limit: Optional[float] = None
     value: Optional[float] = None
     date: Optional[datetime] = None

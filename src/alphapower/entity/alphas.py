@@ -58,6 +58,7 @@ from alphapower.constants import (
     Neutralization,
     Region,
     RegularLanguage,
+    SampleCheckResult,
     Stage,
     Status,
     Switch,
@@ -288,12 +289,17 @@ class Check(Base):
         Integer, ForeignKey("samples.id"), nullable=False
     )
     name: MappedColumn[str] = mapped_column(String)
-    result: MappedColumn[str] = mapped_column(String)
+    result: MappedColumn[SampleCheckResult] = mapped_column(Enum(SampleCheckResult))
     message: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     limit: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
     value: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
     date: MappedColumn[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     competitions: MappedColumn[Optional[str]] = mapped_column(JSON, nullable=True)
+    year: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
+    pyramids: MappedColumn[Optional[str]] = mapped_column(JSON, nullable=True)
+    start_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    end_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    multiplier: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
 
 
 class Sample(Base):

@@ -4,10 +4,16 @@
 
 from typing import List, Optional, Protocol, Type, TypeVar
 
+from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from alphapower.client import AlphaCheckItemView, AlphaSampleView
+from alphapower.client import (
+    AlphaCheckItemView,
+    AlphaSampleView,
+    CompetitionRefView,
+    PyramidView,
+)
 from alphapower.entity import Category, Check, Sample
 
 
@@ -107,7 +113,7 @@ def create_sample(
     if sample_data is None:
         return None
 
-    def create_checks(checks: Optional[List[AlphaCheckItemView]]) -> List[Check]:
+    def create_checks(checks_view: Optional[List[AlphaCheckItemView]]) -> List[Check]:
         """
         创建检查项列表。
 
@@ -117,22 +123,43 @@ def create_sample(
         返回:
         检查项实体对象列表。
         """
-        if checks is None:
+        if checks_view is None:
             return []
 
-        return [
-            Check(
-                name=check.name,
-                result=check.result,
-                message=check.message,
-                limit=check.limit,
-                value=check.value,
-                date=check.date,
-                # TODO: 检查项的竞赛数据，需要用单独的服务去同步
-                # competitions=[],
+        checks: List[Check] = []
+
+        for check_view in checks_view:
+            check = Check(
+                name=check_view.name,
+                result=check_view.result,
+                message=check_view.message,
+                limit=check_view.limit,
+                value=check_view.value,
+                date=check_view.date,
+                year=check_view.year,
+                start_date=check_view.start_date,
+                end_date=check_view.end_date,
+                multiplier=check_view.multiplier,
             )
-            for check in checks
-        ]
+
+            competitions_adapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
+                List[CompetitionRefView]
+            )
+            pyramids_adapter: TypeAdapter[List[PyramidView]] = TypeAdapter(
+                List[PyramidView]
+            )
+
+            if check_view.competitions:
+                check.competitions = str(
+                    competitions_adapter.dump_json(check_view.competitions)
+                )
+
+            if check_view.pyramids:
+                check.pyramids = str(pyramids_adapter.dump_json(check_view.pyramids))
+
+            checks.append(check)
+
+        return checks
 
     return Sample(
         pnl=sample_data.pnl,

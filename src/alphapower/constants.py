@@ -841,6 +841,14 @@ class SampleCheckType(Enum):
     IS_LADDER_SHARPE = "IS_LADDER_SHARPE"
 
 
+class SampleCheckResult(Enum):
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    PASS = "PASS"  # 检查通过
+    PENDING = "PENDING"  # 检查待定
+    WARNING = "WARNING"  # 检查警告
+    ERROR = "ERROR"  # 检查错误
+
+
 class CorrelationType(Enum):
     """相关性类型枚举。
 
@@ -904,27 +912,6 @@ class CompetitionScoring(Enum):
 # -----------------------------------------------------------------------------
 # 评估相关枚举
 # -----------------------------------------------------------------------------
-
-
-class EvaluationStatus(Enum):
-    """评估记录的状态枚举。
-
-    Attributes:
-        PENDING: 待处理
-        RUNNING: 运行中
-        COMPLETED: 已完成
-        FAILED: 失败
-        SKIPPED: 已跳过 (根据刷新策略)
-        BACKGROUND: 在后台运行中 (用于 RUN_ASYNC_IF_MISSING 策略)
-    """
-
-    DEFAULT = "DEFAULT"  # 默认值，无实际意义
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    SKIPPED = "SKIPPED"
-    BACKGROUND = "BACKGROUND"
 
 
 class RefreshPolicy(Enum):
@@ -1284,7 +1271,6 @@ if __name__ == "__main__":
             assert len(regions) > 0, f"证券类型 {inst_type} 没有关联的地区"
 
     # 验证新增枚举的默认值
-    assert EvaluationStatus.DEFAULT.value == "DEFAULT"
     assert RefreshPolicy.DEFAULT.value == "DEFAULT"
     assert CorrelationSource.DEFAULT.value == "DEFAULT"
 

@@ -14,6 +14,7 @@ from typing import (
 
 import aiostream.stream as stream
 from aiostream import Stream
+from pydantic import TypeAdapter
 
 from alphapower.client import (
     BeforeAndAfterPerformanceView,
@@ -21,6 +22,7 @@ from alphapower.client import (
     TableView,
     WorldQuantClient,
 )
+from alphapower.client.models import CompetitionRefView
 from alphapower.constants import (
     CONSULTANT_MAX_PROD_CORRELATION,
     CONSULTANT_MAX_SELF_CORRELATION,
@@ -28,6 +30,8 @@ from alphapower.constants import (
     CorrelationCalcType,
     CorrelationType,
     RefreshPolicy,
+    SampleCheckResult,
+    SampleCheckType,
 )
 from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
 from alphapower.entity import Alpha
@@ -1562,3 +1566,83 @@ class BaseEvaluator(AbstractEvaluator):
             action=action.name,
         )
         return action
+
+    async def matched_competitions(
+        self, alpha: Alpha
+    ) -> Tuple[List[CompetitionRefView], SampleCheckResult]:
+        await log.adebug(
+            "开始获取 Alpha 匹配的竞赛列表",
+            emoji="🔍",
+            alpha_id=alpha.alpha_id,
+        )
+        # 创建 TypeAdapter 实例，用于验证和解析 JSON 数据到 CompetitionRefView 列表
+        competitions_adapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
+            List[CompetitionRefView]
+        )
+
+        # 确保 in_sample 存在且已加载 (如果使用延迟加载)
+        # 注意：如果 in_sample 可能为 None，需要先检查
+        if not alpha.in_sample:
+            await log.awarning(
+                "Alpha 缺少样本内 (in_sample) 数据，无法获取匹配竞赛",
+                emoji="⚠️",
+                alpha_id=alpha.alpha_id,
+            )
+            return [], SampleCheckResult.DEFAULT
+
+        # 遍历 Alpha 的样本内 (in_sample) 检查项
+        for check in alpha.in_sample.checks:
+            # 检查项名称是否为匹配竞赛
+            if check.name == SampleCheckType.MATCHES_COMPETITION.value:
+                # 检查项中是否有竞赛信息
+                if check.competitions:
+                    try:
+                        # 使用 TypeAdapter 验证并解析 JSON 字符串
+                        competitions: List[CompetitionRefView] = (
+                            competitions_adapter.validate_json(check.competitions)
+                        )
+                        await log.adebug(
+                            "成功解析匹配的竞赛列表",
+                            emoji="✅",
+                            alpha_id=alpha.alpha_id,
+                            competitions_count=len(competitions),
+                            competitions=competitions,  # 如果列表不长，可以考虑打印
+                        )
+                        return competitions, check.result
+                    except Exception as e:
+                        # 如果解析失败，记录错误并抛出 ValueError
+                        await log.aerror(
+                            "解析竞赛列表 JSON 时出错",
+                            emoji="❌",
+                            alpha_id=alpha.alpha_id,
+                            check_name=check.name,
+                            competitions_json=check.competitions,
+                            error=str(e),
+                            exc_info=True,  # 记录异常堆栈
+                        )
+                        raise ValueError(
+                            f"Alpha (ID: {alpha.alpha_id}) 的 "
+                            f"{check.name} 检查项中的竞赛列表 JSON 无效: {e}"
+                        ) from e
+                else:
+                    # 如果有匹配竞赛的检查项但无竞赛数据，记录警告并抛出 ValueError
+                    await log.awarning(
+                        "匹配竞赛检查项存在，但竞赛列表为空",
+                        emoji="⚠️",
+                        alpha_id=alpha.alpha_id,
+                        check_name=check.name,
+                    )
+                    # 根据需求决定是否抛出异常，或者仅记录警告并返回空列表
+                    # raise ValueError(
+                    #     f"Alpha (ID: {alpha.alpha_id}) 的 "
+                    #     f"{check.name} 检查项存在，但没有对应的竞赛项数据。"
+                    # )
+                    return [], SampleCheckResult.DEFAULT
+
+        # 如果遍历完所有检查项都没有找到匹配的竞赛项，返回空列表
+        await log.adebug(
+            "未找到匹配的竞赛检查项",
+            emoji="🤷",
+            alpha_id=alpha.alpha_id,
+        )
+        return [], SampleCheckResult.DEFAULT
