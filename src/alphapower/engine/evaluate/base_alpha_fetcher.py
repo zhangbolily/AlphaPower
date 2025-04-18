@@ -11,9 +11,10 @@ from __future__ import annotations  # 解决类型前向引用问题
 from typing import Any, AsyncGenerator, List, cast
 
 from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, select
+from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
-from alphapower.constants import AlphaType, Region
+from alphapower.constants import AlphaType, Delay, Region
 from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
 from alphapower.entity import Alpha, Sample, Setting
 from alphapower.internal.logging import get_logger
@@ -76,13 +77,19 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
             select(Alpha)
             .join(Alpha.settings)  # 连接到 Alpha 的设置
             .join(Alpha.in_sample)  # 连接到 Alpha 的样本内数据
+            .options(
+                selectinload(Alpha.settings),  # 预加载设置
+                selectinload(Alpha.in_sample).selectinload(
+                    Sample.checks
+                ),  # 预加载样本内数据
+            )
         )
 
         # 构建筛选条件列表
         # 注意：常量中的百分比值需要除以 100 转换为小数
         criteria: List[ColumnExpressionArgument] = [
             # Sample 相关条件 (通用)
-            Sample.self_correration < constants.CONSULTANT_MAX_SELF_CORRELATION,
+            # Sample.self_correration < constants.CONSULTANT_MAX_SELF_CORRELATION,
             Sample.turnover > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
             Sample.turnover < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
             # 区域和延迟相关的条件 (使用 case 语句)
@@ -91,7 +98,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                     Setting.region != Region.CHN,  # 非中国区域
                     case(
                         (
-                            Setting.delay == 0,  # 延迟为 0
+                            Setting.delay == Delay.ZERO,  # 延迟为 0
                             and_(
                                 Sample.sharpe
                                 > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_0,
@@ -100,7 +107,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                             ),
                         ),
                         (
-                            Setting.delay == 1,  # 延迟为 1
+                            Setting.delay == Delay.ONE,  # 延迟为 1
                             and_(
                                 Sample.sharpe
                                 > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_1,
@@ -114,7 +121,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 # 中国区域 (else 分支)
                 else_=case(
                     (
-                        Setting.delay == 0,  # 延迟为 0
+                        Setting.delay == Delay.ZERO,  # 延迟为 0
                         and_(
                             Sample.sharpe
                             > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_0,
@@ -128,7 +135,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                         ),
                     ),
                     (
-                        Setting.delay == 1,  # 延迟为 1
+                        Setting.delay == Delay.ONE,  # 延迟为 1
                         and_(
                             Sample.sharpe
                             > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_1,

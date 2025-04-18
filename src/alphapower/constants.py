@@ -847,6 +847,7 @@ class SampleCheckResult(Enum):
     PENDING = "PENDING"  # 检查待定
     WARNING = "WARNING"  # 检查警告
     ERROR = "ERROR"  # 检查错误
+    FAIL = "FAIL"  # 检查失败
 
 
 class CorrelationType(Enum):

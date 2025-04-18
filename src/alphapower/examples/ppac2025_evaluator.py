@@ -1,0 +1,119 @@
+from __future__ import annotations  # 解决类型前向引用问题
+
+from typing import Any, List, Tuple
+
+from alphapower.client import BeforeAndAfterPerformanceView, SubmissionCheckResultView
+from alphapower.constants import (
+    CheckRecordType,
+    Database,
+    RefreshPolicy,
+    SampleCheckResult,
+)
+from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
+from alphapower.entity import Alpha
+from alphapower.internal.logging import get_logger
+
+# 获取日志记录器 (logger)
+log = get_logger(module_name=__name__)
+
+
+class ConsultantEvaluator(BaseEvaluator):
+    """
+    ConsultantEvaluator 是 BaseEvaluator 的子类，
+    专门用于实现顾问相关的 Alpha 评估逻辑。
+    """
+
+    async def _get_checks_to_run(
+        self, alpha: Alpha, **kwargs: Any
+    ) -> Tuple[List[CheckRecordType], RefreshPolicy]:
+        competitions, result = await self.matched_competitions(alpha=alpha)
+        if result in (SampleCheckResult.PASS, SampleCheckResult.PENDING):
+            for competition in competitions:
+                if competition.id == "PPAC2025":
+                    return (
+                        [
+                            CheckRecordType.CORRELATION_SELF,
+                            CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+                        ],
+                        RefreshPolicy.USE_EXISTING,
+                    )
+
+        return (
+            [],
+            RefreshPolicy.USE_EXISTING,
+        )
+
+    async def _determine_performance_diff_pass_status(
+        self,
+        alpha: Alpha,
+        perf_diff_view: BeforeAndAfterPerformanceView,
+        **kwargs: Any,
+    ) -> bool:
+        if perf_diff_view.score is None:
+            return False
+
+        if perf_diff_view.score.after < perf_diff_view.score.before:
+            return False
+
+        return True
+
+    async def _determine_submission_pass_status(
+        self,
+        submission_check_view: SubmissionCheckResultView,
+        **kwargs: Any,
+    ) -> bool:
+
+        if submission_check_view.in_sample is None:
+            return False
+        if submission_check_view.in_sample.checks is None:
+            return False
+        if len(submission_check_view.in_sample.checks) == 0:
+            return False
+
+        for check in submission_check_view.in_sample.checks:
+            if check.result != SampleCheckResult.PASS:
+                return False
+
+        return True
+
+
+if __name__ == "__main__":
+    # 运行测试
+    from alphapower.client import wq_client
+    from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
+    from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
+    from alphapower.engine.evaluate.base_alpha_fetcher import BaseAlphaFetcher
+    from alphapower.internal.db_session import get_db_session
+
+    async def test() -> None:
+        async with get_db_session(Database.ALPHAS) as alpha_session:
+            async with get_db_session(Database.EVALUATE) as evaluate_session:
+                async with wq_client as client:
+                    alpha_dal = AlphaDAL(alpha_session)
+                    setting_dal = SettingDAL(alpha_session)
+                    sample_dal = SampleDAL(alpha_session)
+
+                    correlation_dal = CorrelationDAL(evaluate_session)
+                    check_record_dal = CheckRecordDAL(evaluate_session)
+
+                    fetcher = BaseAlphaFetcher(
+                        alpha_dal=alpha_dal,
+                        setting_dal=setting_dal,
+                        sample_dal=sample_dal,
+                    )
+                    evaluator = ConsultantEvaluator(
+                        fetcher=fetcher,
+                        correlation_dal=correlation_dal,
+                        check_record_dal=check_record_dal,
+                        client=client,
+                    )
+
+                    async for alpha in evaluator.evaluate_many(
+                        policy=RefreshPolicy.USE_EXISTING, concurrency=1
+                    ):
+                        print(alpha)
+
+    # 运行异步测试函数
+    import asyncio
+
+    asyncio.run(test())

@@ -411,6 +411,15 @@ class BaseEvaluator(AbstractEvaluator):
                     alpha_id=alpha.alpha_id,
                     result=result,
                 )
+
+                if not result:
+                    await log.ainfo(
+                        f"⚠️ 检查 '{check_type.name}' 结果为 False",
+                        emoji="⚠️",
+                        alpha_id=alpha.alpha_id,
+                    )
+                    return results  # 如果检查失败，提前返回结果
+
             except NotImplementedError as nie:
                 await log.aerror(
                     f"🚧 检查 '{check_type.name}' 未在子类中实现",
@@ -1306,13 +1315,18 @@ class BaseEvaluator(AbstractEvaluator):
         submission_check_view: SubmissionCheckResultView,
         **kwargs: Any,
     ) -> bool:
-        # 使用同步日志，因为这是纯计算方法
-        await log.aerror(
-            "提交检查逻辑必须由子类实现",
-            emoji="❌",
-            submission_check_view=submission_check_view,
-        )
-        raise NotImplementedError("提交检查逻辑必须由子类实现")
+        if submission_check_view.in_sample is None:
+            return False
+        if submission_check_view.in_sample.checks is None:
+            return False
+        if len(submission_check_view.in_sample.checks) == 0:
+            return False
+
+        for check in submission_check_view.in_sample.checks:
+            if check.result != SampleCheckResult.PASS:
+                return False
+
+        return True
 
     async def _check_submission(
         self,
@@ -1599,7 +1613,9 @@ class BaseEvaluator(AbstractEvaluator):
                     try:
                         # 使用 TypeAdapter 验证并解析 JSON 字符串
                         competitions: List[CompetitionRefView] = (
-                            competitions_adapter.validate_json(check.competitions)
+                            competitions_adapter.validate_json(
+                                bytes(check.competitions, encoding="utf-8")
+                            )
                         )
                         await log.adebug(
                             "成功解析匹配的竞赛列表",

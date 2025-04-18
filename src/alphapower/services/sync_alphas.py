@@ -343,7 +343,12 @@ async def fetch_last_sync_time_range(
     return start_time, end_time
 
 
-async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int]:
+async def process_alphas_page(
+    alphas_results: List[AlphaView],
+    alpha_dal: AlphaDAL,
+    competition_dal: CompetitionDAL,
+    classification_dal: ClassificationDAL,
+) -> Tuple[int, int]:
     """
     异步处理单页 alphas 数据。
 
@@ -363,84 +368,71 @@ async def process_alphas_page(alphas_results: List[AlphaView]) -> Tuple[int, int
     updated_alphas: int = 0
 
     try:
-        async with get_db_session(Database.ALPHAS) as session:
-            alpha_dal: AlphaDAL = AlphaDAL(session)
+        # 收集所有 competitions 和 classifications 的 ID
+        competition_ids: List[str] = [
+            competition.id
+            for alpha_data in alphas_results
+            if alpha_data.competitions
+            for competition in alpha_data.competitions
+            if competition.id
+        ]
+        classification_ids: List[str] = [
+            classification.id
+            for alpha_data in alphas_results
+            if alpha_data.classifications
+            for classification in alpha_data.classifications
+            if classification.id
+        ]
 
-            # 收集所有 competitions 和 classifications 的 ID
-            competition_ids: List[str] = [
-                competition.id
-                for alpha_data in alphas_results
-                if alpha_data.competitions
-                for competition in alpha_data.competitions
-                if competition.id
-            ]
-            classification_ids: List[str] = [
-                classification.id
-                for alpha_data in alphas_results
-                if alpha_data.classifications
-                for classification in alpha_data.classifications
-                if classification.id
-            ]
-
-            # 批量查询 competitions 和 classifications
-            competition_dal: CompetitionDAL = DALFactory.create_dal(
-                CompetitionDAL, session
+        competitions_dict: dict[str, Competition] = {
+            competition.competition_id: competition
+            for competition in await competition_dal.find_by(
+                in_={"competition_id": competition_ids}
             )
-            classification_dal: ClassificationDAL = DALFactory.create_dal(
-                ClassificationDAL, session
+        }
+        classifications_dict: dict[str, Classification] = {
+            classification.classification_id: classification
+            for classification in await classification_dal.find_by(
+                in_={"classification_id": classification_ids}
+            )
+        }
+
+        for alpha_data in alphas_results:
+            if exit_event.is_set():
+                await file_logger.awarning(
+                    "检测到退出事件，中止处理因子页面", emoji="⚠️"
+                )
+                break
+            alpha_id: str = alpha_data.id
+
+            settings: Setting = create_alphas_settings(alpha_data)
+            regular: Regular = create_alphas_regular(alpha_data.regular)
+
+            # 填充 classifications 和 competitions 字段
+            classifications: List[Classification] = [
+                classifications_dict[classification.id]
+                for classification in alpha_data.classifications or []
+                if classification.id in classifications_dict
+            ]
+            competitions: List[Competition] = [
+                competitions_dict[competition.id]
+                for competition in alpha_data.competitions or []
+                if competition.id in competitions_dict
+            ]
+
+            alpha: Alpha = create_alphas(
+                alpha_data, settings, regular, classifications, competitions
             )
 
-            competitions_dict: dict[str, Competition] = {
-                competition.competition_id: competition
-                for competition in await competition_dal.find_by(
-                    in_={"competition_id": competition_ids}
-                )
-            }
-            classifications_dict: dict[str, Classification] = {
-                classification.classification_id: classification
-                for classification in await classification_dal.find_by(
-                    in_={"classification_id": classification_ids}
-                )
-            }
+            existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(alpha_id)
 
-            for alpha_data in alphas_results:
-                if exit_event.is_set():
-                    await file_logger.awarning(
-                        "检测到退出事件，中止处理因子页面", emoji="⚠️"
-                    )
-                    break
-                alpha_id: str = alpha_data.id
-
-                settings: Setting = create_alphas_settings(alpha_data)
-                regular: Regular = create_alphas_regular(alpha_data.regular)
-
-                # 填充 classifications 和 competitions 字段
-                classifications: List[Classification] = [
-                    classifications_dict[classification.id]
-                    for classification in alpha_data.classifications or []
-                    if classification.id in classifications_dict
-                ]
-                competitions: List[Competition] = [
-                    competitions_dict[competition.id]
-                    for competition in alpha_data.competitions or []
-                    if competition.id in competitions_dict
-                ]
-
-                alpha: Alpha = create_alphas(
-                    alpha_data, settings, regular, classifications, competitions
-                )
-
-                existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
-                    alpha_id
-                )
-
-                if existing_alpha:
-                    alpha.id = existing_alpha.id
-                    await alpha_dal.update(alpha)
-                    updated_alphas += 1
-                else:
-                    await alpha_dal.create(alpha)
-                    inserted_alphas += 1
+            if existing_alpha:
+                alpha.id = existing_alpha.id
+                await alpha_dal.update(alpha)
+                updated_alphas += 1
+            else:
+                await alpha_dal.create(alpha)
+                inserted_alphas += 1
     except Exception as e:
         raise RuntimeError(f"处理因子页面数据时发生错误: {e}") from e
 
@@ -569,38 +561,52 @@ async def process_alphas_pages(
     inserted_alphas: int = 0
     updated_alphas: int = 0
 
-    for page in range(start_page, end_page + 1):
-        if exit_event.is_set():
-            await file_logger.awarning("检测到退出事件，中止处理因子页范围", emoji="⚠️")
-            break
-        query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
-            limit=page_size,
-            offset=(page - 1) * page_size,
-            date_created_gt=start_time.isoformat(),
-            date_created_lt=end_time.isoformat(),
-            order="dateCreated",
+    async with get_db_session(Database.ALPHAS) as session:
+        alpha_dal: AlphaDAL = AlphaDAL(session)
+        competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL, session)
+        classification_dal: ClassificationDAL = DALFactory.create_dal(
+            ClassificationDAL, session
         )
 
-        alphas_data_result: Any
-        alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
+        for page in range(start_page, end_page + 1):
+            if exit_event.is_set():
+                await file_logger.awarning(
+                    "检测到退出事件，中止处理因子页范围", emoji="⚠️"
+                )
+                break
+            query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
+                limit=page_size,
+                offset=(page - 1) * page_size,
+                date_created_gt=start_time.isoformat(),
+                date_created_lt=end_time.isoformat(),
+                order="dateCreated",
+            )
 
-        if not alphas_data_result.results:
-            break
+            alphas_data_result: Any
+            alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
 
-        fetched_alphas += len(alphas_data_result.results)
-        # 使用正确的异步日志方法
-        await file_logger.ainfo(
-            "获取因子页面数据",
-            start_time=start_time,
-            end_time=end_time,
-            page=page,
-            count=len(alphas_data_result.results),
-            emoji="🔍",
-        )
+            if not alphas_data_result.results:
+                break
 
-        inserted, updated = await process_alphas_page(alphas_data_result.results)
-        inserted_alphas += inserted
-        updated_alphas += updated
+            fetched_alphas += len(alphas_data_result.results)
+            # 使用正确的异步日志方法
+            await file_logger.ainfo(
+                "获取因子页面数据",
+                start_time=start_time,
+                end_time=end_time,
+                page=page,
+                count=len(alphas_data_result.results),
+                emoji="🔍",
+            )
+
+            inserted, updated = await process_alphas_page(
+                alphas_data_result.results,
+                alpha_dal=alpha_dal,
+                competition_dal=competition_dal,
+                classification_dal=classification_dal,
+            )
+            inserted_alphas += inserted
+            updated_alphas += updated
 
     return fetched_alphas, inserted_alphas, updated_alphas
 

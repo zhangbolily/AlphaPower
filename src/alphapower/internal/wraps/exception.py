@@ -101,7 +101,7 @@ async def log_function_success(func_name: str, result: Any) -> None:
     await logger.adebug(
         "函数执行成功",
         wrapped_func_name=func_name,
-        result=result,
+        result=str(result)[:500],
         module_name=__name__,
         emoji="✅",
     )
