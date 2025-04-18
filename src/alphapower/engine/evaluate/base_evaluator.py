@@ -2,7 +2,18 @@ from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
 from enum import Enum, auto
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
+
+import aiostream.stream as stream
+from aiostream import Stream
 
 from alphapower.client import (
     BeforeAndAfterPerformanceView,
@@ -58,17 +69,159 @@ class BaseEvaluator(AbstractEvaluator):
         concurrency: int,
         **kwargs: Any,
     ) -> AsyncGenerator[Alpha, None]:
-        await log.adebug(
-            "🚧 evaluate_many 方法尚未实现，需要子类覆盖",
-            emoji="🚧",
-            policy=policy,
+        await log.ainfo(
+            "🚀 开始批量评估 Alpha (aiostream 模式)",
+            emoji="🚀",
+            policy=policy.name,
             concurrency=concurrency,
             kwargs=kwargs,
         )
-        raise NotImplementedError("子类必须实现 evaluate_many 方法")
-        # 确保 AsyncGenerator 被正确注解
-        if False:  # pylint: disable=W0125 # pragma: no cover
-            yield
+
+        processed_count: int = 0  # 初始化已处理计数器
+        passed_count: int = 0  # 初始化已通过计数器
+        total_to_evaluate: int = -1  # 初始化待评估总数
+
+        # 内部包装函数，用于调用 evaluate_one 并处理结果/异常
+        async def evaluate_wrapper(alpha: Alpha, *args: Any) -> Optional[Alpha]:
+            """
+            包裹 evaluate_one 以处理异常并返回 Alpha 或 None。
+
+            Args:
+                alpha: 待评估的 Alpha 对象 (Alpha)。
+
+            Returns:
+                如果评估通过则返回 Alpha 对象，否则返回 None (Optional[Alpha])。
+            """
+            nonlocal processed_count  # 允许修改外部作用域的计数器
+            try:
+                await log.adebug(
+                    "开始处理单个 Alpha 评估任务 (aiostream wrapper)",
+                    emoji="⏳",
+                    alpha_id=alpha.alpha_id,
+                    args=args,
+                )
+                # 调用核心评估逻辑
+                passed: bool = await self.evaluate_one(
+                    alpha=alpha, policy=policy, **kwargs
+                )
+                processed_count += 1  # 增加已处理计数
+                if passed:
+                    await log.adebug(
+                        "Alpha 评估通过 (aiostream wrapper)",
+                        emoji="✅",
+                        alpha_id=alpha.alpha_id,
+                    )
+                    return alpha  # 评估通过，返回 Alpha 对象
+
+                await log.adebug(
+                    "Alpha 评估未通过 (aiostream wrapper)",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                )
+                return None  # 评估未通过，返回 None
+            except asyncio.CancelledError:
+                processed_count += 1  # 取消也算处理
+                await log.ainfo(
+                    "单个 Alpha 评估任务被取消 (aiostream wrapper)",
+                    emoji="🚫",
+                    alpha_id=alpha.alpha_id,
+                )
+                # 不重新抛出，让 aiostream 处理
+                return None
+            except Exception as task_exc:
+                processed_count += 1  # 异常也算处理
+                await log.aerror(
+                    "💥 单个 Alpha 评估任务中发生异常 (aiostream wrapper)",
+                    emoji="💥",
+                    alpha_id=alpha.alpha_id,
+                    error=str(task_exc),
+                    exc_info=True,  # 包含异常堆栈信息
+                )
+                # 不重新抛出，返回 None 表示失败
+                return None
+            finally:
+                progress_percent: float = (processed_count / total_to_evaluate) * 100
+                await log.ainfo(
+                    "📊 批量评估进度 (aiostream)",
+                    emoji="📊",
+                    processed=processed_count,
+                    passed=passed_count,  # 注意：这里的 passed_count 可能稍微滞后
+                    total=total_to_evaluate,
+                    progress=f"{progress_percent:.2f}%",
+                )
+
+        # 结束 evaluate_wrapper
+
+        try:
+            # 获取待评估总数 (用于日志记录和进度)
+            try:
+                total_to_evaluate = await self.to_evaluate_alpha_count(**kwargs)
+                await log.ainfo(
+                    "🔢 待评估 Alpha 总数",
+                    emoji="🔢",
+                    count=total_to_evaluate,
+                )
+            except Exception as e:
+                await log.aerror(
+                    "💥 获取待评估 Alpha 总数失败",
+                    emoji="💥",
+                    error=str(e),
+                    exc_info=True,
+                )
+                total_to_evaluate = -1  # 标记未知
+
+            # 1. 创建 Alpha 源流
+            # 使用 self.fetcher.fetch_alphas 获取异步生成器
+            alpha_source: Stream[Alpha] = stream.iterate(
+                self.fetcher.fetch_alphas(**kwargs)
+            )
+
+            # 2. 使用 map 并发执行评估
+            # task_limit 控制并发数
+            results_stream: Stream[Optional[Alpha]] = stream.map(
+                alpha_source, evaluate_wrapper, task_limit=concurrency
+            )
+
+            # 3. 过滤掉评估失败或未通过的结果 (None)
+            # 使用 filter 保留非 None 的结果 (即通过评估的 Alpha)
+            passed_alphas_stream: Stream[Optional[Alpha]] = stream.filter(
+                results_stream, lambda x: x is not None
+            )
+
+            # 4. 异步迭代最终结果流并 yield
+            async with passed_alphas_stream.stream() as streamer:
+                async for passed_alpha in streamer:
+                    passed_count += 1  # 增加通过计数
+                    yield passed_alpha  # 产生通过评估的 Alpha
+
+        except asyncio.CancelledError:
+            await log.ainfo("🚫 批量评估任务被取消 (aiostream)", emoji="🚫")
+            # aiostream 应该会处理内部任务的取消，这里记录总体取消事件
+            raise  # 重新抛出 CancelledError，让调用者知道任务被取消
+        except Exception as e:
+            await log.aerror(
+                "💥 批量评估过程中发生未预期异常 (aiostream)",
+                emoji="💥",
+                policy=policy.name,
+                concurrency=concurrency,
+                error=str(e),
+                exc_info=True,  # 包含异常堆栈信息
+            )
+            # 根据需要决定是否重新抛出异常
+            raise  # 重新抛出，表明批量评估失败
+
+        finally:
+            # 记录最终的评估结果统计
+            final_total_str: str = (
+                str(total_to_evaluate) if total_to_evaluate != -1 else "未知"
+            )
+            await log.ainfo(
+                "🏁 批量评估完成 (aiostream)",
+                emoji="🏁",
+                total_processed=processed_count,  # 记录实际处理的数量
+                total_passed=passed_count,  # 记录通过评估的数量
+                total_expected=final_total_str,  # 记录预期处理的总数
+            )
 
     async def evaluate_one(
         self,
@@ -77,13 +230,94 @@ class BaseEvaluator(AbstractEvaluator):
         **kwargs: Any,
     ) -> bool:
         await log.adebug(
-            "🚧 evaluate_one 方法尚未实现，需要子类覆盖",
-            emoji="🚧",
+            "🎬 开始评估单个 Alpha",
+            emoji="🎬",
             alpha_id=alpha.alpha_id,
             policy=policy,
             kwargs=kwargs,
         )
-        raise NotImplementedError("子类必须实现 evaluate_one 方法")
+        overall_result: bool = False  # 初始化最终结果
+
+        try:
+            # 1. 获取需要运行的检查列表和实际使用的策略
+            checks_to_run: List[CheckRecordType]
+            effective_policy: RefreshPolicy
+            checks_to_run, effective_policy = await self._get_checks_to_run(
+                alpha=alpha, policy=policy, **kwargs
+            )
+            await log.adebug(
+                "📋 确定需要执行的检查列表",
+                emoji="📋",
+                alpha_id=alpha.alpha_id,
+                checks=checks_to_run,
+                effective_policy=effective_policy,
+            )
+
+            if not checks_to_run:
+                await log.ainfo(
+                    "🤔 没有需要为该 Alpha 执行的检查，评估跳过 (视为失败)",
+                    emoji="🤔",
+                    alpha_id=alpha.alpha_id,
+                )
+                return True  # 没有检查，默认通过或根据业务逻辑调整
+
+            # 2. 执行检查
+            check_results: Dict[CheckRecordType, bool] = await self._execute_checks(
+                alpha=alpha,
+                checks=checks_to_run,
+                policy=effective_policy,  # 使用从 _get_checks_to_run 返回的策略
+                **kwargs,
+            )
+            await log.adebug(
+                "📊 各项检查执行结果",
+                emoji="📊",
+                alpha_id=alpha.alpha_id,
+                results=check_results,
+            )
+
+            # 3. 判断总体结果 (要求所有执行的检查都通过)
+            # 确保所有在 checks_to_run 中的检查都在 check_results 中，并且值为 True
+            overall_result = all(
+                check_results.get(check, False) for check in checks_to_run
+            )
+
+            await log.ainfo(
+                "🏁 Alpha 评估完成",
+                emoji="✅" if overall_result else "❌",
+                alpha_id=alpha.alpha_id,
+                passed=overall_result,
+            )
+
+        except NotImplementedError as nie:
+            await log.aerror(
+                "评估失败：子类必须实现必要的检查方法",
+                emoji="❌",
+                alpha_id=alpha.alpha_id,
+                error=str(nie),
+                exc_info=True,
+            )
+            raise  # 重新抛出，表明实现不完整
+        except asyncio.CancelledError:
+            await log.ainfo(
+                "🚫 Alpha 评估任务被取消",
+                emoji="🚫",
+                alpha_id=alpha.alpha_id,
+            )
+            overall_result = False  # 取消视为失败
+            raise  # 重新抛出，让上层处理
+        except Exception as e:
+            await log.aerror(
+                "💥 评估 Alpha 时发生未预期异常",
+                emoji="💥",
+                alpha_id=alpha.alpha_id,
+                policy=policy,
+                error=str(e),
+                exc_info=True,
+            )
+            overall_result = False  # 异常视为失败
+            raise
+
+        return overall_result
 
     async def to_evaluate_alpha_count(
         self,
@@ -116,14 +350,99 @@ class BaseEvaluator(AbstractEvaluator):
         **kwargs: Any,
     ) -> Dict[CheckRecordType, bool]:
         await log.adebug(
-            "🚧 _execute_checks 方法尚未实现，需要子类覆盖",
-            emoji="🚧",
+            "🚀 开始执行 Alpha 的各项检查",
+            emoji="🚀",
             alpha_id=alpha.alpha_id,
-            checks=checks,
-            policy=policy,
+            checks=[c.name for c in checks],  # 记录检查名称列表
+            policy=policy.name,
             kwargs=kwargs,
         )
-        raise NotImplementedError("子类必须实现 _execute_checks 方法")
+        results: Dict[CheckRecordType, bool] = {}
+        # 定义检查类型到检查方法的映射
+        check_method_map: Dict[CheckRecordType, Callable] = {
+            CheckRecordType.CORRELATION_SELF: lambda: self._check_correlation(
+                alpha, CorrelationType.SELF, policy, **kwargs
+            ),
+            CheckRecordType.CORRELATION_PROD: lambda: self._check_correlation(
+                alpha, CorrelationType.PROD, policy, **kwargs
+            ),
+            CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE: lambda: self._check_alpha_pool_performance_diff(
+                alpha,
+                kwargs.get("competition_id"),  # 从 kwargs 获取 competition_id
+                policy,
+                **kwargs,
+            ),
+            CheckRecordType.SUBMISSION: lambda: self._check_submission(
+                alpha, policy, **kwargs
+            ),
+            # 添加其他检查类型的映射...
+        }
+
+        for check_type in checks:
+            check_method = check_method_map.get(check_type)
+            if not check_method:
+                await log.aerror(
+                    "❌ 未找到检查类型的实现方法",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    check_type=check_type.name,
+                )
+                # 或者根据需要抛出 NotImplementedError
+                raise NotImplementedError(
+                    f"检查类型 '{check_type.name}' 的执行方法未实现"
+                )
+
+            await log.adebug(
+                f"▶️ 开始执行检查: {check_type.name}",
+                emoji="▶️",
+                alpha_id=alpha.alpha_id,
+            )
+            try:
+                # 调用对应的检查方法
+                result: bool = await check_method()
+                results[check_type] = result
+                await log.adebug(
+                    f"⏹️ 完成检查: {check_type.name}",
+                    emoji="✅" if result else "❌",
+                    alpha_id=alpha.alpha_id,
+                    result=result,
+                )
+            except NotImplementedError as nie:
+                await log.aerror(
+                    f"🚧 检查 '{check_type.name}' 未在子类中实现",
+                    emoji="🚧",
+                    alpha_id=alpha.alpha_id,
+                    error=str(nie),
+                    exc_info=True,
+                )
+                raise
+            except asyncio.CancelledError:
+                await log.ainfo(
+                    f"🚫 检查 '{check_type.name}' 被取消",
+                    emoji="🚫",
+                    alpha_id=alpha.alpha_id,
+                )
+                results[check_type] = False  # 取消视为失败
+                raise  # 重新抛出 CancelledError
+            except Exception as e:
+                await log.aerror(
+                    f"💥 执行检查 '{check_type.name}' 时发生异常",
+                    emoji="💥",
+                    alpha_id=alpha.alpha_id,
+                    check_type=check_type.name,
+                    policy=policy.name,
+                    error=str(e),
+                    exc_info=True,
+                )
+                raise
+
+        await log.adebug(
+            "🏁 完成所有请求的检查执行",
+            emoji="🏁",
+            alpha_id=alpha.alpha_id,
+            results={k.name: v for k, v in results.items()},  # 记录结果
+        )
+        return results
 
     async def _check_correlation(
         self,
