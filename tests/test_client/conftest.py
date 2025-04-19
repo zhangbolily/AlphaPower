@@ -30,6 +30,7 @@ def setup_mock_responses(mock_server: HTTPServer) -> Generator[str, None, None]:
     setup_alpha_competitions(mock_server)
     setup_alpha_correlations(mock_server)
     setup_alpha_fetch_before_and_after_performance(mock_server)
+    setup_alpha_fetch_record_set_pnl(mock_server)
 
     # 返回 mock server 的 base URL 供测试使用
     yield mock_server.url_for("/")
@@ -131,3 +132,12 @@ def setup_alpha_fetch_before_and_after_performance(
     ).respond_with_json(
         load_json_fixture("alpha_competition_before_and_after_performance_0.json")
     )
+
+
+def setup_alpha_fetch_record_set_pnl(
+    mock_server: HTTPServer,
+) -> None:
+    """设置 Alpha Fetch Record Set PNL 的 mock 响应"""
+    mock_server.expect_request(
+        uri="/alphas/regular_alpha_0/recordsets/pnl"
+    ).respond_with_json(load_json_fixture("alpha_pnl_0.json"))

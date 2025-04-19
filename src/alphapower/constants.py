@@ -841,6 +841,12 @@ class SampleCheckType(Enum):
     IS_LADDER_SHARPE = "IS_LADDER_SHARPE"
 
 
+class RecordSetType(Enum):
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    PNL = "PNL"  # 收益率
+    YEARLY_STATS = "YEARLY_STATS"  # 年度统计
+
+
 class SampleCheckResult(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     PASS = "PASS"  # 检查通过

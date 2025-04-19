@@ -167,12 +167,12 @@ async def get_alpha_yearly_stats(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_YEARLY_STATS(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return TableView.model_validate(await response.json()), RateLimit.from_headers(
-            response.headers
-        )
+        return TableView.model_validate_json(
+            await response.text()
+        ), RateLimit.from_headers(response.headers)
 
 
-async def get_alpha_pnl(
+async def alpha_fetch_record_set_pnl(
     session: aiohttp.ClientSession, alpha_id: str
 ) -> Tuple[TableView, RateLimit]:
     """
@@ -188,9 +188,9 @@ async def get_alpha_pnl(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_PNL(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return TableView.model_validate(await response.json()), RateLimit.from_headers(
-            response.headers
-        )
+        return TableView.model_validate_json(
+            await response.text()
+        ), RateLimit.from_headers(response.headers)
 
 
 async def alpha_fetch_correlations(
@@ -226,7 +226,7 @@ async def alpha_fetch_correlations(
             return (
                 True,
                 None,
-                TableView.model_validate(await response.json()),
+                TableView.model_validate_json(await response.text()),
                 RateLimit.from_headers(response.headers),
             )
 
@@ -261,7 +261,7 @@ async def alpha_fetch_before_and_after_performance(
         return (
             True,
             None,
-            BeforeAndAfterPerformanceView.model_validate(await response.json()),
+            BeforeAndAfterPerformanceView.model_validate_json(await response.text()),
             RateLimit.from_headers(response.headers),
         )
 
@@ -321,7 +321,7 @@ async def alpha_fetch_submission_check_result(
             return (
                 True,
                 0.0,
-                SubmissionCheckResultView.model_validate(await response.json()),
+                SubmissionCheckResultView.model_validate_json(await response.text()),
                 RateLimit.from_headers(response.headers),
             )
 
@@ -342,7 +342,7 @@ async def alpha_fetch_competitions(
     url: str = f"{BASE_URL}/{ENDPOINT_COMPETITIONS}"
     async with session.get(url, params=params) as response:
         response.raise_for_status()
-        return CompetitionListView.model_validate(await response.json())
+        return CompetitionListView.model_validate_json(await response.text())
 
 
 async def fetch_dataset_data_fields(
@@ -463,7 +463,7 @@ async def get_all_operators(session: ClientSession) -> Operators:
     url = f"{BASE_URL}/{ENDPOINT_OPERATORS}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return Operators.model_validate(await response.json())
+        return Operators.model_validate_json(await response.text())
 
 
 async def _create_simulation(
@@ -560,7 +560,7 @@ async def get_simulation_progress(
             finished = False
             return (
                 finished,
-                SimulationProgressView.model_validate(await response.json()),
+                SimulationProgressView.model_validate_json(await response.text()),
                 retry_after,
             )
         else:
@@ -568,7 +568,9 @@ async def get_simulation_progress(
             finished = True
             result: Union[SingleSimulationResultView, MultiSimulationResultView]
             if is_multi:
-                result = MultiSimulationResultView.model_validate(await response.json())
+                result = MultiSimulationResultView.model_validate_json(
+                    await response.text()
+                )
             else:
                 result = SingleSimulationResultView.model_validate(
                     await response.json()
@@ -596,7 +598,7 @@ async def get_self_simulation_activities(
     url: str = f"{BASE_URL}/{ENDPOINT_ACTIVITIES_SIMULATION}"
     async with session.get(url, params={"date": date}) as response:
         response.raise_for_status()
-        return SelfSimulationActivitiesView.model_validate(await response.json())
+        return SelfSimulationActivitiesView.model_validate_json(await response.text())
 
 
 async def authentication(session: ClientSession) -> AuthenticationView:
@@ -612,4 +614,4 @@ async def authentication(session: ClientSession) -> AuthenticationView:
     url = f"{BASE_URL}/{ENDPOINT_AUTHENTICATION}"
     response = await session.post(url)
     response.raise_for_status()
-    return AuthenticationView.model_validate(await response.json())
+    return AuthenticationView.model_validate_json(await response.text())

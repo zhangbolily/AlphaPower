@@ -37,6 +37,7 @@ from alphapower.constants import (
     ALPHA_ID_LENGTH,
     CheckRecordType,
     CorrelationCalcType,
+    RecordSetType,
 )
 
 
@@ -169,6 +170,33 @@ class CheckRecord(Base):
         JSON,
         nullable=False,
         comment="检查内容 (JSON)",  # 添加字段注释
+    )
+    created_at: MappedColumn[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        insert_default=func.now(),  # pylint: disable=E1102
+        comment="创建时间",  # 添加字段注释
+    )
+
+
+class RecordSet(Base):
+    __tablename__ = "record_sets"
+
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alpha_id: MappedColumn[str] = mapped_column(
+        String(ALPHA_ID_LENGTH),
+        nullable=False,
+        comment="Alpha ID",  # 添加字段注释
+    )
+    set_type: MappedColumn[RecordSetType] = mapped_column(
+        Enum(RecordSetType),
+        nullable=False,
+        comment="记录集类型",  # 添加字段注释
+    )
+    content: MappedColumn[JSON] = mapped_column(
+        JSON,
+        nullable=False,
+        comment="记录集内容 (JSON)",  # 添加字段注释
     )
     created_at: MappedColumn[datetime] = mapped_column(
         DateTime,

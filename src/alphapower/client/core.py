@@ -41,6 +41,7 @@ from .raw_api import (
     alpha_fetch_before_and_after_performance,
     alpha_fetch_competitions,
     alpha_fetch_correlations,
+    alpha_fetch_record_set_pnl,
     alpha_fetch_submission_check_result,
     authentication,
     create_multi_simulation,
@@ -537,6 +538,29 @@ class WorldQuantClient:
             await alpha_fetch_submission_check_result(self.session, alpha_id)
         )
         return finished, retry_after, result, rate_limit
+
+    @exception_handler
+    @rate_limit_handler
+    async def alpha_fetch_record_set_pnl(
+        self, alpha_id: str
+    ) -> Tuple[TableView, RateLimit]:
+        """
+        获取 Alpha 的记录集 PnL 数据。
+
+        参数:
+        alpha_id (str): Alpha ID。
+
+        返回:
+        Tuple: 包含完成状态、重试时间和 PnL 数据的元组。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        table, rate_limit = await alpha_fetch_record_set_pnl(self.session, alpha_id)
+        return table, rate_limit
 
     # -------------------------------
     # Data-related methods

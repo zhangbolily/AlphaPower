@@ -33,7 +33,6 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
-    UniqueConstraint,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -301,11 +300,6 @@ class Check(Base):
     start_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     end_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     multiplier: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
-
-    __table_args__ = (
-        # 定义联合唯一约束，确保 sample_id 和 name 的唯一性
-        UniqueConstraint("sample_id", "name", name="uq_sample_id_name"),
-    )
 
 
 class Sample(Base):

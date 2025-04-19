@@ -34,6 +34,7 @@ from alphapower.client.raw_api import (
     alpha_fetch_before_and_after_performance,
     alpha_fetch_competitions,
     alpha_fetch_correlations,
+    alpha_fetch_record_set_pnl,
     alpha_fetch_submission_check_result,
     get_alpha_detail,
     get_self_alphas,
@@ -201,8 +202,8 @@ async def test_alpha_check_submission(setup_mock_responses: str) -> None:
         session: ClientSession = ClientSession()
 
         for alpha_id in alpha_ids:
-            finished, retry_after, result, rate_limit = await alpha_fetch_submission_check_result(
-                session, alpha_id
+            finished, retry_after, result, rate_limit = (
+                await alpha_fetch_submission_check_result(session, alpha_id)
             )
 
             assert finished is True
@@ -387,3 +388,22 @@ async def test_alpha_fetch_before_and_after_performance(
                 )
 
                 assert isinstance(result, BeforeAndAfterPerformanceView)
+
+
+@pytest.mark.asyncio
+async def test_fetch_alpha_record_set_pnl(
+    setup_mock_responses: str,
+) -> None:
+    """
+    测试 Alpha Fetch Record Set PnL 的响应
+    """
+    with patch("alphapower.client.raw_api.BASE_URL", new=setup_mock_responses):
+        session: ClientSession = ClientSession()
+
+        alpha_ids = ["regular_alpha_0"]
+        for alpha_id in alpha_ids:
+            result, rate_limit = await alpha_fetch_record_set_pnl(session, alpha_id)
+
+            assert isinstance(result, TableView)
+            assert rate_limit is not None
+            assert isinstance(rate_limit, RateLimit)

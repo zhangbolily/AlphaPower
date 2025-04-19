@@ -33,6 +33,7 @@ __all__ = [
     "StatsData",
     "Pyramid",
     "CheckRecord",
+    "RecordSet",
 ]
 
 # 数据库常量和会话管理工具
@@ -70,7 +71,7 @@ from .data import (
     dataset_research_papers,
 )
 from .evaluate import Base as ChecksBase
-from .evaluate import CheckRecord, Correlation
+from .evaluate import CheckRecord, Correlation, RecordSet
 
 # 模拟相关实体
 from .simulation import Base as SimulationBase
