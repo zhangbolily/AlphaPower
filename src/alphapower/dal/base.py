@@ -272,18 +272,19 @@ class BaseDAL(Generic[T]):
 
         ids: List[int] = [entity.id for entity in entities]
         existing_entities = await self.find_by(in_={"id": ids})
-        existing_ids: List[int] = [entity.id for entity in existing_entities]
-        new_entities: List[T] = [
-            entity for entity in entities if entity.id not in existing_ids
-        ]
-
-        for entity in new_entities:
-            self.session.add(entity)
+        existing_entities_map: Dict[Any, T] = {
+            entity.id: entity for entity in existing_entities
+        }
+        new_entities: List[T] = []
 
         for entity in entities:
-            if entity.id in existing_ids:
+            if entity.id not in existing_entities_map:
+                new_entities.append(entity)
+            else:
+                entity.id = existing_entities_map[entity.id].id
                 await self.session.merge(entity)
 
+        self.session.add_all(new_entities)
         await self.session.flush()
         return entities
 
@@ -305,30 +306,20 @@ class BaseDAL(Generic[T]):
 
         unique_values: List[Any] = [getattr(entity, unique_key) for entity in entities]
         existing_entities = await self.find_by(in_={unique_key: unique_values})
-        existing_unique_values: List[Any] = [
-            getattr(entity, unique_key) for entity in existing_entities
-        ]
-        new_entities: List[T] = [
-            entity
-            for entity in entities
-            if getattr(entity, unique_key) not in existing_unique_values
-        ]
-
-        for entity in new_entities:
-            self.session.add(entity)
+        existing_entities_map: Dict[Any, T] = {
+            getattr(entity, unique_key): entity for entity in existing_entities
+        }
+        new_entities: List[T] = []
 
         for entity in entities:
-            if getattr(entity, unique_key) in existing_unique_values:
-                entity.id = next(
-                    (
-                        existing_entity.id
-                        for existing_entity in existing_entities
-                        if getattr(existing_entity, unique_key)
-                        == getattr(entity, unique_key)
-                    ),
-                )
+            unique_value = getattr(entity, unique_key)
+            if unique_value not in existing_entities_map:
+                new_entities.append(entity)
+            else:
+                entity.id = existing_entities_map[unique_value].id
                 await self.session.merge(entity)
 
+        self.session.add_all(new_entities)
         await self.session.flush()
         return entities
 
@@ -404,14 +395,14 @@ class BaseDAL(Generic[T]):
             for key, values in in_.items():
                 if hasattr(self.entity_type, key):
                     column = getattr(self.entity_type, key)
-                    criteria.append(column.notin_(values))
+                    criteria.append(column.in_(values))
                 else:
                     raise ValueError(f"无效的字段名: {key}")
         if notin_:
             for key, values in notin_.items():
                 if hasattr(self.entity_type, key):
                     column = getattr(self.entity_type, key)
-                    criteria.append(column.in_(values))
+                    criteria.append(column.notin_(values))
                 else:
                     raise ValueError(f"无效的字段名: {key}")
         for key, value in kwargs.items():

@@ -18,7 +18,7 @@ import asyncio
 import signal
 import types
 from datetime import datetime, timedelta
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from structlog.stdlib import BoundLogger
 
@@ -53,11 +53,12 @@ from .sync_competition import competition_data_expire_check, sync_competition
 from .utils import create_sample
 
 # 配置日志
-console_logger: BoundLogger = get_logger(__name__, enable_console=True)
-file_logger: BoundLogger = get_logger(__name__, enable_console=False)
+log: BoundLogger = get_logger(__name__)
 
 # TODO(Ball Chang): 支持全量和增量同步，努力提高数据同步并发度和写入性能
 # TODO(Ball Chang): 找一个好的解决方案来判断因子回测配置是否相同
+# FIXME(Ball Chang): 目前的实现中，嵌套的子对象在预期更新的情况下
+# 会新建一个对象，而不是更新现有对象
 
 # 全局事件，用于通知所有协程终止操作
 exit_event: asyncio.Event = asyncio.Event()
@@ -283,7 +284,7 @@ async def fetch_last_sync_time_range(
     说明:
         该函数会从数据库或 API 获取最近的因子同步时间范围。
     """
-    await file_logger.adebug(
+    await log.adebug(
         "进入 fetch_last_sync_time_range 函数", client=str(client), emoji="🔍"
     )
 
@@ -299,7 +300,7 @@ async def fetch_last_sync_time_range(
 
             if last_alpha:
                 start_time = last_alpha.date_created
-                await file_logger.adebug(
+                await log.adebug(
                     "找到最近的因子记录",
                     last_alpha_id=last_alpha.alpha_id,
                     last_alpha_date_created=last_alpha.date_created,
@@ -318,7 +319,7 @@ async def fetch_last_sync_time_range(
 
                 if alphas_data_result.count > 0:
                     start_time = alphas_data_result.results[0].date_created
-                    await file_logger.adebug(
+                    await log.adebug(
                         "从 API 获取最近的因子记录",
                         api_result_count=alphas_data_result.count,
                         start_time=start_time,
@@ -326,7 +327,7 @@ async def fetch_last_sync_time_range(
                     )
                 else:
                     start_time = datetime.now()
-                    await file_logger.awarning(
+                    await log.awarning(
                         "未找到任何因子记录，使用当前时间作为开始时间",
                         start_time=start_time,
                         emoji="⚠️",
@@ -334,7 +335,7 @@ async def fetch_last_sync_time_range(
     except Exception as e:
         raise RuntimeError(f"获取同步时间范围时发生错误: {e}") from e
 
-    await file_logger.adebug(
+    await log.adebug(
         "退出 fetch_last_sync_time_range 函数",
         start_time=start_time,
         end_time=end_time,
@@ -348,7 +349,7 @@ async def process_alphas_page(
     alpha_dal: AlphaDAL,
     competition_dal: CompetitionDAL,
     classification_dal: ClassificationDAL,
-) -> Tuple[int, int]:
+) -> Tuple[List[Alpha], int, int]:
     """
     异步处理单页 alphas 数据。
 
@@ -366,6 +367,7 @@ async def process_alphas_page(
     """
     inserted_alphas: int = 0
     updated_alphas: int = 0
+    uncommitted_alphas: List[Alpha] = []
 
     try:
         # 收集所有 competitions 和 classifications 的 ID
@@ -399,54 +401,75 @@ async def process_alphas_page(
 
         for alpha_data in alphas_results:
             if exit_event.is_set():
-                await file_logger.awarning(
-                    "检测到退出事件，中止处理因子页面", emoji="⚠️"
+                await log.awarning("检测到退出事件，中止处理因子页面", emoji="⚠️")
+                raise RuntimeError("退出事件触发，停止处理因子页面。")
+            try:
+                alpha_id: str = alpha_data.id
+
+                settings: Setting = create_alphas_settings(alpha_data)
+                regular: Regular = create_alphas_regular(alpha_data.regular)
+
+                # 填充 classifications 和 competitions 字段
+                classifications: List[Classification] = [
+                    classifications_dict[classification.id]
+                    for classification in alpha_data.classifications or []
+                    if classification.id in classifications_dict
+                ]
+                competitions: List[Competition] = [
+                    competitions_dict[competition.id]
+                    for competition in alpha_data.competitions or []
+                    if competition.id in competitions_dict
+                ]
+
+                alpha: Alpha = create_alphas(
+                    alpha_data, settings, regular, classifications, competitions
                 )
-                break
-            alpha_id: str = alpha_data.id
 
-            settings: Setting = create_alphas_settings(alpha_data)
-            regular: Regular = create_alphas_regular(alpha_data.regular)
+                uncommitted_alphas.append(alpha)
 
-            # 填充 classifications 和 competitions 字段
-            classifications: List[Classification] = [
-                classifications_dict[classification.id]
-                for classification in alpha_data.classifications or []
-                if classification.id in classifications_dict
-            ]
-            competitions: List[Competition] = [
-                competitions_dict[competition.id]
-                for competition in alpha_data.competitions or []
-                if competition.id in competitions_dict
-            ]
+                # existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
+                #     alpha_id
+                # )
 
-            alpha: Alpha = create_alphas(
-                alpha_data, settings, regular, classifications, competitions
-            )
-
-            existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(alpha_id)
-
-            if existing_alpha:
-                alpha.id = existing_alpha.id
-                await alpha_dal.update(alpha)
-                updated_alphas += 1
-            else:
-                await alpha_dal.create(alpha)
-                inserted_alphas += 1
+                # if existing_alpha:
+                #     alpha.id = existing_alpha.id
+                #     uncommitted_alphas.append(alpha)
+                #     updated_alphas += 1
+                # else:
+                #     uncommitted_alphas.append(alpha)
+                #     inserted_alphas += 1
+            except Exception as e:
+                await log.aerror(
+                    "处理单个因子数据时发生错误",
+                    alpha_id=alpha_data.id,
+                    error=str(e),
+                    exc_info=True,
+                    emoji="❌",
+                )
+                raise
     except Exception as e:
+        await log.aerror(
+            "处理因子页面数据时发生错误",
+            error=str(e),
+            exc_info=True,
+            emoji="❌",
+        )
         raise RuntimeError(f"处理因子页面数据时发生错误: {e}") from e
 
-    await file_logger.adebug(
+    await log.adebug(
         "处理因子页面数据完成",
         inserted=inserted_alphas,
         updated=updated_alphas,
         emoji="✅",
     )
-    return inserted_alphas, updated_alphas
+    return uncommitted_alphas, inserted_alphas, updated_alphas
 
 
-async def process_alphas_for_date(
-    client: WorldQuantClient, cur_time: datetime, parallel: int
+async def process_alphas_for_time_range(
+    client: WorldQuantClient,
+    start_time: datetime,
+    end_time: datetime,
+    parallel: int,
 ) -> Tuple[int, int, int]:
     """
     同步处理指定日期的 alphas 数据，支持分片并行处理。
@@ -458,79 +481,135 @@ async def process_alphas_for_date(
 
     Returns:
         Tuple[int, int, int]: 获取、插入和更新的因子数量元组
+
+    Raises:
+        RuntimeError: 如果处理过程中发生错误。
     """
     fetched_alphas: int = 0
     inserted_alphas: int = 0
     updated_alphas: int = 0
 
     # 初始化时间范围
-    start_time: datetime = cur_time
-    end_time: datetime = cur_time + timedelta(days=1)
+    cur_time: datetime = start_time
+    truncated_end_time: datetime = end_time
 
-    while start_time < cur_time + timedelta(days=1):
-        query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
-            limit=1,
-            date_created_gt=start_time.isoformat(),
-            date_created_lt=end_time.isoformat(),
-        )
-        alphas_data_result: Any
-        alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
-
-        if alphas_data_result.count < 10000:
-            # 使用正确的异步日志方法
-            await file_logger.ainfo(
-                "获取日期范围数据",
-                start_time=start_time,
-                end_time=end_time,
-                count=alphas_data_result.count,
-                emoji="📅",
+    try:
+        while cur_time < end_time:
+            query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
+                limit=1,
+                date_created_gt=cur_time.isoformat(),
+                date_created_lt=truncated_end_time.isoformat(),
             )
+            alphas_data_result: SelfAlphaListView
+            alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
 
-            # 分片处理
-            tasks: List[asyncio.Task] = []
-            page_size: int = 100
-            total_pages: int = (alphas_data_result.count + page_size - 1) // page_size
-            pages_per_task: int = (total_pages + parallel - 1) // parallel
+            if alphas_data_result.count < 10000:
+                await log.ainfo(
+                    "获取日期范围数据",
+                    cur_time=cur_time,
+                    truncated_end_time=truncated_end_time,
+                    count=alphas_data_result.count,
+                    emoji="📅",
+                )
+                # 分片处理
+                tasks: List[asyncio.Task] = []
+                page_size: int = 100
+                total_pages: int = (
+                    alphas_data_result.count + page_size - 1
+                ) // page_size
+                pages_per_task: int = (total_pages + parallel - 1) // parallel
 
-            for i in range(parallel):
-                start_page: int = i * pages_per_task + 1
-                end_page: int = min((i + 1) * pages_per_task, total_pages)
-                if start_page > end_page:
-                    break
+                async with get_db_session(Database.ALPHAS) as session:
+                    try:
+                        alpha_dal: AlphaDAL = AlphaDAL(session)
+                        competition_dal: CompetitionDAL = DALFactory.create_dal(
+                            CompetitionDAL, session
+                        )
+                        classification_dal: ClassificationDAL = DALFactory.create_dal(
+                            ClassificationDAL, session
+                        )
 
-                task: asyncio.Task = asyncio.create_task(
-                    process_alphas_pages(
-                        client,
-                        start_time,
-                        end_time,
-                        start_page,
-                        end_page,
-                        page_size,
-                    )
+                        for i in range(parallel):
+                            start_page: int = i * pages_per_task + 1
+                            end_page: int = min((i + 1) * pages_per_task, total_pages)
+                            if start_page > end_page:
+                                break
+
+                            task: asyncio.Task = asyncio.create_task(
+                                process_alphas_pages(
+                                    client=client,
+                                    start_time=cur_time,
+                                    end_time=truncated_end_time,
+                                    start_page=start_page,
+                                    end_page=end_page,
+                                    page_size=page_size,
+                                    alpha_dal=alpha_dal,
+                                    competition_dal=competition_dal,
+                                    classification_dal=classification_dal,
+                                )
+                            )
+
+                            tasks.append(task)
+
+                        results: List[Tuple[List[Alpha], int, int, int]] = (
+                            await asyncio.gather(*tasks)
+                        )
+
+                        for uncommitted_alphas, fetched, inserted, updated in results:
+                            fetched_alphas += fetched
+                            inserted_alphas += inserted
+                            updated_alphas += updated
+
+                            await alpha_dal.bulk_upsert_by_unique_key(
+                                uncommitted_alphas, unique_key="alpha_id"
+                            )
+                            await alpha_dal.session.commit()
+                    except Exception as e:
+                        await log.aerror(
+                            "处理日期范围内的因子数据时发生错误",
+                            start_time=start_time,
+                            end_time=end_time,
+                            error=str(e),
+                            exc_info=True,
+                            emoji="❌",
+                        )
+                        raise RuntimeError(
+                            f"处理日期范围内的因子数据时发生错误: {e}"
+                        ) from e
+                await log.ainfo(
+                    "处理日期范围内的因子数据完成",
+                    start_time=start_time,
+                    end_time=end_time,
+                    fetched=fetched_alphas,
+                    inserted=inserted_alphas,
+                    updated=updated_alphas,
+                    emoji="✅",
                 )
 
-                tasks.append(task)
-
-            results: List[Tuple[int, int, int]] = await asyncio.gather(*tasks)
-            for fetched, inserted, updated in results:
-                fetched_alphas += fetched
-                inserted_alphas += inserted
-                updated_alphas += updated
-
-            # 更新时间范围，继续处理后续时间段
-            start_time = end_time
-            end_time = cur_time + timedelta(days=1)
-        else:
-            # 缩小时间范围
-            mid_time: datetime = start_time + (end_time - start_time) / 2
-            end_time = mid_time
-            # 使用正确的异步日志方法
-            await file_logger.ainfo(
-                "数据量超过限制，缩小日期范围",
-                start_time=start_time,
-                end_time=end_time,
-                emoji="⚠️",
-            )
+                # 更新时间范围，继续处理后续时间段
+                cur_time = truncated_end_time
+                truncated_end_time = end_time
+            else:
+                mid_time: datetime = start_time + (end_time - start_time) / 2
+                truncated_end_time = mid_time
+                await log.ainfo(
+                    "数据量超过限制，缩小日期范围",
+                    start_time=start_time,
+                    end_time=end_time,
+                    cur_time=cur_time,
+                    truncated_end_time=truncated_end_time,
+                    emoji="⚠️",
+                )
+    except Exception as e:
+        await log.aerror(
+            "处理日期范围内的因子数据时发生错误",
+            start_time=start_time,
+            end_time=end_time,
+            error=str(e),
+            exc_info=True,
+            emoji="❌",
+        )
+        raise RuntimeError(f"处理日期范围内的因子数据时发生错误: {e}") from e
 
     return fetched_alphas, inserted_alphas, updated_alphas
 
@@ -542,7 +621,10 @@ async def process_alphas_pages(
     start_page: int,
     end_page: int,
     page_size: int,
-) -> Tuple[int, int, int]:
+    alpha_dal: AlphaDAL,
+    competition_dal: CompetitionDAL,
+    classification_dal: ClassificationDAL,
+) -> Tuple[List[Alpha], int, int, int]:
     """
     处理指定页范围内的 alphas 数据。
 
@@ -556,24 +638,20 @@ async def process_alphas_pages(
 
     Returns:
         Tuple[int, int, int]: 获取、插入和更新的因子数量元组
+
+    Raises:
+        RuntimeError: 如果处理过程中发生错误。
     """
     fetched_alphas: int = 0
     inserted_alphas: int = 0
     updated_alphas: int = 0
+    uncommited_alphas: List[Alpha] = []
 
-    async with get_db_session(Database.ALPHAS) as session:
-        alpha_dal: AlphaDAL = AlphaDAL(session)
-        competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL, session)
-        classification_dal: ClassificationDAL = DALFactory.create_dal(
-            ClassificationDAL, session
-        )
-
+    try:
         for page in range(start_page, end_page + 1):
             if exit_event.is_set():
-                await file_logger.awarning(
-                    "检测到退出事件，中止处理因子页范围", emoji="⚠️"
-                )
-                break
+                await log.awarning("检测到退出事件，中止处理因子页范围", emoji="⚠️")
+                raise RuntimeError("退出事件触发，停止处理因子页范围。")
             query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
                 limit=page_size,
                 offset=(page - 1) * page_size,
@@ -581,16 +659,14 @@ async def process_alphas_pages(
                 date_created_lt=end_time.isoformat(),
                 order="dateCreated",
             )
-
-            alphas_data_result: Any
+            alphas_data_result: SelfAlphaListView
             alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
 
             if not alphas_data_result.results:
                 break
 
             fetched_alphas += len(alphas_data_result.results)
-            # 使用正确的异步日志方法
-            await file_logger.ainfo(
+            await log.ainfo(
                 "获取因子页面数据",
                 start_time=start_time,
                 end_time=end_time,
@@ -598,8 +674,7 @@ async def process_alphas_pages(
                 count=len(alphas_data_result.results),
                 emoji="🔍",
             )
-
-            inserted, updated = await process_alphas_page(
+            alphas, inserted, updated = await process_alphas_page(
                 alphas_data_result.results,
                 alpha_dal=alpha_dal,
                 competition_dal=competition_dal,
@@ -607,63 +682,19 @@ async def process_alphas_pages(
             )
             inserted_alphas += inserted
             updated_alphas += updated
-
-    return fetched_alphas, inserted_alphas, updated_alphas
-
-
-async def fetch_and_process_alphas(
-    client: WorldQuantClient,
-    start_time: datetime,
-    end_time: datetime,
-    parallel: int,
-) -> Tuple[int, int, int]:
-    """
-    获取并处理指定时间范围内的因子数据。
-
-    Args:
-        client: WorldQuantClient 客户端实例
-        start_time: 开始时间
-        end_time: 结束时间
-        parallel: 并行处理任务数
-
-    Returns:
-        Tuple[int, int, int]: 获取、插入和更新的因子数量元组
-    """
-    fetched_alphas: int = 0
-    inserted_alphas: int = 0
-    updated_alphas: int = 0
-
-    for cur_time in (
-        start_time + timedelta(days=i) for i in range((end_time - start_time).days + 1)
-    ):
-        if exit_event.is_set():
-            await file_logger.awarning(
-                "检测到退出事件，中止因子同步",
-                current_date=cur_time,
-                module=__name__,
-                emoji="⚠️",
-            )
-            break
-
-        fetched, inserted, updated = await process_alphas_for_date(
-            client, cur_time, parallel
+            uncommited_alphas.extend(alphas)
+    except Exception as e:
+        await log.aerror(
+            "处理因子页范围数据时发生错误",
+            start_time=start_time,
+            end_time=end_time,
+            error=str(e),
+            exc_info=True,
+            emoji="❌",
         )
-        fetched_alphas += fetched
-        inserted_alphas += inserted
-        updated_alphas += updated
+        raise RuntimeError(f"处理因子页范围数据时发生错误: {e}") from e
 
-        # 添加调试日志输出同步进度
-        await file_logger.adebug(
-            "同步进度更新",
-            current_date=cur_time,
-            fetched=fetched_alphas,
-            inserted=inserted_alphas,
-            updated=updated_alphas,
-            module=__name__,
-            emoji="📊",
-        )
-
-    return fetched_alphas, inserted_alphas, updated_alphas
+    return uncommited_alphas, fetched_alphas, inserted_alphas, updated_alphas
 
 
 def setup_exit_signal_handler() -> None:
@@ -674,7 +705,7 @@ def setup_exit_signal_handler() -> None:
     """
 
     def handle_exit_signal(signum: int, _: Optional[types.FrameType]) -> None:
-        file_logger.warning(
+        log.warning(
             "接收到退出信号，准备终止操作",
             signal=signum,
             module=__name__,
@@ -729,15 +760,15 @@ async def sync_alphas(
         raise ValueError("start_time 必须早于 end_time。")
 
     # 检查是否需要同步竞赛数据
-    if competition_data_expire_check():
-        await file_logger.ainfo(
+    if await competition_data_expire_check():
+        await log.ainfo(
             "竞赛数据过期，准备同步",
             start_time=start_time,
             end_time=end_time,
             emoji="🛠️",
         )
         await sync_competition()
-        await file_logger.ainfo(
+        await log.ainfo(
             "竞赛数据同步完成",
             start_time=start_time,
             end_time=end_time,
@@ -748,18 +779,16 @@ async def sync_alphas(
     setup_exit_signal_handler()
 
     # 使用正确的异步日志方法
-    await file_logger.ainfo("开始同步因子", emoji="🚀")
+    await log.ainfo("开始同步因子", emoji="🚀")
 
     async with wq_client:
         try:
             fetched_alphas, inserted_alphas, updated_alphas = (
-                await fetch_and_process_alphas(
+                await process_alphas_for_time_range(
                     wq_client, start_time, end_time, parallel
                 )
             )
-
-            # 使用正确的异步日志方法
-            await file_logger.ainfo(
+            await log.ainfo(
                 "因子同步完成",
                 fetched=fetched_alphas,
                 inserted=inserted_alphas,
@@ -767,18 +796,37 @@ async def sync_alphas(
                 module=__name__,
                 emoji="✅",
             )
-        except Exception as e:
-            # 使用正确的异步日志方法
-            await file_logger.aerror(
-                "同步因子时出错",
-                error=str(e),
+        except ValueError as ve:
+            await log.aerror(
+                "参数错误，无法同步因子",
+                error=str(ve),
+                start_time=start_time,
+                end_time=end_time,
+                module=__name__,
+                emoji="❌",
+            )
+            raise
+        except RuntimeError as re:
+            await log.aerror(
+                "运行时错误，因子同步失败",
+                error=str(re),
                 exc_info=True,
                 module=__name__,
                 emoji="❌",
             )
+            raise
+        except Exception as e:
+            await log.acritical(
+                "未知错误，因子同步中止",
+                error=str(e),
+                exc_info=True,
+                module=__name__,
+                emoji="💥",
+            )
+            raise
         finally:
             if exit_event.is_set():
-                await file_logger.ainfo(
+                await log.ainfo(
                     "因子同步被中止",
                     fetched=fetched_alphas,
                     inserted=inserted_alphas,

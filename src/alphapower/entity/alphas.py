@@ -33,6 +33,7 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    UniqueConstraint,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -301,6 +302,11 @@ class Check(Base):
     end_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     multiplier: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
 
+    __table_args__ = (
+        # 定义联合唯一约束，确保 sample_id 和 name 的唯一性
+        UniqueConstraint("sample_id", "name", name="uq_sample_id_name"),
+    )
+
 
 class Sample(Base):
     """Alpha 样本表，存储样本的各种统计信息。
@@ -354,7 +360,7 @@ class Sample(Base):
     checks: Mapped[List[Check]] = relationship(
         "Check",
         backref="sample",  # 定义一对多关系，样本检查属于某个样本
-        cascade="all, delete-orphan",
+        cascade="all, delete-orphan, merge",  # 添加 merge 级联操作
     )
 
 
