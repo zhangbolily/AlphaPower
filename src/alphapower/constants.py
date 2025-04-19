@@ -118,9 +118,9 @@ ENDPOINT_ALPHA_SELF_CORRELATIONS: Final[Callable[[str, str], str]] = (
 ENDPOINT_COMPETITIONS: Final[str] = "competitions"  # 竞赛端点
 ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[Optional[str], str], str]] = (
     lambda competition_id, alpha_id: (
-        f"/{competition_id}/alphas/{alpha_id}/before-and-after-performance"
+        f"competitions/{competition_id}/alphas/{alpha_id}/before-and-after-performance"
         if competition_id and alpha_id
-        else f"/users/self/alphas/{alpha_id}/before-and-after-performance"
+        else f"users/self/alphas/{alpha_id}/before-and-after-performance"
     )
 )
 

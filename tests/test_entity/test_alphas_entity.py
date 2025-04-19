@@ -280,7 +280,7 @@ class TestSampleCheck:
             limit=0.05,
             value=0.03,
             date=now,
-            competitions="GLOBAL2023",
+            competitions=["GLOBAL2023"],
             message="通过检查",
             sample_id=1,  # 假设 Sample ID 为 1
         )
@@ -298,7 +298,7 @@ class TestSampleCheck:
         assert db_sample_check.limit == 0.05
         assert db_sample_check.value == 0.03
         assert db_sample_check.date == now
-        assert db_sample_check.competitions == "GLOBAL2023"
+        assert db_sample_check.competitions == ["GLOBAL2023"]
         assert db_sample_check.message == "通过检查"
 
 

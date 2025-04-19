@@ -10,7 +10,7 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import abc
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 from alphapower.client import WorldQuantClient
 from alphapower.constants import CheckRecordType, CorrelationType, RefreshPolicy
@@ -126,7 +126,7 @@ class AbstractEvaluator(abc.ABC):
     @abc.abstractmethod
     async def _get_checks_to_run(
         self, alpha: Alpha, **kwargs: Any
-    ) -> Tuple[List[CheckRecordType], RefreshPolicy]:
+    ) -> Tuple[List[CheckRecordType], Dict[str, Any], RefreshPolicy]:
         """确定针对给定 Alpha 需要运行的检查类型及应用的刷新策略。
 
         子类必须实现此方法，以根据 Alpha 的具体属性（例如状态 `status`、类型 `type`）
@@ -152,6 +152,7 @@ class AbstractEvaluator(abc.ABC):
         self,
         alpha: Alpha,
         checks: List[CheckRecordType],
+        checks_kwargs: Dict[str, Any],
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> Dict[CheckRecordType, bool]:
@@ -208,7 +209,6 @@ class AbstractEvaluator(abc.ABC):
     async def _check_alpha_pool_performance_diff(
         self,
         alpha: Alpha,
-        competition_id: Optional[str],
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:

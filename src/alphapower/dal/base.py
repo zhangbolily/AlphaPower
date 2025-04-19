@@ -448,7 +448,7 @@ class BaseDAL(Generic[T]):
         query: Select = select(self.entity_type)
         for key, value in kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
-        if order_by:
+        if order_by is not None:  # 必须加上 is not None
             query = query.order_by(order_by)
         result = await actual_session.execute(query.limit(1))
         return result.scalars().first()

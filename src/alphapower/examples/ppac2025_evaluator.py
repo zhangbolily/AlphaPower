@@ -1,8 +1,8 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
-from typing import Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
-from alphapower.client import BeforeAndAfterPerformanceView, SubmissionCheckResultView
+from alphapower.client import BeforeAndAfterPerformanceView
 from alphapower.constants import (
     CheckRecordType,
     Database,
@@ -25,7 +25,7 @@ class ConsultantEvaluator(BaseEvaluator):
 
     async def _get_checks_to_run(
         self, alpha: Alpha, **kwargs: Any
-    ) -> Tuple[List[CheckRecordType], RefreshPolicy]:
+    ) -> Tuple[List[CheckRecordType], Dict[str, Any], RefreshPolicy]:
         competitions, result = await self.matched_competitions(alpha=alpha)
         if result in (SampleCheckResult.PASS, SampleCheckResult.PENDING):
             for competition in competitions:
@@ -35,12 +35,14 @@ class ConsultantEvaluator(BaseEvaluator):
                             CheckRecordType.CORRELATION_SELF,
                             CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
                         ],
-                        RefreshPolicy.USE_EXISTING,
+                        {"competition_id": competition.id},
+                        RefreshPolicy.FORCE_REFRESH,
                     )
 
         return (
             [],
-            RefreshPolicy.USE_EXISTING,
+            {},
+            RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
         )
 
     async def _determine_performance_diff_pass_status(
@@ -56,26 +58,6 @@ class ConsultantEvaluator(BaseEvaluator):
             return False
 
         return True
-
-    async def _determine_submission_pass_status(
-        self,
-        submission_check_view: SubmissionCheckResultView,
-        **kwargs: Any,
-    ) -> bool:
-
-        if submission_check_view.in_sample is None:
-            return False
-        if submission_check_view.in_sample.checks is None:
-            return False
-        if len(submission_check_view.in_sample.checks) == 0:
-            return False
-
-        for check in submission_check_view.in_sample.checks:
-            if check.result != SampleCheckResult.PASS:
-                return False
-
-        return True
-
 
 if __name__ == "__main__":
     # 运行测试
@@ -116,4 +98,5 @@ if __name__ == "__main__":
     # 运行异步测试函数
     import asyncio
 
+    asyncio.run(test())
     asyncio.run(test())

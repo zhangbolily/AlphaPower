@@ -246,8 +246,8 @@ class BaseEvaluator(AbstractEvaluator):
             # 1. 获取需要运行的检查列表和实际使用的策略
             checks_to_run: List[CheckRecordType]
             effective_policy: RefreshPolicy
-            checks_to_run, effective_policy = await self._get_checks_to_run(
-                alpha=alpha, policy=policy, **kwargs
+            checks_to_run, checks_kwargs, effective_policy = (
+                await self._get_checks_to_run(alpha=alpha, policy=policy, **kwargs)
             )
             await log.adebug(
                 "📋 确定需要执行的检查列表",
@@ -269,6 +269,7 @@ class BaseEvaluator(AbstractEvaluator):
             check_results: Dict[CheckRecordType, bool] = await self._execute_checks(
                 alpha=alpha,
                 checks=checks_to_run,
+                checks_kwargs=checks_kwargs,
                 policy=effective_policy,  # 使用从 _get_checks_to_run 返回的策略
                 **kwargs,
             )
@@ -337,7 +338,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _get_checks_to_run(
         self, alpha: Alpha, **kwargs: Any
-    ) -> Tuple[List[CheckRecordType], RefreshPolicy]:
+    ) -> Tuple[List[CheckRecordType], Dict[str, Any], RefreshPolicy]:
         await log.adebug(
             "🚧 _get_checks_to_run 方法尚未实现，需要子类覆盖",
             emoji="🚧",
@@ -350,6 +351,7 @@ class BaseEvaluator(AbstractEvaluator):
         self,
         alpha: Alpha,
         checks: List[CheckRecordType],
+        checks_kwargs: Dict[str, Any],
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> Dict[CheckRecordType, bool]:
@@ -365,19 +367,18 @@ class BaseEvaluator(AbstractEvaluator):
         # 定义检查类型到检查方法的映射
         check_method_map: Dict[CheckRecordType, Callable] = {
             CheckRecordType.CORRELATION_SELF: lambda: self._check_correlation(
-                alpha, CorrelationType.SELF, policy, **kwargs
+                alpha, CorrelationType.SELF, policy, **checks_kwargs
             ),
             CheckRecordType.CORRELATION_PROD: lambda: self._check_correlation(
-                alpha, CorrelationType.PROD, policy, **kwargs
+                alpha, CorrelationType.PROD, policy, **checks_kwargs
             ),
             CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE: lambda: self._check_alpha_pool_performance_diff(
                 alpha,
-                kwargs.get("competition_id"),  # 从 kwargs 获取 competition_id
                 policy,
-                **kwargs,
+                **checks_kwargs,
             ),
             CheckRecordType.SUBMISSION: lambda: self._check_submission(
-                alpha, policy, **kwargs
+                alpha, policy, **checks_kwargs
             ),
             # 添加其他检查类型的映射...
         }
@@ -924,7 +925,7 @@ class BaseEvaluator(AbstractEvaluator):
                 result: Optional[BeforeAndAfterPerformanceView] = None
 
                 while not finished:
-                    finished, retry_after, result = (
+                    finished, retry_after, result, _ = (
                         await self.client.alpha_fetch_before_and_after_performance(
                             alpha_id=alpha.alpha_id,
                             competition_id=competition_id,
@@ -942,7 +943,7 @@ class BaseEvaluator(AbstractEvaluator):
                             check_record: CheckRecord = CheckRecord(
                                 alpha_id=alpha.alpha_id,
                                 record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
-                                content=result.model_dump(),
+                                content=result.model_dump(mode="json"),
                             )
                             await self.check_record_dal.create(check_record)
                             await log.adebug(
@@ -1019,10 +1020,14 @@ class BaseEvaluator(AbstractEvaluator):
     async def _check_alpha_pool_performance_diff(
         self,
         alpha: Alpha,
-        competition_id: Optional[str],
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> bool:
+
+        competition_id: Optional[str]
+        if "competition_id" in kwargs:
+            competition_id = kwargs["competition_id"]
+
         check_type_name: str = "因子池绩效差异"  # 用于日志
         record_type: CheckRecordType = CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE
         await log.adebug(
@@ -1613,9 +1618,7 @@ class BaseEvaluator(AbstractEvaluator):
                     try:
                         # 使用 TypeAdapter 验证并解析 JSON 字符串
                         competitions: List[CompetitionRefView] = (
-                            competitions_adapter.validate_json(
-                                bytes(check.competitions, encoding="utf-8")
-                            )
+                            competitions_adapter.validate_python(check.competitions)
                         )
                         await log.adebug(
                             "成功解析匹配的竞赛列表",

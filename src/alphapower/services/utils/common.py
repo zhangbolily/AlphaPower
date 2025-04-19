@@ -150,12 +150,12 @@ def create_sample(
             )
 
             if check_view.competitions:
-                check.competitions = str(
-                    competitions_adapter.dump_json(check_view.competitions)
+                check.competitions = competitions_adapter.dump_python(
+                    check_view.competitions
                 )
 
             if check_view.pyramids:
-                check.pyramids = str(pyramids_adapter.dump_json(check_view.pyramids))
+                check.pyramids = pyramids_adapter.dump_python(check_view.pyramids)
 
             checks.append(check)
 
