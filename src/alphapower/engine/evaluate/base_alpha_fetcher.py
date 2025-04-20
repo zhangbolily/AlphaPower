@@ -14,7 +14,7 @@ from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, selec
 from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
-from alphapower.constants import AlphaType, Delay, Region
+from alphapower.constants import AlphaType, Delay, Region, Stage
 from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
 from alphapower.entity import Alpha, Sample, Setting
 from alphapower.internal.logging import get_logger
@@ -88,8 +88,8 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         # 构建筛选条件列表
         # 注意：常量中的百分比值需要除以 100 转换为小数
         criteria: List[ColumnExpressionArgument] = [
+            Alpha.stage == Stage.IS,
             # Sample 相关条件 (通用)
-            # Sample.self_correration < constants.CONSULTANT_MAX_SELF_CORRELATION,
             Sample.turnover > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
             Sample.turnover < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
             # 区域和延迟相关的条件 (使用 case 语句)

@@ -346,7 +346,6 @@ async def fetch_last_sync_time_range(
 
 async def process_alphas_page(
     alphas_results: List[AlphaView],
-    alpha_dal: AlphaDAL,
     competition_dal: CompetitionDAL,
     classification_dal: ClassificationDAL,
 ) -> Tuple[List[Alpha], int, int]:
@@ -404,8 +403,6 @@ async def process_alphas_page(
                 await log.awarning("检测到退出事件，中止处理因子页面", emoji="⚠️")
                 raise RuntimeError("退出事件触发，停止处理因子页面。")
             try:
-                alpha_id: str = alpha_data.id
-
                 settings: Setting = create_alphas_settings(alpha_data)
                 regular: Regular = create_alphas_regular(alpha_data.regular)
 
@@ -426,18 +423,6 @@ async def process_alphas_page(
                 )
 
                 uncommitted_alphas.append(alpha)
-
-                # existing_alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
-                #     alpha_id
-                # )
-
-                # if existing_alpha:
-                #     alpha.id = existing_alpha.id
-                #     uncommitted_alphas.append(alpha)
-                #     updated_alphas += 1
-                # else:
-                #     uncommitted_alphas.append(alpha)
-                #     inserted_alphas += 1
             except Exception as e:
                 await log.aerror(
                     "处理单个因子数据时发生错误",
@@ -495,6 +480,17 @@ async def process_alphas_for_time_range(
 
     try:
         while cur_time < end_time:
+            if exit_event.is_set():
+                await log.awarning(
+                    "检测到退出事件，中止处理日期范围",
+                    start_time=start_time,
+                    end_time=end_time,
+                    cur_time=cur_time,
+                    truncated_end_time=truncated_end_time,
+                    emoji="⚠️",
+                )
+                break
+
             query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
                 limit=1,
                 date_created_gt=cur_time.isoformat(),
@@ -543,7 +539,6 @@ async def process_alphas_for_time_range(
                                     start_page=start_page,
                                     end_page=end_page,
                                     page_size=page_size,
-                                    alpha_dal=alpha_dal,
                                     competition_dal=competition_dal,
                                     classification_dal=classification_dal,
                                 )
@@ -556,6 +551,17 @@ async def process_alphas_for_time_range(
                         )
 
                         for uncommitted_alphas, fetched, inserted, updated in results:
+                            if exit_event.is_set():
+                                await log.awarning(
+                                    "检测到退出事件，中止处理日期范围",
+                                    start_time=start_time,
+                                    end_time=end_time,
+                                    cur_time=cur_time,
+                                    truncated_end_time=truncated_end_time,
+                                    emoji="⚠️",
+                                )
+                                break
+
                             fetched_alphas += fetched
                             inserted_alphas += inserted
                             updated_alphas += updated
@@ -621,7 +627,6 @@ async def process_alphas_pages(
     start_page: int,
     end_page: int,
     page_size: int,
-    alpha_dal: AlphaDAL,
     competition_dal: CompetitionDAL,
     classification_dal: ClassificationDAL,
 ) -> Tuple[List[Alpha], int, int, int]:
@@ -676,7 +681,6 @@ async def process_alphas_pages(
             )
             alphas, inserted, updated = await process_alphas_page(
                 alphas_data_result.results,
-                alpha_dal=alpha_dal,
                 competition_dal=competition_dal,
                 classification_dal=classification_dal,
             )
@@ -783,11 +787,35 @@ async def sync_alphas(
 
     async with wq_client:
         try:
-            fetched_alphas, inserted_alphas, updated_alphas = (
-                await process_alphas_for_time_range(
-                    wq_client, start_time, end_time, parallel
+            # 将 start_time 到 end_time 之间的时间按天切分
+            # 处理每个时间段的 alphas 数据
+            # 这里的时间范围是闭区间 [start_time, end_time)
+            for i in range((end_time - start_time).days):
+                cur_start_time: datetime = start_time + timedelta(days=i)
+                cur_end_time: datetime = cur_start_time + timedelta(days=1)
+                cur_end_time = min(cur_end_time, end_time)
+
+                await log.ainfo(
+                    "处理时间范围",
+                    start_time=cur_start_time,
+                    end_time=cur_end_time,
+                    emoji="🕒",
                 )
-            )
+
+                if exit_event.is_set():
+                    await log.awarning(
+                        "检测到退出事件，中止处理时间范围",
+                        start_time=cur_start_time,
+                        end_time=cur_end_time,
+                        emoji="⚠️",
+                    )
+                    break
+
+                fetched_alphas, inserted_alphas, updated_alphas = (
+                    await process_alphas_for_time_range(
+                        wq_client, cur_start_time, cur_end_time, parallel
+                    )
+                )
             await log.ainfo(
                 "因子同步完成",
                 fetched=fetched_alphas,

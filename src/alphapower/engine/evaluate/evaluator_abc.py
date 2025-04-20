@@ -18,6 +18,7 @@ from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
 from alphapower.entity import Alpha
 
 from .alpha_fetcher_abc import AbstractAlphaFetcher
+from .self_correlation_calculator import SelfCorrelationCalculator
 
 # SQLAlchemy 列元素，用于构建数据库查询条件
 
@@ -37,6 +38,7 @@ class AbstractEvaluator(abc.ABC):
         correlation_dal: CorrelationDAL,
         check_record_dal: CheckRecordDAL,
         client: WorldQuantClient,
+        correlation_calculator: SelfCorrelationCalculator,
     ):
         """初始化 Evaluator。
 
@@ -49,6 +51,7 @@ class AbstractEvaluator(abc.ABC):
         self.correlation_dal = correlation_dal
         self.check_record_dal = check_record_dal
         self.client = client
+        self.correlation_calculator = correlation_calculator
 
     @abc.abstractmethod
     async def evaluate_many(

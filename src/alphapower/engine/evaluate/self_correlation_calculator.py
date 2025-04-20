@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional  # 用于可选类型注解
 
@@ -212,9 +213,22 @@ class SelfCorrelationCalculator:
         try:
             async with self.client as client:
                 pnl_table_view: Optional[TableView]
-                pnl_table_view, _ = await client.alpha_fetch_record_set_pnl(
-                    alpha_id=alpha_id
-                )
+                finished: bool = False
+                retry_after: float = 0.0
+                while not finished:
+                    finished, pnl_table_view, retry_after, _ = (
+                        await client.alpha_fetch_record_set_pnl(alpha_id=alpha_id)
+                    )
+
+                    if not finished:
+                        await log.ainfo(
+                            event="Alpha 策略的 pnl 数据加载中, 等待重试",
+                            alpha_id=alpha_id,
+                            retry_after=retry_after,
+                            emoji="⏳",
+                            module=__name__,
+                        )
+                        await asyncio.sleep(retry_after)
 
             if pnl_table_view is None:
                 raise ValueError("Alpha 的 pnl 数据为 None")
@@ -283,27 +297,27 @@ class SelfCorrelationCalculator:
             )
             raise
 
-    async def _load_pnl_from_local(self, alpha_id: str) -> pd.DataFrame:
+    async def _load_pnl_from_local(self, alpha_id: str) -> Optional[pd.DataFrame]:
         pnl_record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
             alpha_id=alpha_id,
             set_type=RecordSetType.PNL,
         )
 
         if pnl_record_set is None:
-            await log.aerror(
-                event="Alpha 的 pnl 数据为 None, 无法计算自相关性, 请检查 Alpha 的配置",
+            await log.awarning(
+                event="Alpha 策略缺少 pnl 数据",
                 alpha_id=alpha_id,
-                emoji="❌",
+                emoji="⚠️",
             )
-            raise ValueError("Alpha in_sample 为 None")
+            return None
 
         if pnl_record_set.content is None:
-            await log.aerror(
-                event="Alpha 的 pnl 数据为 None, 无法计算自相关性, 请检查 Alpha 的配置",
+            await log.awarning(
+                event="Alpha 策略的 pnl 数据为空",
                 alpha_id=alpha_id,
-                emoji="❌",
+                emoji="⚠️",
             )
-            raise ValueError("Alpha 的 pnl 数据为 None")
+            return None
 
         pnl_series_table: TableView = TableView.model_validate(pnl_record_set.content)
         pnl_series_df: Optional[pd.DataFrame] = pnl_series_table.to_dataframe()
@@ -445,7 +459,7 @@ class SelfCorrelationCalculator:
             if alpha_id == alpha.alpha_id:
                 continue
 
-            y_pnl_series_df: pd.DataFrame = await self._load_pnl_from_local(
+            y_pnl_series_df: Optional[pd.DataFrame] = await self._load_pnl_from_local(
                 alpha_id=alpha_id
             )
             y_pnl_series_df = await self._validate_pnl_dataframe(
@@ -537,7 +551,5 @@ if __name__ == "__main__":
                     )
 
     import asyncio
-
-    asyncio.run(main())
 
     asyncio.run(main())

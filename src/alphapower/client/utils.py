@@ -94,6 +94,10 @@ def rate_limit_handler(
                         )
                         await asyncio.sleep(rate_limit.reset)
                         retry_interval = min(retry_interval * 2, max_retry_interval)
+                        async with rate_limit_lock:  # 使用 asyncio.Lock 确保协程安全
+                            rate_limit_status.pop(
+                                func_name
+                            )  # 移除本地限流状态，防止死循环
                         continue
 
                     # 动态调整请求间隔

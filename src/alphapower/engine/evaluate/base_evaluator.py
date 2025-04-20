@@ -40,6 +40,7 @@ from alphapower.internal.logging import get_logger
 
 from .alpha_fetcher_abc import AbstractAlphaFetcher
 from .evaluator_abc import AbstractEvaluator
+from .self_correlation_calculator import SelfCorrelationCalculator
 
 # 获取日志记录器 (logger)
 log = get_logger(module_name=__name__)
@@ -62,8 +63,11 @@ class BaseEvaluator(AbstractEvaluator):
         correlation_dal: CorrelationDAL,
         check_record_dal: CheckRecordDAL,
         client: WorldQuantClient,
+        correlation_calculator: SelfCorrelationCalculator,
     ):
-        super().__init__(fetcher, correlation_dal, check_record_dal, client)
+        super().__init__(
+            fetcher, correlation_dal, check_record_dal, client, correlation_calculator
+        )
         # 使用同步日志记录器，因为 __init__ 通常是同步的
         log.info("📊 BaseEvaluator 初始化完成", emoji="📊")
 
@@ -193,9 +197,19 @@ class BaseEvaluator(AbstractEvaluator):
             )
 
             # 4. 异步迭代最终结果流并 yield
-            async with passed_alphas_stream.stream() as streamer:
+            async with (
+                passed_alphas_stream.stream() as streamer  # pylint: disable=E1101
+            ):
                 async for passed_alpha in streamer:
                     passed_count += 1  # 增加通过计数
+
+                    if not passed_alpha:
+                        await log.aerror(
+                            "💥 评估结果为 None，可能是异常或未通过",
+                            emoji="💥",
+                        )
+                        continue
+
                     yield passed_alpha  # 产生通过评估的 Alpha
 
         except asyncio.CancelledError:
@@ -458,6 +472,42 @@ class BaseEvaluator(AbstractEvaluator):
         )
         return results
 
+    async def _check_correlation_local(self, alpha: Alpha) -> bool:
+        try:
+            pairwise_correlation: Dict[str, float] = (
+                await self.correlation_calculator.calculate_self_correlation(
+                    alpha=alpha
+                )
+            )
+
+            for alpha_id, corr in pairwise_correlation.items():
+                if corr > CONSULTANT_MAX_SELF_CORRELATION:
+                    await log.awarning(
+                        "自相关性检查未通过，最大相关性超过阈值",
+                        emoji="❌",
+                        alpha_id_a=alpha.alpha_id,
+                        alpha_id_b=alpha_id,
+                        correlation=corr,
+                    )
+                    return False
+
+            await log.ainfo(
+                "自相关性检查通过",
+                emoji="✅",
+                alpha_id=alpha.alpha_id,
+                max_corr=max(pairwise_correlation.values(), default=0.0),
+            )
+            return True
+        except Exception as e:
+            await log.aerror(
+                "💥 计算自相关性时发生异常",
+                emoji="💥",
+                alpha_id=alpha.alpha_id,
+                error=str(e),
+                exc_info=True,
+            )
+            return False
+
     async def _check_correlation(
         self,
         alpha: Alpha,
@@ -482,6 +532,17 @@ class BaseEvaluator(AbstractEvaluator):
 
         check_result: bool = False
         correlation_content: Optional[TableView] = None
+
+        if corr_type == CorrelationType.SELF:
+            # 向平台发起自相关性检查之前，先在本地检查过滤一次
+            local_check_result: bool = await self._check_correlation_local(alpha)
+            if not local_check_result:
+                await log.awarning(
+                    "本地自相关性检查未通过，跳过平台检查",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                )
+                return False
 
         try:
             # 1. 查找现有的检查记录
@@ -925,7 +986,7 @@ class BaseEvaluator(AbstractEvaluator):
                 result: Optional[BeforeAndAfterPerformanceView] = None
 
                 while not finished:
-                    finished, retry_after, result, _ = (
+                    finished, retry_after, result = (
                         await self.client.alpha_fetch_before_and_after_performance(
                             alpha_id=alpha.alpha_id,
                             competition_id=competition_id,

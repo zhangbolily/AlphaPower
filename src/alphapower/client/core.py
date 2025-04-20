@@ -486,11 +486,12 @@ class WorldQuantClient:
         return finished, retry_after, result
 
     @exception_handler
-    @rate_limit_handler
     async def alpha_fetch_before_and_after_performance(
         self, competition_id: Optional[str], alpha_id: str
     ) -> Tuple[
-        bool, Optional[float], Optional[BeforeAndAfterPerformanceView], RateLimit
+        bool,
+        Optional[float],
+        Optional[BeforeAndAfterPerformanceView],
     ]:
         """
         获取 Alpha 的提交前后性能数据。
@@ -507,12 +508,10 @@ class WorldQuantClient:
         if self.session is None:
             raise RuntimeError("会话未初始化")
 
-        finished, retry_after, result, rate_limit = (
-            await alpha_fetch_before_and_after_performance(
-                self.session, competition_id, alpha_id
-            )
+        finished, retry_after, result = await alpha_fetch_before_and_after_performance(
+            self.session, competition_id, alpha_id
         )
-        return finished, retry_after, result, rate_limit
+        return finished, retry_after, result
 
     @exception_handler
     @rate_limit_handler
@@ -543,7 +542,7 @@ class WorldQuantClient:
     @rate_limit_handler
     async def alpha_fetch_record_set_pnl(
         self, alpha_id: str
-    ) -> Tuple[TableView, RateLimit]:
+    ) -> Tuple[bool, Optional[TableView], float, RateLimit]:
         """
         获取 Alpha 的记录集 PnL 数据。
 
@@ -559,8 +558,10 @@ class WorldQuantClient:
         if self.session is None:
             raise RuntimeError("会话未初始化")
 
-        table, rate_limit = await alpha_fetch_record_set_pnl(self.session, alpha_id)
-        return table, rate_limit
+        finished, table, retry_after, rate_limit = await alpha_fetch_record_set_pnl(
+            self.session, alpha_id
+        )
+        return finished, table, retry_after, rate_limit
 
     # -------------------------------
     # Data-related methods

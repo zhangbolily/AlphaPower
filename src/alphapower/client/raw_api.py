@@ -5,14 +5,13 @@ AlphaPower Alphas API
 ========================
 """
 
-#!/usr/bin/env python
-
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urljoin
 
 import aiohttp
 from aiohttp import ClientSession
 from multidict import CIMultiDictProxy
+from structlog.stdlib import BoundLogger
 
 from alphapower.constants import (
     BASE_URL,
@@ -32,6 +31,7 @@ from alphapower.constants import (
     ENDPOINT_SIMULATION,
     CorrelationType,
 )
+from alphapower.internal.logging import get_logger
 
 from .checks_view import BeforeAndAfterPerformanceView, SubmissionCheckResultView
 from .common_view import TableView
@@ -53,6 +53,8 @@ from .models import (
     SimulationProgressView,
     SingleSimulationResultView,
 )
+
+log: BoundLogger = get_logger(module_name=__name__)
 
 DEFAULT_SIMULATION_RESPONSE: Tuple[bool, str, float] = (False, "", 0.0)
 
@@ -174,7 +176,7 @@ async def get_alpha_yearly_stats(
 
 async def alpha_fetch_record_set_pnl(
     session: aiohttp.ClientSession, alpha_id: str
-) -> Tuple[TableView, RateLimit]:
+) -> Tuple[bool, Optional[TableView], float, RateLimit]:
     """
     获取指定 alpha 的收益数据。
 
@@ -188,9 +190,22 @@ async def alpha_fetch_record_set_pnl(
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_PNL(alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
-        return TableView.model_validate_json(
-            await response.text()
-        ), RateLimit.from_headers(response.headers)
+
+        retry_after: float = retry_after_from_headers(response.headers)
+        if retry_after != 0.0:
+            return (
+                False,
+                None,
+                retry_after,
+                RateLimit.from_headers(response.headers),
+            )
+
+        return (
+            True,
+            TableView.model_validate_json(await response.text()),
+            0.0,
+            RateLimit.from_headers(response.headers),
+        )
 
 
 async def alpha_fetch_correlations(
@@ -233,7 +248,7 @@ async def alpha_fetch_correlations(
 
 async def alpha_fetch_before_and_after_performance(
     session: aiohttp.ClientSession, competition_id: Optional[str], alpha_id: str
-) -> Tuple[bool, Optional[float], Optional[BeforeAndAfterPerformanceView], RateLimit]:
+) -> Tuple[bool, Optional[float], Optional[BeforeAndAfterPerformanceView]]:
     """
     获取指定 alpha 的前后性能数据。
     参数:
@@ -255,14 +270,12 @@ async def alpha_fetch_before_and_after_performance(
                 False,
                 retry_after,
                 None,
-                RateLimit.from_headers(response.headers),
             )
 
         return (
             True,
             None,
             BeforeAndAfterPerformanceView.model_validate_json(await response.text()),
-            RateLimit.from_headers(response.headers),
         )
 
 
