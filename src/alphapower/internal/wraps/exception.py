@@ -39,7 +39,7 @@ def exception_handler(func: T) -> T:
 
     该装饰器用于捕获被装饰的异步函数中的异常，并记录错误日志。
     如果发生异常，会将其重新抛出。
-    对于 429 错误（请求过多），会自动重试，最多重试 6 次，每次等待 5 分钟。
+    对于 429 错误（请求过多），会自动重试，最大重试次数和等待时间可配置。
 
     参数:
         func (Callable[..., Awaitable]): 被装饰的异步函数。
@@ -52,7 +52,7 @@ def exception_handler(func: T) -> T:
     async def wrapper(*args: Any, **kwargs: Any) -> Awaitable[Any]:
         retry_count: int = 0
         max_retries: int = 6
-        wait_time: int = 300  # 5分钟，单位为秒
+        wait_time: int = 5  # 5S
         func_name: str = func.__name__
 
         # 记录函数调用的 DEBUG 日志

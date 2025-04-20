@@ -117,14 +117,8 @@ def get_logger(
     )
     # 文件处理器的格式化器
     file_formatter = structlog.stdlib.ProcessorFormatter(
-        # 单独为文件处理器指定渲染器
-        processor=structlog.processors.JSONRenderer(
-            ensure_ascii=False,
-            indent=4,
-        ),
-        # foreign_pre_chain 用于处理来自非 structlog 的日志记录
-        # (例如标准库 logging 或其他库直接发出的日志)
-        # 使它们也能经过我们的共享处理器进行格式化
+        # 使用标准的 ProcessorFormatter
+        processor=structlog.processors.KeyValueRenderer(),
         foreign_pre_chain=shared_processors,
     )
     file_handler.setFormatter(file_formatter)
