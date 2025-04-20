@@ -204,3 +204,85 @@ class RecordSet(Base):
         insert_default=func.now(),  # pylint: disable=E1102
         comment="创建时间",  # 添加字段注释
     )
+
+
+class EvaluateRecord(Base):
+    __tablename__ = "evaluate_records"
+
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alpha_id: MappedColumn[str] = mapped_column(
+        String(ALPHA_ID_LENGTH),
+        nullable=False,
+        comment="Alpha ID",  # 添加字段注释
+    )
+    in_sample_pnl: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内收益",  # 添加字段注释
+    )
+    in_sample_long_count: MappedColumn[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="样本内多头持仓数",  # 添加字段注释
+    )
+    in_sample_short_count: MappedColumn[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="样本内空头持仓数",  # 添加字段注释
+    )
+    in_sample_book_size: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内持仓规模",  # 添加字段注释
+    )
+    in_sample_turnover: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内换手率",  # 添加字段注释
+    )
+    in_sample_returns: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内收益率",  # 添加字段注释
+    )
+    in_sample_drawdown: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内最大回撤",  # 添加字段注释
+    )
+    in_sample_sharpe: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内夏普比率",  # 添加字段注释
+    )
+    in_sample_fitness: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内拟合度",  # 添加字段注释
+    )
+    self_correlation: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="自相关性",  # 添加字段注释
+    )
+    prod_correlation: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="生产相关性",  # 添加字段注释
+    )
+    score_diff: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=True,
+        comment="评分差异，部分场景下会有",  # 添加字段注释
+    )
+    checks: MappedColumn[JSON] = mapped_column(
+        JSON,
+        nullable=False,
+        comment="检查记录 (JSON)",  # 添加字段注释
+    )
+    created_at: MappedColumn[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        insert_default=func.now(),  # pylint: disable=E1102
+        comment="创建时间",  # 添加字段注释
+    )

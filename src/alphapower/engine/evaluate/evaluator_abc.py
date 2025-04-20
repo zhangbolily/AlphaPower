@@ -109,6 +109,46 @@ class AbstractEvaluator(abc.ABC):
         raise NotImplementedError("子类必须实现 evaluate_one 方法")
 
     @abc.abstractmethod
+    async def _handle_evaluate_success(
+        self,
+        alpha: Alpha,
+        checks_ctx: Dict[CheckRecordType, Any],
+        checks: List[CheckRecordType],
+        **kwargs: Any,
+    ) -> None:
+        """处理评估成功的 Alpha。
+        此方法通常用于记录评估成功的 Alpha 及其检查结果。
+        Args:
+            alpha: 评估成功的 `Alpha` 实体对象。
+            checks_ctx: 包含检查结果的上下文字典，键为 `CheckRecordType`，
+                        值为对应的检查结果数据。
+            checks: 评估过程中执行的检查类型列表。
+            **kwargs: 传递给具体实现的参数字典。
+                      子类实现应明确文档说明其支持的 `kwargs` 参数。
+        """
+        raise NotImplementedError("子类必须实现 _handle_evluate_success 方法")
+
+    @abc.abstractmethod
+    async def _handle_evaluate_failure(
+        self,
+        alpha: Alpha,
+        checks_ctx: Dict[CheckRecordType, Any],
+        checks: List[CheckRecordType],
+        **kwargs: Any,
+    ) -> None:
+        """处理评估失败的 Alpha。
+        此方法通常用于记录评估失败的 Alpha 及其检查结果。
+        Args:
+            alpha: 评估失败的 `Alpha` 实体对象。
+            checks_ctx: 包含检查结果的上下文字典，键为 `CheckRecordType`，
+                        值为对应的检查结果数据。
+            checks: 评估过程中执行的检查类型列表。
+            **kwargs: 传递给具体实现的参数字典。
+                      子类实现应明确文档说明其支持的 `kwargs` 参数。
+        """
+        raise NotImplementedError("子类必须实现 _handle_evaluate_failure 方法")
+
+    @abc.abstractmethod
     async def to_evaluate_alpha_count(
         self,
         **kwargs: Any,
@@ -156,6 +196,7 @@ class AbstractEvaluator(abc.ABC):
         alpha: Alpha,
         checks: List[CheckRecordType],
         checks_kwargs: Dict[str, Any],
+        checks_ctx: Dict[CheckRecordType, Any],
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> Dict[CheckRecordType, bool]:
@@ -184,6 +225,7 @@ class AbstractEvaluator(abc.ABC):
         alpha: Alpha,
         corr_type: CorrelationType,
         policy: RefreshPolicy,
+        checks_ctx: Dict[CheckRecordType, Any],
         **kwargs: Any,
     ) -> bool:
         """执行 Alpha 与其他 Alpha 之间的相关性检查。
@@ -213,6 +255,7 @@ class AbstractEvaluator(abc.ABC):
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
+        checks_ctx: Dict[CheckRecordType, Any],
         **kwargs: Any,
     ) -> bool:
         """检查将此 Alpha 加入指定因子池 (Alpha Pool) 后，因子池业绩表现的前后差异。
@@ -243,6 +286,7 @@ class AbstractEvaluator(abc.ABC):
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
+        checks_ctx: Dict[CheckRecordType, Any],
         **kwargs: Any,
     ) -> bool:
         """检查 Alpha 是否满足提交 (Submission) 的条件。

@@ -59,6 +59,20 @@ class PPAC2025Evaluator(BaseEvaluator):
 
         return True
 
+    async def _handle_evaluate_success(
+        self, alpha, checks_ctx, checks, **kwargs
+    ) -> None:
+        return await super()._handle_evaluate_success(
+            alpha, checks_ctx, checks, **kwargs
+        )
+
+    async def _handle_evaluate_failure(
+        self, alpha, checks_ctx, checks, **kwargs
+    ) -> None:
+        return await super()._handle_evaluate_failure(
+            alpha, checks_ctx, checks, **kwargs
+        )
+
 
 if __name__ == "__main__":
     # 运行测试

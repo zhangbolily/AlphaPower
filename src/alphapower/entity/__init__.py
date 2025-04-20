@@ -11,29 +11,30 @@
 __all__ = [
     "Alpha",
     "AlphaBase",
-    "Classification",
-    "Competition",
-    "Regular",
     "alphas_classifications",
     "alphas_competitions",
-    "Sample",
-    "Check",
-    "Correlation",
-    "ChecksBase",
-    "Setting",
-    "DataBase",
     "Category",
+    "Check",
+    "CheckRecord",
+    "ChecksBase",
+    "Classification",
+    "Competition",
+    "Correlation",
+    "DataBase",
     "DataField",
     "dataset_research_papers",
     "Dataset",
+    "EvaluateRecord",
+    "Pyramid",
+    "RecordSet",
+    "Regular",
     "ResearchPaper",
+    "Sample",
+    "Setting",
     "SimulationBase",
     "SimulationTask",
     "SimulationTaskStatus",
     "StatsData",
-    "Pyramid",
-    "CheckRecord",
-    "RecordSet",
 ]
 
 # 数据库常量和会话管理工具
@@ -71,7 +72,7 @@ from .data import (
     dataset_research_papers,
 )
 from .evaluate import Base as ChecksBase
-from .evaluate import CheckRecord, Correlation, RecordSet
+from .evaluate import CheckRecord, Correlation, EvaluateRecord, RecordSet
 
 # 模拟相关实体
 from .simulation import Base as SimulationBase

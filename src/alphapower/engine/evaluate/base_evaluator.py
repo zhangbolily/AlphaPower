@@ -280,10 +280,12 @@ class BaseEvaluator(AbstractEvaluator):
                 return True  # 没有检查，默认通过或根据业务逻辑调整
 
             # 2. 执行检查
+            checks_ctx: Dict[CheckRecordType, Any] = {}
             check_results: Dict[CheckRecordType, bool] = await self._execute_checks(
                 alpha=alpha,
                 checks=checks_to_run,
                 checks_kwargs=checks_kwargs,
+                checks_ctx=checks_ctx,
                 policy=effective_policy,  # 使用从 _get_checks_to_run 返回的策略
                 **kwargs,
             )
@@ -299,6 +301,38 @@ class BaseEvaluator(AbstractEvaluator):
             overall_result = all(
                 check_results.get(check, False) for check in checks_to_run
             )
+
+            if overall_result:
+                await log.ainfo(
+                    "✅ 所有检查通过，Alpha 评估成功",
+                    emoji="✅",
+                    alpha_id=alpha.alpha_id,
+                )
+                # 处理评估成功的 Alpha
+                await self._handle_evaluate_success(
+                    alpha=alpha,
+                    checks_ctx=checks_ctx,
+                    checks=checks_to_run,
+                    **kwargs,
+                )
+            else:
+                await log.ainfo(
+                    "❌ 一项或多项检查未通过，Alpha 评估失败",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    failed_checks=[
+                        check.name
+                        for check, passed in check_results.items()
+                        if not passed
+                    ],
+                )
+                # 处理评估失败的 Alpha
+                await self._handle_evaluate_failure(
+                    alpha=alpha,
+                    checks_ctx=checks_ctx,
+                    checks=checks_to_run,
+                    **kwargs,
+                )
 
             await log.ainfo(
                 "🏁 Alpha 评估完成",
@@ -366,6 +400,7 @@ class BaseEvaluator(AbstractEvaluator):
         alpha: Alpha,
         checks: List[CheckRecordType],
         checks_kwargs: Dict[str, Any],
+        checks_ctx: Dict[CheckRecordType, Any],
         policy: RefreshPolicy,
         **kwargs: Any,
     ) -> Dict[CheckRecordType, bool]:
@@ -472,13 +507,21 @@ class BaseEvaluator(AbstractEvaluator):
         )
         return results
 
-    async def _check_correlation_local(self, alpha: Alpha) -> bool:
+    async def _check_correlation_local(
+        self, alpha: Alpha, checks_ctx: Dict[CheckRecordType, Any]
+    ) -> bool:
         try:
             pairwise_correlation: Dict[str, float] = (
                 await self.correlation_calculator.calculate_self_correlation(
                     alpha=alpha
                 )
             )
+
+            ctx: Tuple[Optional[Dict[str, float]], Optional[TableView]] = (
+                pairwise_correlation,
+                None,
+            )
+            checks_ctx[CheckRecordType.CORRELATION_SELF] = ctx
 
             for alpha_id, corr in pairwise_correlation.items():
                 if corr > CONSULTANT_MAX_SELF_CORRELATION:
@@ -513,6 +556,7 @@ class BaseEvaluator(AbstractEvaluator):
         alpha: Alpha,
         corr_type: CorrelationType,
         policy: RefreshPolicy,
+        checks_ctx: Dict[CheckRecordType, Any],
         **kwargs: Any,
     ) -> bool:
         record_type = (
@@ -535,7 +579,9 @@ class BaseEvaluator(AbstractEvaluator):
 
         if corr_type == CorrelationType.SELF:
             # 向平台发起自相关性检查之前，先在本地检查过滤一次
-            local_check_result: bool = await self._check_correlation_local(alpha)
+            local_check_result: bool = await self._check_correlation_local(
+                alpha, checks_ctx=checks_ctx
+            )
             if not local_check_result:
                 await log.awarning(
                     "本地自相关性检查未通过，跳过平台检查",
@@ -658,6 +704,20 @@ class BaseEvaluator(AbstractEvaluator):
             check_result = False  # 异常视为检查不通过
             # 可以选择是否向上抛出，取决于评估流程设计
             # raise
+
+        ctx: Tuple[Optional[Dict[str, float]], Optional[TableView]] = (
+            None,
+            correlation_content,
+        )
+        if checks_ctx[CheckRecordType.CORRELATION_SELF]:
+            old_ctx: Tuple[Optional[Dict[str, float]], Optional[TableView]] = (
+                checks_ctx[CheckRecordType.CORRELATION_SELF]
+            )
+            ctx = (
+                old_ctx[0],  # 保留旧的自相关性数据
+                correlation_content,  # 更新为新的相关性数据
+            )
+        checks_ctx[record_type] = ctx
 
         await log.adebug("结束检查 Alpha 相关性", emoji="🏁", check_result=check_result)
         return check_result
@@ -1082,6 +1142,7 @@ class BaseEvaluator(AbstractEvaluator):
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
+        checks_ctx: Dict[CheckRecordType, Any],
         **kwargs: Any,
     ) -> bool:
 
@@ -1226,6 +1287,9 @@ class BaseEvaluator(AbstractEvaluator):
                     check_passed=check_result,
                 )
 
+                checks_ctx[CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE] = (
+                    perf_diff_view
+                )
                 return check_result  # 返回检查结果
 
             # 如果 perf_diff_view 仍然是 None (例如刷新失败、解析失败)
@@ -1301,7 +1365,6 @@ class BaseEvaluator(AbstractEvaluator):
                                 alpha_id=alpha.alpha_id,
                             )
 
-                            # TODO: 更新 Alpha 中 Sample 的逻辑太复杂，后面有时间再说
                             check_record: CheckRecord = CheckRecord(
                                 alpha_id=alpha.alpha_id,
                                 record_type=CheckRecordType.SUBMISSION,
@@ -1398,6 +1461,7 @@ class BaseEvaluator(AbstractEvaluator):
         self,
         alpha: Alpha,
         policy: RefreshPolicy,
+        checks_ctx: Dict[CheckRecordType, Any],
         **kwargs: Any,
     ) -> bool:
         check_type_name: str = "提交检查"  # 用于日志

@@ -8,7 +8,8 @@
 
 from __future__ import annotations  # 解决类型前向引用问题
 
-from typing import Any, AsyncGenerator, List, cast
+from datetime import datetime
+from typing import Any, AsyncGenerator, List, Optional, cast
 
 from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, select
 from sqlalchemy.orm import selectinload
@@ -37,6 +38,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         alpha_dal: AlphaDAL,
         sample_dal: SampleDAL,
         setting_dal: SettingDAL,
+        **kwargs: Any,
     ):
         """初始化 BaseAlphaFetcher。
 
@@ -47,6 +49,14 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         """
         super().__init__(alpha_dal, sample_dal, setting_dal)
         self._fetched_count: int = 0  # 追踪已获取的 Alpha 数量
+
+        self.start_time: Optional[datetime] = None
+        self.end_time: Optional[datetime] = None
+
+        if kwargs:
+            # 处理额外的参数 (如果有)
+            for key, value in kwargs.items():
+                setattr(self, key, value)
 
     async def _build_alpha_select_query(
         self,
@@ -170,6 +180,13 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 else_=True,
             ),
         ]
+
+        if self.start_time:
+            # 如果指定了开始时间，则添加时间范围条件
+            criteria.append(Alpha.date_created >= self.start_time)
+        if self.end_time:
+            # 如果指定了结束时间，则添加时间范围条件
+            criteria.append(Alpha.date_created <= self.end_time)
 
         # 应用筛选条件到查询
         final_query: Select = query.where(and_(*criteria))
