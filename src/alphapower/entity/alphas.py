@@ -354,7 +354,8 @@ class Sample(Base):
     checks: Mapped[List[Check]] = relationship(
         "Check",
         backref="sample",  # 定义一对多关系，样本检查属于某个样本
-        cascade="all, delete-orphan, merge",  # 添加 merge 级联操作
+        cascade="all",  # 添加 merge 级联操作
+        lazy="selectin",  # 使用 joined 加载
     )
 
 
@@ -537,16 +538,25 @@ class Alpha(Base):
     settings_id: MappedColumn[int] = mapped_column(
         Integer, ForeignKey("settings.id"), nullable=False
     )
-    settings: Mapped[Setting] = relationship("Setting", backref="alphas")
+    settings: Mapped[Setting] = relationship(
+        "Setting", backref="alphas", lazy="joined", cascade="all"
+    )
     regular_id: MappedColumn[int] = mapped_column(
         Integer, ForeignKey("regulars.id"), nullable=False
     )
-    regular: Mapped[Regular] = relationship("Regular", backref="alphas")
+    regular: Mapped[Regular] = relationship(
+        "Regular", backref="alphas", lazy="joined", cascade="all"
+    )
     in_sample_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
     in_sample: Mapped[Sample] = relationship(
-        "Sample", foreign_keys=[in_sample_id], uselist=False, backref="alphas_in_sample"
+        "Sample",
+        foreign_keys=[in_sample_id],
+        uselist=False,
+        backref="alphas_in_sample",
+        lazy="joined",
+        cascade="all",
     )
     out_sample_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
@@ -556,30 +566,55 @@ class Alpha(Base):
         foreign_keys=[out_sample_id],
         uselist=False,
         backref="alphas_out_sample",
+        lazy="joined",
+        cascade="all",
     )
     train_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
     train: Mapped[Sample] = relationship(
-        "Sample", foreign_keys=[train_id], uselist=False, backref="alphas_train"
+        "Sample",
+        foreign_keys=[train_id],
+        uselist=False,
+        backref="alphas_train",
+        lazy="joined",
+        cascade="all",
     )
     test_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
     test: Mapped[Sample] = relationship(
-        "Sample", foreign_keys=[test_id], uselist=False, backref="alphas_test"
+        "Sample",
+        foreign_keys=[test_id],
+        uselist=False,
+        backref="alphas_test",
+        lazy="joined",
+        cascade="all",
     )
     prod_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True
     )
     prod: Mapped[Sample] = relationship(
-        "Sample", foreign_keys=[prod_id], uselist=False, backref="alphas_prod"
+        "Sample",
+        foreign_keys=[prod_id],
+        uselist=False,
+        backref="alphas_prod",
+        lazy="joined",
+        cascade="all",
     )
     classifications: Mapped[List[Classification]] = relationship(
-        "Classification", secondary="alpha_classification", backref="alphas", cascade=""
+        "Classification",
+        secondary="alpha_classification",
+        backref="alphas",
+        cascade="",
+        lazy="selectin",
     )
     competitions: Mapped[List[Competition]] = relationship(
-        "Competition", secondary="alpha_competition", backref="alphas", cascade=""
+        "Competition",
+        secondary="alpha_competition",
+        backref="alphas",
+        cascade="",
+        lazy="selectin",
     )
 
     def __init__(self, **kwargs: Any) -> None:

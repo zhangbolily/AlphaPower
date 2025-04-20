@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Select
 
-from alphapower.constants import Status
+from alphapower.constants import Stage, Status
 from alphapower.dal.base import EntityDAL
 from alphapower.entity.alphas import (
     Alpha,
@@ -75,6 +75,21 @@ class AlphaDAL(EntityDAL[Alpha]):
             指定状态的所有Alpha列表。
         """
         return await self.find_by(session=session, status=status)
+
+    async def find_by_stage(
+        self, stage: Stage, session: Optional[AsyncSession] = None
+    ) -> List[Alpha]:
+        """
+        查询指定阶段的所有 Alpha。
+
+        Args:
+            stage: Alpha的阶段值。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            指定阶段的所有Alpha列表。
+        """
+        return await self.find_by(session=session, stage=stage)
 
     async def find_favorites(
         self, author: str, session: Optional[AsyncSession] = None
