@@ -509,7 +509,7 @@ class Alpha(Base):
     category: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     _tags: MappedColumn[Optional[str]] = mapped_column(String, name="tags")
     themes: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    pyramids: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    pyramids: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
     team: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     favorite: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     hidden: MappedColumn[bool] = mapped_column(Boolean, nullable=False)

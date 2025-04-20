@@ -118,7 +118,21 @@ def get_logger(
     # 文件处理器的格式化器
     file_formatter = structlog.stdlib.ProcessorFormatter(
         # 使用标准的 ProcessorFormatter
-        processor=structlog.processors.KeyValueRenderer(),
+        processor=structlog.processors.KeyValueRenderer(
+            key_order=[
+                "timestamp",
+                "level",
+                "level_number",
+                "logger",
+                "thread_id",
+                "coroutine_id",
+                "module",
+                "func_name",
+                "lineno",
+                "emoji",
+                "event",
+            ],
+        ),
         foreign_pre_chain=shared_processors,
     )
     file_handler.setFormatter(file_formatter)

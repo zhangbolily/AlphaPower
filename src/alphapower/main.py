@@ -15,10 +15,11 @@ from typing import Optional
 
 import asyncclick as click  # 替换为 asyncclick
 
+from alphapower.constants import Status
 from alphapower.internal.logging import get_logger
 from alphapower.internal.storage import close_resources
 from alphapower.internal.utils import safe_async_run
-from alphapower.services.sync_alphas import sync_alphas
+from alphapower.services.sync_alphas import AlphaSyncService
 from alphapower.services.sync_datafields import sync_datafields
 from alphapower.services.sync_datasets import sync_datasets
 from alphapower.services.task_worker_pool import (
@@ -135,12 +136,19 @@ async def datasets(
 @click.option("--start_time", default=None, help="开始时间")
 @click.option("--end_time", default=None, help="结束时间")
 @click.option(
+    "--status",
+    default=None,
+    type=click.Choice(list(Status.__members__.keys())),
+    help="阶段",
+)
+@click.option(
     "--increamental", is_flag=True, default=False, help="增量同步，默认为全量同步"
 )
-@click.option("--parallel", default=5, help="并行数 默认为5")
+@click.option("--parallel", default=5, type=int, help="并行数 默认为5")
 async def alphas(
     start_time: Optional[str],
     end_time: Optional[str],
+    status: Optional[Status],
     increamental: bool = False,
     parallel: int = 5,
 ) -> None:
@@ -194,9 +202,12 @@ async def alphas(
     if end_time:
         parsed_end_time = parse_date(end_time)
 
-    await sync_alphas(
+    alpha_sync_service: AlphaSyncService = AlphaSyncService()
+
+    await alpha_sync_service.sync_alphas(
         start_time=parsed_start_time,
         end_time=parsed_end_time,
+        status=status,
         increamental=increamental,
         parallel=parallel,
     )
