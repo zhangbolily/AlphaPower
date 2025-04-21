@@ -64,24 +64,132 @@ def exception_handler(func: T) -> T:
                 await log_function_success(func_name, result)
                 return result
             except ClientResponseError as e:
-                if e.status == 429 and retry_count < max_retries:
-                    retry_count += 1
-                    await log_retry_warning(
+                try:
+                    should_retry = await _handle_http_error(
                         func_name, e, retry_count, max_retries, wait_time
                     )
-                    await asyncio.sleep(wait_time)
-                    continue
-                elif e.status == 429:
-                    await log_max_retry_error(func_name, e, max_retries)
-                    raise
-                else:
-                    await log_request_error(func_name, e)
+                    if should_retry:
+                        retry_count += 1
+                        continue
+                    else:
+                        raise
+                except asyncio.CancelledError:
+                    # 捕获任务取消异常，记录日志并重新抛出
+                    await logger.awarning(
+                        "任务被取消",
+                        wrapped_func_name=func_name,
+                        module_name=__name__,
+                        emoji="🛑",
+                    )
                     raise
             except Exception as e:
                 await log_generic_error(func_name, e)
                 raise
 
     return wrapper  # type: ignore
+
+
+async def _handle_http_error(
+    func_name: str,
+    error: ClientResponseError,
+    retry_count: int,
+    max_retries: int,
+    wait_time: int,
+) -> bool:
+    """
+    统一处理 HTTP 错误代码。
+
+    参数:
+        func_name (str): 函数名称。
+        error (ClientResponseError): 捕获的 HTTP 异常。
+        retry_count (int): 当前重试次数。
+        max_retries (int): 最大重试次数。
+        wait_time (int): 每次重试的等待时间（秒）。
+
+    返回:
+        bool: 是否需要重试。
+    """
+    if error.status in (429, 502, 504) and retry_count < max_retries:
+        await log_retry_warning(
+            func_name, error, retry_count + 1, max_retries, wait_time
+        )
+        await asyncio.sleep(wait_time)
+        return True
+    elif error.status in (429, 502, 504):
+        await log_max_retry_error(func_name, error, max_retries)
+        raise error
+    elif error.status == 400:  # 错误请求（Bad Request）
+        # TODO: 实现 400 错误的处理逻辑
+        await logger.awarning(
+            "捕获到 400 错误",
+            wrapped_func_name=func_name,
+            status_code=error.status,
+            error_message=str(error),
+            module_name=__name__,
+            emoji="⚠️",
+        )
+        raise error
+    elif error.status == 401:  # 未授权（Unauthorized）
+        # TODO: 实现 401 错误的处理逻辑
+        await logger.awarning(
+            "捕获到 401 错误",
+            wrapped_func_name=func_name,
+            status_code=error.status,
+            error_message=str(error),
+            module_name=__name__,
+            emoji="🔒",
+        )
+        raise error
+    elif error.status == 403:  # 禁止访问（Forbidden）
+        # TODO: 实现 403 错误的处理逻辑
+        await logger.awarning(
+            "捕获到 403 错误",
+            wrapped_func_name=func_name,
+            status_code=error.status,
+            error_message=str(error),
+            module_name=__name__,
+            emoji="🚫",
+        )
+        raise error
+    elif error.status == 404:  # 未找到（Not Found）
+        # TODO: 实现 404 错误的处理逻辑
+        await logger.awarning(
+            "捕获到 404 错误",
+            wrapped_func_name=func_name,
+            status_code=error.status,
+            error_message=str(error),
+            module_name=__name__,
+            emoji="❓",
+        )
+        raise error
+    elif error.status == 500:  # 服务器内部错误（Internal Server Error）
+        # TODO: 实现 500 错误的处理逻辑
+        await logger.aerror(
+            "捕获到 500 错误",
+            wrapped_func_name=func_name,
+            status_code=error.status,
+            error_message=str(error),
+            module_name=__name__,
+            emoji="💥",
+        )
+        raise error
+    elif error.status == 503:  # 服务不可用（Service Unavailable）
+        # TODO: 实现 503 错误的处理逻辑
+        await logger.aerror(
+            "捕获到 503 错误",
+            wrapped_func_name=func_name,
+            status_code=error.status,
+            error_message=str(error),
+            module_name=__name__,
+            emoji="🛑",
+        )
+        raise error
+    else:
+        # 未知错误，记录日志并抛出
+        await log_request_error(func_name, error)
+        raise error
+
+    return False
 
 
 async def log_function_entry(func_name: str, args: Any, kwargs: Any) -> None:

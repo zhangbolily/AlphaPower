@@ -154,6 +154,119 @@ class AlphaDAL(EntityDAL[Alpha]):
         result = await actual_session.execute(query)
         return list(result.scalars().all())
 
+    async def upsert(
+        self,
+        entity: Alpha,
+        session: Optional[AsyncSession] = None,
+    ) -> Alpha:
+        """
+        合并 Alpha 实体。
+
+        如果实体已存在，则更新其信息；否则，创建新的实体。
+
+        Args:
+            entity: 要合并的 Alpha 实体。
+            session: 可选的会话对象，若提供则优先使用。
+
+        Returns:
+            合并后的 Alpha 实体。
+        """
+        actual_session: AsyncSession = session or self.session
+        existing_entity = await self.find_by_alpha_id(
+            entity.alpha_id, session=actual_session
+        )
+        if existing_entity:
+            await self._update_entity_references(existing_entity, entity)
+            entity = await actual_session.merge(entity)
+        else:
+            actual_session.add(entity)
+        return entity
+
+    async def bulk_upsert(self, entities: List[Alpha]) -> List[Alpha]:
+        """
+        批量合并 Alpha 实体。
+
+        如果实体已存在，则更新其信息；否则，创建新的实体。
+
+        Args:
+            entities: 要合并的 Alpha 实体列表。
+
+        Returns:
+            合并后的 Alpha 实体列表。
+        """
+        return [await self.upsert(entity) for entity in entities]
+
+    async def bulk_upsert_by_unique_key(
+        self, entities: List[Alpha], unique_key: str
+    ) -> List[Alpha]:
+        """
+        批量合并 Alpha 实体。
+
+        根据唯一键更新或插入多个 Alpha 实体。
+
+        Args:
+            entities: 要合并的 Alpha 实体列表。
+            unique_key: 唯一键字段名称。
+
+        Returns:
+            合并后的 Alpha 实体列表。
+        """
+        for entity in entities:
+            unique_value = getattr(entity, unique_key)
+            existing_entity = await self.find_one_by(
+                session=self.session, **{unique_key: unique_value}
+            )
+            if existing_entity:
+                await self._update_entity_references(existing_entity, entity)
+                await self.session.merge(entity)
+            else:
+                self.session.add(entity)
+        return entities
+
+    async def _update_entity_references(
+        self, existing_entity: Alpha, new_entity: Alpha
+    ) -> None:
+        """
+        更新实体的引用字段。
+
+        Args:
+            existing_entity: 数据库中已存在的实体。
+            new_entity: 新的实体数据。
+        """
+        # 更新引用字段的 ID
+        if existing_entity.id:
+            new_entity.id = existing_entity.id
+        if existing_entity.regular_id and new_entity.regular:
+            new_entity.regular.id = existing_entity.regular_id
+        if existing_entity.combo_id and new_entity.combo:
+            new_entity.combo.id = existing_entity.combo_id
+        if existing_entity.selection_id and new_entity.selection:
+            new_entity.selection.id = existing_entity.selection_id
+        if existing_entity.in_sample_id and new_entity.in_sample:
+            new_entity.in_sample.id = existing_entity.in_sample_id
+            await self._clear_sample_checks(existing_entity.in_sample)
+        if existing_entity.out_sample_id and new_entity.out_sample:
+            new_entity.out_sample.id = existing_entity.out_sample_id
+            await self._clear_sample_checks(existing_entity.out_sample)
+        if existing_entity.test_id and new_entity.test:
+            new_entity.test.id = existing_entity.test_id
+            await self._clear_sample_checks(existing_entity.test)
+        if existing_entity.train_id and new_entity.train:
+            new_entity.train.id = existing_entity.train_id
+            await self._clear_sample_checks(existing_entity.train)
+        if existing_entity.prod_id and new_entity.prod:
+            new_entity.prod.id = existing_entity.prod_id
+            await self._clear_sample_checks(existing_entity.prod)
+
+    async def _clear_sample_checks(
+        self,
+        entity: Sample,
+    ) -> Sample:
+        for check in entity.checks:
+            await self.session.delete(check)
+        await self.session.flush()
+        return entity
+
 
 class SettingDAL(EntityDAL[Setting]):
     """

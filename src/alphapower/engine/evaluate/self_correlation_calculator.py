@@ -215,7 +215,24 @@ class SelfCorrelationCalculator:
                 pnl_table_view: Optional[TableView]
                 finished: bool = False
                 retry_after: float = 0.0
+                timeout: float = 30.0  # 设置超时时间为 30 秒
+                start_time: float = asyncio.get_event_loop().time()
+
                 while not finished:
+                    # 检查是否超时
+                    elapsed_time = asyncio.get_event_loop().time() - start_time
+                    if elapsed_time > timeout:
+                        await log.aerror(
+                            event="加载 Alpha 策略的 pnl 数据超时",
+                            alpha_id=alpha_id,
+                            timeout=timeout,
+                            emoji="⏰",
+                            module=__name__,
+                        )
+                        raise TimeoutError(
+                            f"加载 Alpha 策略 {alpha_id} 的 pnl 数据超时"
+                        )
+
                     finished, pnl_table_view, retry_after, _ = (
                         await client.alpha_fetch_record_set_pnl(alpha_id=alpha_id)
                     )
@@ -253,6 +270,8 @@ class SelfCorrelationCalculator:
                 await self.record_set_dal.update(
                     record_set_pnl,
                 )
+            # FIXME: 貌似因为没有 commit 导致数据没有保存到数据库
+            await self.record_set_dal.session.commit()
 
             pnl_series_df: Optional[pd.DataFrame] = pnl_table_view.to_dataframe()
             if pnl_series_df is None:
@@ -386,8 +405,7 @@ class SelfCorrelationCalculator:
 
         four_years_ago = pnl_df["date"].max() - pd.DateOffset(years=4)
         pnl_df = pnl_df[pnl_df["date"] >= four_years_ago]
-        pnl_df.set_index("date", inplace=True)
-        pnl_df.ffill(inplace=True)
+        pnl_df = pnl_df.set_index("date").ffill()
         await log.adebug(
             event="成功处理 pnl 数据框",
             rows=len(pnl_df),

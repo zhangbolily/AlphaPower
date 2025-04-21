@@ -197,9 +197,9 @@ async def alphas(
     )
     parsed_start_time: datetime = datetime.fromtimestamp(0, tz=timezone.utc)
     parsed_end_time: datetime = datetime.now(tz=timezone.utc)
-    if start_time:
+    if start_time and start_time != "":
         parsed_start_time = parse_date(start_time)
-    if end_time:
+    if end_time and start_time != "":
         parsed_end_time = parse_date(end_time)
 
     alpha_sync_service: AlphaSyncService = AlphaSyncService()
@@ -207,7 +207,7 @@ async def alphas(
     await alpha_sync_service.sync_alphas(
         start_time=parsed_start_time,
         end_time=parsed_end_time,
-        status=status,
+        status=Status(status) if status else None,
         increamental=increamental,
         parallel=parallel,
     )

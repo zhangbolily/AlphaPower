@@ -20,7 +20,7 @@ from alphapower.client import (
     CompetitionRefView,
     CompetitionView,
     MultiSimulationResultView,
-    PyramidView,
+    PyramidRefView,
     RateLimit,
     RegularView,
     SelfAlphaListView,
@@ -94,7 +94,7 @@ def assert_alpha_detail(result: Optional[AlphaDetailView]) -> None:
     if result.tags:
         assert all(isinstance(tag, str) for tag in result.tags)
     if result.pyramids:
-        assert all(isinstance(pyramid, PyramidView) for pyramid in result.pyramids)
+        assert all(isinstance(pyramid, PyramidRefView) for pyramid in result.pyramids)
     if result.classifications:
         assert all(
             isinstance(classification, ClassificationView)
@@ -128,7 +128,7 @@ def assert_alpha_list(result: Optional[SelfAlphaListView]) -> None:
                 isinstance(comp, CompetitionRefView) for comp in alpha.competitions
             )
         if alpha.pyramids:
-            assert all(isinstance(pyramid, PyramidView) for pyramid in alpha.pyramids)
+            assert all(isinstance(pyramid, PyramidRefView) for pyramid in alpha.pyramids)
 
     assert isinstance(result, SelfAlphaListView)
     assert isinstance(result.count, int)

@@ -26,7 +26,7 @@ from structlog.stdlib import BoundLogger
 from alphapower.client import (
     AlphaView,
     ClassificationView,
-    PyramidView,
+    PyramidRefView,
     RegularView,
     SelfAlphaListQueryParams,
     SelfAlphaListView,
@@ -119,7 +119,9 @@ class AlphaSyncService:
         except AttributeError as e:
             raise AttributeError(f"因子数据缺少必要字段: {e}") from e
 
-    def create_alphas_regular(self, regular: RegularView) -> Regular:
+    def create_alphas_regular(
+        self, regular_view: Optional[RegularView]
+    ) -> Optional[Regular]:
         """
         创建 AlphaRegular 实例。
 
@@ -129,11 +131,16 @@ class AlphaSyncService:
         返回:
             创建的因子规则实例。
         """
-        return Regular(
-            code=regular.code,
-            description=getattr(regular, "description", None),
-            operator_count=regular.operator_count,
+        if regular_view is None:
+            return None
+
+        regular: Regular = Regular(
+            code=regular_view.code,
+            description=regular_view.description,
+            operator_count=regular_view.operator_count,
         )
+
+        return regular
 
     async def create_alpha_classifications(
         self,
@@ -171,7 +178,9 @@ class AlphaSyncService:
         self,
         alpha_data: AlphaView,
         settings: Setting,
-        regular: Regular,
+        regular: Optional[Regular],
+        combo: Optional[Regular],
+        selection: Optional[Regular],
         classifications: List[Classification],
         competitions: List[Competition],
     ) -> Alpha:
@@ -189,8 +198,8 @@ class AlphaSyncService:
             创建的 Alpha 实例。
         """
 
-        pyramids_adapter: TypeAdapter[List[PyramidView]] = TypeAdapter(
-            List[PyramidView]
+        pyramids_adapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
+            List[PyramidRefView]
         )
 
         alpha: Alpha = Alpha(
@@ -199,6 +208,8 @@ class AlphaSyncService:
             author=alpha_data.author,
             settings=settings,
             regular=regular,
+            combo=combo,
+            selection=selection,
             date_created=alpha_data.date_created,
             date_submitted=getattr(alpha_data, "date_submitted", None),
             date_modified=alpha_data.date_modified,
@@ -342,7 +353,15 @@ class AlphaSyncService:
                     raise RuntimeError("退出事件触发，停止处理因子页面。")
                 try:
                     settings: Setting = self.create_alphas_settings(alpha_data)
-                    regular: Regular = self.create_alphas_regular(alpha_data.regular)
+                    regular: Optional[Regular] = self.create_alphas_regular(
+                        alpha_data.regular
+                    )
+                    combo: Optional[Regular] = self.create_alphas_regular(
+                        alpha_data.combo
+                    )
+                    selection: Optional[Regular] = self.create_alphas_regular(
+                        alpha_data.selection
+                    )
 
                     classifications: List[Classification] = (
                         await self.create_alpha_classifications(
@@ -357,7 +376,13 @@ class AlphaSyncService:
                     ]
 
                     alpha: Alpha = self.create_alphas(
-                        alpha_data, settings, regular, classifications, competitions
+                        alpha_data=alpha_data,
+                        settings=settings,
+                        regular=regular,
+                        combo=combo,
+                        selection=selection,
+                        classifications=classifications,
+                        competitions=competitions,
                     )
 
                     uncommitted_alphas.append(alpha)
@@ -758,9 +783,6 @@ class AlphaSyncService:
                 if self.exit_event.is_set():
                     await self.log.ainfo(
                         "因子同步被中止",
-                        fetched=fetched_alphas,
-                        inserted=inserted_alphas,
-                        updated=updated_alphas,
                         module=__name__,
                         emoji="🛑",
                     )

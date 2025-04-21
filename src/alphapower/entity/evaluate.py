@@ -13,7 +13,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from sqlalchemy import (
     JSON,
@@ -265,19 +265,31 @@ class EvaluateRecord(Base):
         nullable=False,
         comment="自相关性",  # 添加字段注释
     )
-    prod_correlation: MappedColumn[float] = mapped_column(
+    prod_correlation: MappedColumn[Optional[float]] = mapped_column(
         Float,
-        nullable=False,
+        nullable=True,
         comment="生产相关性",  # 添加字段注释
     )
-    score_diff: MappedColumn[float] = mapped_column(
+    score_diff: MappedColumn[Optional[float]] = mapped_column(
         Float,
         nullable=True,
         comment="评分差异，部分场景下会有",  # 添加字段注释
     )
+    pyramid_multiplier: MappedColumn[float] = mapped_column(
+        Float,
+        default=1.0,
+        nullable=True,
+        comment="金字塔乘数，部分场景下会有",  # 添加字段注释
+    )
+    theme_multiplier: MappedColumn[float] = mapped_column(
+        Float,
+        default=1.0,
+        nullable=True,
+        comment="主题乘数，部分场景下会有",  # 添加字段注释
+    )
     checks: MappedColumn[JSON] = mapped_column(
         JSON,
-        nullable=False,
+        nullable=True,
         comment="检查记录 (JSON)",  # 添加字段注释
     )
     created_at: MappedColumn[datetime] = mapped_column(

@@ -36,7 +36,7 @@ from alphapower.constants import (
 from .common_view import TableView
 
 
-class PyramidView(BaseModel):
+class PyramidRefView(BaseModel):
     """金字塔模型。
 
     表示金字塔模型的基本信息，包括名称和乘数。
@@ -179,6 +179,12 @@ class CompetitionRefView(BaseModel):
     """
 
     id: str
+    name: str
+
+
+class ThemeRefView(BaseModel):
+    id: str
+    multiplier: float = Field(default=1.0)
     name: str
 
 
@@ -363,9 +369,10 @@ class AlphaCheckItemView(BaseModel):
     value: Optional[float] = None
     date: Optional[datetime] = None
     competitions: Optional[List[CompetitionRefView]] = None
+    themes: Optional[List[ThemeRefView]] = None
     message: Optional[str] = None
     year: Optional[int] = None
-    pyramids: Optional[List[PyramidView]] = None
+    pyramids: Optional[List[PyramidRefView]] = None
     start_date: Optional[str] = Field(
         default=None, validation_alias=AliasChoices("startDate", "start_date")
     )
@@ -418,7 +425,7 @@ class AlphaSampleView(BaseModel):
     start_date: Optional[datetime] = Field(
         default=None, validation_alias=AliasChoices("startDate", "start_date")
     )
-    checks: Optional[List["AlphaCheckItemView"]] = None
+    checks: Optional[List[AlphaCheckItemView]] = None
     self_correlation: Optional[float] = Field(
         default=None,
         validation_alias=AliasChoices("selfCorrelation", "self_correlation"),
@@ -476,7 +483,9 @@ class AlphaView(BaseModel):
     type: str
     author: str
     settings: SimulationSettingsView
-    regular: RegularView
+    regular: Optional[RegularView] = None
+    combo: Optional[RegularView] = None
+    selection: Optional[RegularView] = None
     date_created: datetime = Field(
         validation_alias=AliasChoices("dateCreated", "date_created")
     )
@@ -507,7 +516,7 @@ class AlphaView(BaseModel):
     prod: Optional[AlphaSampleView] = None
     competitions: Optional[List[CompetitionRefView]] = None
     themes: Optional[List[str]] = None
-    pyramids: Optional[List[PyramidView]] = None
+    pyramids: Optional[List[PyramidRefView]] = None
     team: Optional[str] = None
 
 
@@ -603,7 +612,7 @@ class AlphaDetailView(BaseModel):
     prod: Optional["AlphaDetailView.Sample"] = None
     competitions: Optional[List[CompetitionRefView]] = None
     themes: Optional[List[str]] = None
-    pyramids: Optional[List[PyramidView]] = None
+    pyramids: Optional[List[PyramidRefView]] = None
     team: Optional[str] = None
 
     class Sample(BaseModel):

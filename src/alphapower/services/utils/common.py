@@ -12,7 +12,8 @@ from alphapower.client import (
     AlphaCheckItemView,
     AlphaSampleView,
     CompetitionRefView,
-    PyramidView,
+    PyramidRefView,
+    ThemeRefView,
 )
 from alphapower.entity import Category, Check, Sample
 
@@ -145,8 +146,11 @@ def create_sample(
             competitions_adapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
                 List[CompetitionRefView]
             )
-            pyramids_adapter: TypeAdapter[List[PyramidView]] = TypeAdapter(
-                List[PyramidView]
+            pyramids_adapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
+                List[PyramidRefView]
+            )
+            themes_adapter: TypeAdapter[List[ThemeRefView]] = TypeAdapter(
+                List[ThemeRefView]
             )
 
             if check_view.competitions:
@@ -156,6 +160,9 @@ def create_sample(
 
             if check_view.pyramids:
                 check.pyramids = pyramids_adapter.dump_python(check_view.pyramids)
+
+            if check_view.themes:
+                check.themes = themes_adapter.dump_python(check_view.themes)
 
             checks.append(check)
 

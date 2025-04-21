@@ -294,12 +294,13 @@ class Check(Base):
     limit: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
     value: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
     date: MappedColumn[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    competitions: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
     year: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
-    pyramids: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
     start_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     end_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     multiplier: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
+    competitions: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
+    pyramids: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
+    themes: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
 
 
 class Sample(Base):
@@ -459,7 +460,7 @@ class Regular(Base):
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: MappedColumn[str] = mapped_column(String)
     description: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    operator_count: MappedColumn[int] = mapped_column(Integer)
+    operator_count: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class Alpha(Base):
@@ -542,10 +543,43 @@ class Alpha(Base):
         "Setting", backref="alphas", lazy="joined", cascade="all"
     )
     regular_id: MappedColumn[int] = mapped_column(
-        Integer, ForeignKey("regulars.id"), nullable=False
+        Integer,
+        ForeignKey("regulars.id"),
+        nullable=True,
     )
     regular: Mapped[Regular] = relationship(
-        "Regular", backref="alphas", lazy="joined", cascade="all"
+        "Regular",
+        foreign_keys=[regular_id],
+        uselist=False,
+        backref="alphas_regular",
+        lazy="joined",
+        cascade="all",
+    )
+    combo_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("regulars.id"),
+        nullable=True,
+    )
+    combo: Mapped[Regular] = relationship(
+        "Regular",
+        foreign_keys=[combo_id],
+        uselist=False,
+        backref="alphas_combo",
+        lazy="joined",
+        cascade="all",
+    )
+    selection_id: MappedColumn[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("regulars.id"),
+        nullable=True,
+    )
+    selection: Mapped[Regular] = relationship(
+        "Regular",
+        foreign_keys=[selection_id],
+        uselist=False,
+        backref="alphas_selection",
+        lazy="joined",
+        cascade="all",
     )
     in_sample_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("samples.id"), nullable=True

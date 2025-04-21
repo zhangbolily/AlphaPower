@@ -23,14 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
     AlphaType,
-    Delay,
-    InstrumentType,
-    Neutralization,
-    Region,
-    RegularLanguage,
-    Switch,
-    UnitHandling,
-    Universe,
 )
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import (
@@ -52,25 +44,25 @@ def get_task_signature(regular: str, settings: SimulationSettingsView) -> str:
         一个MD5哈希字符串，作为任务的唯一签名。
     """
     settings_dict = {
-        "region": settings.region or "None",
+        "region": str(settings.region) or "None",
         "delay": str(settings.delay) if settings.delay is not None else "None",
-        "language": settings.language or "None",
-        "instrument_type": settings.instrument_type or "None",
-        "universe": settings.universe or "None",
+        "language": str(settings.language) or "None",
+        "instrument_type": str(settings.instrument_type) or "None",
+        "universe": str(settings.universe) or "None",
         "truncation": (
             str(settings.truncation) if settings.truncation is not None else "None"
         ),
-        "unit_handling": settings.unit_handling or "None",
-        "test_period": settings.test_period or "None",
-        "pasteurization": settings.pasteurization or "None",
+        "unit_handling": str(settings.unit_handling) or "None",
+        "test_period": str(settings.test_period) or "None",
+        "pasteurization": str(settings.pasteurization) or "None",
         "decay": str(settings.decay) if settings.decay is not None else "None",
-        "neutralization": settings.neutralization or "None",
+        "neutralization": str(settings.neutralization) or "None",
         "visualization": (
             str(settings.visualization)
             if settings.visualization is not None
             else "False"
         ),
-        "max_trade": settings.max_trade or "None",
+        "max_trade": str(settings.max_trade) or "None",
     }
     settings_str = json.dumps(settings_dict, sort_keys=True)
     return hashlib.md5(f"{regular}_{settings_str}".encode("utf-8")).hexdigest()
@@ -98,35 +90,6 @@ def _create_task(
     Returns:
         一个新创建的SimulationTask实例。
     """
-    # 转换枚举字段
-    region = Region[settings.region] if settings.region else Region.DEFAULT
-    delay = Delay(settings.delay) if settings.delay is not None else Delay.DEFAULT
-    instrument_type = (
-        InstrumentType[settings.instrument_type]
-        if settings.instrument_type
-        else InstrumentType.DEFAULT
-    )
-    universe = Universe[settings.universe] if settings.universe else Universe.DEFAULT
-    unit_handling = (
-        UnitHandling[settings.unit_handling]
-        if settings.unit_handling
-        else UnitHandling.DEFAULT
-    )
-    pasteurization = (
-        Switch[settings.pasteurization] if settings.pasteurization else Switch.DEFAULT
-    )
-    neutralization = (
-        Neutralization[settings.neutralization]
-        if settings.neutralization
-        else Neutralization.DEFAULT
-    )
-    max_trade = Switch[settings.max_trade] if settings.max_trade else Switch.DEFAULT
-    language = (
-        RegularLanguage[settings.language]
-        if settings.language
-        else RegularLanguage.DEFAULT
-    )
-
     return SimulationTask(
         type=AlphaType.REGULAR,
         settings_group_key=settings_group_key,
@@ -134,21 +97,21 @@ def _create_task(
         regular=regular,
         status=status,
         priority=priority,
-        region=region,
-        delay=delay,
-        language=language,
-        instrument_type=instrument_type,
-        universe=universe,
+        region=settings.region,
+        delay=settings.delay,
+        language=settings.language,
+        instrument_type=settings.instrument_type,
+        universe=settings.universe,
         truncation=settings.truncation,
-        unit_handling=unit_handling,
+        unit_handling=settings.unit_handling,
         test_period=settings.test_period,
-        pasteurization=pasteurization,
+        pasteurization=settings.pasteurization,
         decay=settings.decay,
-        neutralization=neutralization,
+        neutralization=settings.neutralization,
         visualization=(
             settings.visualization if settings.visualization is not None else False
         ),
-        max_trade=max_trade,
+        max_trade=settings.max_trade,
         tags=tags or [],
     )
 
