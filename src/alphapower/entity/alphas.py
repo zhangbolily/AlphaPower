@@ -1,24 +1,3 @@
-"""
-alphas.py
-
-定义了与 Alpha 模型相关的数据库实体类、中间表和设置类。
-
-模块功能：
-- 提供 Alpha 策略的核心数据模型，包括分类、比赛、样本、设置等。
-- 支持 Alpha 策略的多对多关系映射。
-- 提供标签管理的便捷方法。
-
-模块结构：
-- Base: 所有 ORM 模型类的基础类。
-- Classification: Alpha 分类表。
-- Competition: Alpha 比赛表。
-- SampleCheck: Alpha 样本检查表。
-- Sample: Alpha 样本表。
-- Setting: Alpha 设置表。
-- Regular: Alpha 规则表。
-- Alpha: Alpha 主表。
-"""
-
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -58,33 +37,22 @@ from alphapower.constants import (
     Neutralization,
     Region,
     RegularLanguage,
-    SampleCheckResult,
     Stage,
     Status,
     Switch,
     UnitHandling,
     Universe,
 )
+from alphapower.view.alpha import SubmissionCheckView, SubmissionCheckViewListAdapter
 
 # pylint: disable=E1136
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    """基础类，所有 ORM 模型类都继承自该类。
-
-    该类结合了 AsyncAttrs 和 DeclarativeBase，提供异步 ORM 支持和
-    SQLAlchemy 声明式映射的基本功能。
-    """
+    pass
 
 
 class Classification(Base):
-    """Alpha 分类表，存储 Alpha 的分类信息。
-
-    Attributes:
-        id (int): 主键ID。
-        classification_id (str): 唯一的分类标识符。
-        name (str): 分类名称。
-    """
 
     __tablename__ = "classifications"
 
@@ -96,13 +64,6 @@ class Classification(Base):
 
 
 class Competition(Base):
-    """Alpha 比赛表，存储 Alpha 的比赛信息。
-
-    Attributes:
-        id (int): 主键ID。
-        competition_id (str): 唯一的比赛标识符。
-        name (str): 比赛名称。
-    """
 
     __tablename__ = "competitions"
 
@@ -113,12 +74,7 @@ class Competition(Base):
         excluded_countries: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> None:
-        """初始化比赛对象
 
-        Args:
-            universities: 大学列表
-            countries: 国家列表
-        """
         super().__init__(**kwargs)
         self.universities = universities  # type: ignore[method-assign]
         self.countries = countries  # type: ignore[method-assign]
@@ -171,22 +127,14 @@ class Competition(Base):
 
     @hybrid_property
     def universities(self) -> List[str]:
-        """获取大学列表
 
-        Returns:
-            List[str]: 大学字符串列表
-        """
         if self._universities is None:
             return []
         return [university.strip() for university in self._universities.split(",")]
 
     @universities.setter  # type: ignore[no-redef]
     def universities(self, value: Optional[List[str]]) -> None:
-        """设置大学列表
 
-        Args:
-            value: 大学字符串列表
-        """
         if value is None:
             self._universities = None
         else:
@@ -206,22 +154,14 @@ class Competition(Base):
 
     @hybrid_property
     def countries(self) -> List[str]:
-        """获取国家列表
 
-        Returns:
-            List[str]: 国家字符串列表
-        """
         if self._countries is None:
             return []
         return [country.strip() for country in self._countries.split(",")]
 
     @countries.setter  # type: ignore[no-redef]
     def countries(self, value: Optional[List[str]]) -> None:
-        """设置国家列表
 
-        Args:
-            value: 国家字符串列表
-        """
         if value is None:
             self._countries = None
         else:
@@ -237,22 +177,14 @@ class Competition(Base):
 
     @hybrid_property
     def excluded_countries(self) -> List[str]:
-        """获取排除的国家列表
 
-        Returns:
-            List[str]: 排除的国家字符串列表
-        """
         if self._excluded_countries is None:
             return []
         return [country.strip() for country in self._excluded_countries.split(",")]
 
     @excluded_countries.setter  # type: ignore[no-redef]
     def excluded_countries(self, value: Optional[List[str]]) -> None:
-        """设置排除的国家列表
 
-        Args:
-            value: 排除的国家字符串列表
-        """
         if value is None:
             self._excluded_countries = None
         else:
@@ -267,66 +199,9 @@ class Competition(Base):
             )
 
 
-class Check(Base):
-    """Alpha 样本检查表，存储样本检查的结果和相关信息。
+class AggregateData(Base):
 
-    Attributes:
-        id (int): 主键ID。
-        sample_id (int): 外键连接到 Sample 表。
-        name (str): 检查名称。
-        result (str): 检查结果。
-        message (Optional[str]): 消息。
-        limit (Optional[float]): 限制。
-        value (Optional[float]): 值。
-        date (Optional[datetime]): 日期。
-        competitions (Optional[str]): 比赛。
-    """
-
-    __tablename__ = "checks"
-
-    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sample_id: MappedColumn[int] = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=False
-    )
-    name: MappedColumn[str] = mapped_column(String)
-    result: MappedColumn[SampleCheckResult] = mapped_column(Enum(SampleCheckResult))
-    message: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    limit: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
-    value: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
-    date: MappedColumn[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    year: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
-    start_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    end_date: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    multiplier: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
-    competitions: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
-    pyramids: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
-    themes: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
-
-
-class Sample(Base):
-    """Alpha 样本表，存储样本的各种统计信息。
-
-    Attributes:
-        id (int): 主键ID。
-        long_count (Optional[int]): 多头数量。
-        short_count (Optional[int]): 空头数量。
-        pnl (Optional[float]): 盈亏。
-        book_size (Optional[float]): 账簿大小。
-        turnover (Optional[float]): 换手率。
-        returns (Optional[float]): 收益。
-        drawdown (Optional[float]): 回撤。
-        margin (Optional[float]): 保证金。
-        sharpe (Optional[float]): 夏普比率。
-        fitness (Optional[float]): 适应度。
-        self_correration (Optional[float]): 自相关。
-        prod_correration (Optional[float]): 生产相关。
-        os_is_sharpe_ratio (Optional[float]): OS-IS 夏普比率。
-        pre_close_sharpe_ratio (Optional[float]): 收盘前夏普比率。
-        start_date (datetime): 开始日期。
-        checks (List[Check]): 样本检查的关系字段。
-    """
-
-    __tablename__ = "samples"
+    __tablename__ = "aggregate_data"
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     long_count: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -352,37 +227,51 @@ class Sample(Base):
         Float, nullable=True
     )
     start_date: MappedColumn[datetime] = mapped_column(DateTime)
-    checks: Mapped[List[Check]] = relationship(
-        "Check",
-        backref="sample",  # 定义一对多关系，样本检查属于某个样本
-        cascade="all",  # 添加 merge 级联操作
-        lazy="selectin",  # 使用 joined 加载
-    )
+    _checks: MappedColumn[JSON] = mapped_column(
+        JSON, nullable=True, name="checks"
+    )  # 用于存储检查结果的 JSON 字段
+
+    def __init__(self, **kwargs: Any) -> None:
+        checks: Optional[List[SubmissionCheckView]] = kwargs.pop("checks", None)
+        super().__init__(**kwargs)
+
+        if checks:
+            self._checks = SubmissionCheckViewListAdapter.dump_python(
+                checks,
+                mode="json",
+            )
+        self._checks_view_cache: Optional[List[SubmissionCheckView]] = checks
+
+    @hybrid_property
+    def checks(self) -> List[SubmissionCheckView]:
+
+        if self._checks is None:
+            return []
+
+        if self._checks_view_cache is not None:
+            return self._checks_view_cache
+        checks: List[SubmissionCheckView] = (
+            SubmissionCheckViewListAdapter.validate_python(self._checks)
+        )
+        if checks is None:
+            return []
+
+        # 缓存检查结果
+        self._checks_view_cache = checks
+        return checks
+
+    @checks.setter  # type: ignore[no-redef]
+    def checks(self, value: Optional[List[SubmissionCheckView]]) -> None:
+
+        if value is None:
+            self._checks = None
+            self._checks_view_cache = None
+        else:
+            self._checks = SubmissionCheckViewListAdapter.dump_python(value)
+            self._checks_view_cache = value
 
 
 class Setting(Base):
-    """Alpha 设置表，存储 Alpha 的各种配置参数。
-
-    该类定义了 Alpha 策略的各种配置选项，包括数据处理、中和方法和
-    其他影响 Alpha 性能的参数。
-
-    Attributes:
-        id (int): 主键ID。
-        instrument_type (InstrumentType): 使用的金融工具类型。
-        region (Region): Alpha 应用的市场区域。
-        universe (Universe): Alpha 选用的股票范围。
-        delay (Delay): 信号延迟时间（单位：天）。
-        decay (int): 信号衰减参数。
-        neutralization (Neutralization): 中性化方法，用于控制风险暴露。
-        truncation (float): 截断阈值，控制异常值影响。
-        pasteurization (Switch): 巴氏化处理方法。
-        unit_handling (UnitHandling): 单位处理方式。
-        nan_handling (Switch): NaN 值处理方式。
-        language (RegularLanguage): 编程语言。
-        visualization (bool): 是否启用可视化。
-        test_period (Optional[str]): 测试周期。
-        max_trade (Optional[Switch]): 最大交易量。
-    """
 
     __tablename__ = "settings"
 
@@ -424,18 +313,7 @@ class Setting(Base):
 
     @validates("decay")
     def validate_decay(self, key: str, value: int) -> int:
-        """验证 decay 字段的值是否在有效范围内
 
-        Args:
-            key: 字段名称
-            value: 要验证的值
-
-        Returns:
-            int: 验证通过的值
-
-        Raises:
-            ValueError: 当值不在有效范围内时抛出
-        """
         if value and not (Decay.MIN.value <= value <= Decay.MAX.value):
             raise ValueError(
                 f"{key} 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间"
@@ -443,19 +321,9 @@ class Setting(Base):
         return value
 
 
-class Regular(Base):
-    """Alpha 规则表，存储 Alpha 的规则信息。
+class Expression(Base):
 
-    该类定义了 Alpha 的规则相关信息，包括规则代码、描述和操作符统计。
-
-    Attributes:
-        id (int): 主键ID。
-        code (str): 规则代码。
-        description (Optional[str]): 规则描述。
-        operator_count (int): 操作符数量。
-    """
-
-    __tablename__ = "regulars"
+    __tablename__ = "expressions"
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: MappedColumn[str] = mapped_column(String)
@@ -464,40 +332,6 @@ class Regular(Base):
 
 
 class Alpha(Base):
-    """Alpha 主表，存储 Alpha 的基本信息及其关联关系。
-
-    该类是系统的核心实体，定义了 Alpha 策略的所有关键属性和关联关系。
-
-    Attributes:
-        id (int): 主键ID。
-        alpha_id (str): 唯一的 Alpha 标识符。
-        type (AlphaType): Alpha 类型。
-        author (str): Alpha 创建者。
-        settings_id (int): Alpha 设置的外键ID。
-        regular_id (int): Alpha 规则的外键ID。
-        date_created (datetime): Alpha 创建日期。
-        date_submitted (Optional[datetime]): Alpha 提交日期。
-        date_modified (Optional[datetime]): Alpha 修改日期。
-        name (Optional[str]): Alpha 名称。
-        favorite (bool): 是否收藏。
-        hidden (bool): 是否隐藏。
-        color (Color): Alpha 颜色。
-        category (Optional[str]): Alpha 类别。
-        tags (List[str]): Alpha 标签。
-        classifications (List[Classification]): Alpha 的分类信息。
-        grade (Grade): Alpha 等级。
-        stage (Stage): Alpha 阶段。
-        status (Status): Alpha 状态。
-        in_sample_id (Optional[int]): 样本内的外键ID。
-        out_sample_id (Optional[int]): 样本外的外键ID。
-        train_id (Optional[int]): 训练样本的外键ID。
-        test_id (Optional[int]): 测试样本的外键ID。
-        prod_id (Optional[int]): 生产样本的外键ID。
-        competitions (List[Competition]): Alpha 的比赛信息。
-        themes (Optional[str]): Alpha 主题。
-        pyramids (Optional[str]): Alpha 金字塔。
-        team (Optional[str]): Alpha 团队。
-    """
 
     __tablename__ = "alphas"
 
@@ -544,11 +378,11 @@ class Alpha(Base):
     )
     regular_id: MappedColumn[int] = mapped_column(
         Integer,
-        ForeignKey("regulars.id"),
+        ForeignKey("expressions.id"),
         nullable=True,
     )
-    regular: Mapped[Regular] = relationship(
-        "Regular",
+    regular: Mapped[Expression] = relationship(
+        "Expression",
         foreign_keys=[regular_id],
         uselist=False,
         backref="alphas_regular",
@@ -557,11 +391,11 @@ class Alpha(Base):
     )
     combo_id: MappedColumn[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("regulars.id"),
+        ForeignKey("expressions.id"),
         nullable=True,
     )
-    combo: Mapped[Regular] = relationship(
-        "Regular",
+    combo: Mapped[Expression] = relationship(
+        "Expression",
         foreign_keys=[combo_id],
         uselist=False,
         backref="alphas_combo",
@@ -570,11 +404,11 @@ class Alpha(Base):
     )
     selection_id: MappedColumn[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("regulars.id"),
+        ForeignKey("expressions.id"),
         nullable=True,
     )
-    selection: Mapped[Regular] = relationship(
-        "Regular",
+    selection: Mapped[Expression] = relationship(
+        "Expression",
         foreign_keys=[selection_id],
         uselist=False,
         backref="alphas_selection",
@@ -582,10 +416,10 @@ class Alpha(Base):
         cascade="all",
     )
     in_sample_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
+        Integer, ForeignKey("aggregate_data.id"), nullable=True
     )
-    in_sample: Mapped[Sample] = relationship(
-        "Sample",
+    in_sample: Mapped[AggregateData] = relationship(
+        "AggregateData",
         foreign_keys=[in_sample_id],
         uselist=False,
         backref="alphas_in_sample",
@@ -593,10 +427,10 @@ class Alpha(Base):
         cascade="all",
     )
     out_sample_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
+        Integer, ForeignKey("aggregate_data.id"), nullable=True
     )
-    out_sample: Mapped[Sample] = relationship(
-        "Sample",
+    out_sample: Mapped[AggregateData] = relationship(
+        "AggregateData",
         foreign_keys=[out_sample_id],
         uselist=False,
         backref="alphas_out_sample",
@@ -604,10 +438,10 @@ class Alpha(Base):
         cascade="all",
     )
     train_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
+        Integer, ForeignKey("aggregate_data.id"), nullable=True
     )
-    train: Mapped[Sample] = relationship(
-        "Sample",
+    train: Mapped[AggregateData] = relationship(
+        "AggregateData",
         foreign_keys=[train_id],
         uselist=False,
         backref="alphas_train",
@@ -615,10 +449,10 @@ class Alpha(Base):
         cascade="all",
     )
     test_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
+        Integer, ForeignKey("aggregate_data.id"), nullable=True
     )
-    test: Mapped[Sample] = relationship(
-        "Sample",
+    test: Mapped[AggregateData] = relationship(
+        "AggregateData",
         foreign_keys=[test_id],
         uselist=False,
         backref="alphas_test",
@@ -626,10 +460,10 @@ class Alpha(Base):
         cascade="all",
     )
     prod_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer, ForeignKey("samples.id"), nullable=True
+        Integer, ForeignKey("aggregate_data.id"), nullable=True
     )
-    prod: Mapped[Sample] = relationship(
-        "Sample",
+    prod: Mapped[AggregateData] = relationship(
+        "AggregateData",
         foreign_keys=[prod_id],
         uselist=False,
         backref="alphas_prod",
@@ -652,11 +486,7 @@ class Alpha(Base):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        """初始化模拟任务对象，处理特殊属性。
 
-        Args:
-            **kwargs: 包含所有模型属性的关键字参数。
-        """
         tags = kwargs.pop("tags", None)
         super().__init__(**kwargs)
         if tags is not None:
@@ -669,22 +499,14 @@ class Alpha(Base):
 
     @hybrid_property
     def tags(self) -> List[str]:
-        """获取标签列表
 
-        Returns:
-            List[str]: 标签字符串列表
-        """
         if self._tags is None:
             return []
         return [tag.strip() for tag in self._tags.split(",") if tag.strip()]
 
     @tags.setter  # type: ignore[no-redef]
     def tags(self, value: Optional[List[str]]) -> None:
-        """设置标签列表
 
-        Args:
-            value: 标签字符串列表
-        """
         if value is None:
             self._tags = None
         else:
@@ -699,11 +521,7 @@ class Alpha(Base):
             )
 
     def add_tag(self, tag: str) -> None:
-        """添加单个标签到标签列表
 
-        Args:
-            tag: 要添加的标签
-        """
         if not tag or not tag.strip():
             return
 
@@ -713,11 +531,7 @@ class Alpha(Base):
             self.tags = current_tags  # type: ignore[method-assign]
 
     def remove_tag(self, tag: str) -> None:
-        """从标签列表中移除单个标签
 
-        Args:
-            tag: 要移除的标签
-        """
         if not tag or not tag.strip() or not self.tags:
             return
 

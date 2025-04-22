@@ -46,11 +46,11 @@ from alphapower.dal.alphas import (
     SampleDAL,
 )
 from alphapower.entity import (
+    AggregateData,
     Alpha,
     Classification,
     Competition,
-    Regular,
-    Sample,
+    Expression,
     Setting,
 )
 from alphapower.internal.db_session import get_db_session
@@ -104,7 +104,7 @@ async def fixture_test_setting(alphas_session: AsyncSession) -> Setting:
 
 
 @pytest.fixture(name="test_regular")
-async def fixture_test_regular(alphas_session: AsyncSession) -> Regular:
+async def fixture_test_regular(alphas_session: AsyncSession) -> Expression:
     """创建一个用于测试的 Regular 对象。
 
     Args:
@@ -113,14 +113,14 @@ async def fixture_test_regular(alphas_session: AsyncSession) -> Regular:
     Returns:
         Regular: 创建的 Regular 对象。
     """
-    regular = Regular(code="test code", operator_count=1)
+    regular = Expression(code="test code", operator_count=1)
     alphas_session.add(regular)
     await alphas_session.flush()
     return regular
 
 
 @pytest.fixture(name="test_sample")
-async def fixture_test_sample(alphas_session: AsyncSession) -> Sample:
+async def fixture_test_sample(alphas_session: AsyncSession) -> AggregateData:
     """创建一个用于测试的 Sample 对象。
 
     Args:
@@ -129,7 +129,7 @@ async def fixture_test_sample(alphas_session: AsyncSession) -> Sample:
     Returns:
         Sample: 创建的 Sample 对象。
     """
-    sample = Sample(start_date=datetime.now(), sharpe=1.0)
+    sample = AggregateData(start_date=datetime.now(), sharpe=1.0)
     alphas_session.add(sample)
     await alphas_session.flush()
     return sample
@@ -142,7 +142,7 @@ class TestAlphaDAL:
         self,
         alphas_session: AsyncSession,
         test_setting: Setting,
-        test_regular: Regular,
+        test_regular: Expression,
     ) -> None:
         """测试 AlphaDAL 的 find_by_alpha_id 方法。
 
@@ -189,7 +189,7 @@ class TestAlphaDAL:
         self,
         alphas_session: AsyncSession,
         test_setting: Setting,
-        test_regular: Regular,
+        test_regular: Expression,
     ) -> None:
         """测试 AlphaDAL 的 find_by_author 方法。
 
@@ -238,7 +238,7 @@ class TestAlphaDAL:
         self,
         alphas_session: AsyncSession,
         test_setting: Setting,
-        test_regular: Regular,
+        test_regular: Expression,
     ) -> None:
         """测试 AlphaDAL 的 find_by_status 方法。
 
@@ -287,7 +287,7 @@ class TestAlphaDAL:
         self,
         alphas_session: AsyncSession,
         test_setting: Setting,
-        test_regular: Regular,
+        test_regular: Expression,
     ) -> None:
         """测试 AlphaDAL 的 find_favorites 方法。
 
@@ -353,7 +353,7 @@ class TestAlphaDAL:
         self,
         alphas_session: AsyncSession,
         test_setting: Setting,
-        test_regular: Regular,
+        test_regular: Expression,
     ) -> None:
         """测试 AlphaDAL 的 find_by_classification 方法。
 
@@ -413,7 +413,7 @@ class TestAlphaDAL:
         self,
         alphas_session: AsyncSession,
         test_setting: Setting,
-        test_regular: Regular,
+        test_regular: Expression,
     ) -> None:
         """测试 AlphaDAL 的 find_by_competition 方法。
 
@@ -491,17 +491,17 @@ class TestRegularDAL:
 
         # 创建测试数据
         regulars = [
-            Regular(
+            Expression(
                 code="x = mavg(close, 5)",
                 description="5日均线",
                 operator_count=4,
             ),
-            Regular(
+            Expression(
                 code="x = mavg(open, 10)",
                 description="10日开盘均线",
                 operator_count=4,
             ),
-            Regular(
+            Expression(
                 code="x = sum(volume, 5)",
                 description="5日成交量",
                 operator_count=3,
@@ -666,7 +666,7 @@ class TestSampleDAL:
 
         # 创建测试数据
         samples = [
-            Sample(
+            AggregateData(
                 sharpe=0.5 + i * 0.5,  # 1.0, 1.5, 2.0
                 start_date=datetime.now(),  # 添加必填字段
             )
@@ -715,7 +715,7 @@ class TestSampleCheckDAL:
     """测试 SampleCheckDAL 类的各项功能。"""
 
     async def test_basic_crud_operations(
-        self, alphas_session: AsyncSession, test_sample: Sample
+        self, alphas_session: AsyncSession, test_sample: AggregateData
     ) -> None:
         """测试 SampleCheckDAL 的基本 CRUD 操作。
 

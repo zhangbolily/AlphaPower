@@ -145,7 +145,7 @@ if __name__ == "__main__":
     from typing import Dict, Set
 
     from alphapower.client import wq_client
-    from alphapower.constants import SampleCheckResult, SampleCheckType
+    from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
     from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
     from alphapower.dal.evaluate import (
         CheckRecordDAL,

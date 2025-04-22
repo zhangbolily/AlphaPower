@@ -208,7 +208,7 @@ if __name__ == "__main__":
     from typing import Dict, Set
 
     from alphapower.client import wq_client
-    from alphapower.constants import SampleCheckResult, SampleCheckType
+    from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
     from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
     from alphapower.dal.evaluate import (
         CheckRecordDAL,
@@ -279,20 +279,20 @@ if __name__ == "__main__":
                         alpha_dal=alpha_dal,
                         setting_dal=setting_dal,
                         sample_dal=sample_dal,
-                        start_time=datetime(2025, 4, 15),
-                        end_time=datetime(2025, 4, 22, 23, 59, 59),
+                        start_time=datetime(2025, 2, 21),
+                        end_time=datetime(2025, 4, 14, 23, 59, 59),
                     )
 
                     check_pass_result_map: Dict[
-                        SampleCheckType, Set[SampleCheckResult]
+                        SubmissionCheckType, Set[SubmissionCheckResult]
                     ] = {
-                        SampleCheckType.MATCHES_COMPETITION: {
-                            SampleCheckResult.PASS,
-                            SampleCheckResult.PENDING,
+                        SubmissionCheckType.MATCHES_COMPETITION: {
+                            SubmissionCheckResult.PASS,
+                            SubmissionCheckResult.PENDING,
                         },
-                        SampleCheckType.CONCENTRATED_WEIGHT: {
-                            SampleCheckResult.PASS,
-                            SampleCheckResult.PENDING,
+                        SubmissionCheckType.CONCENTRATED_WEIGHT: {
+                            SubmissionCheckResult.PASS,
+                            SubmissionCheckResult.PENDING,
                         },
                     }
 

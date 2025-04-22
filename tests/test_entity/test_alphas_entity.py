@@ -42,13 +42,12 @@ from alphapower.constants import (
     Universe,
 )
 from alphapower.entity import (
+    AggregateData,
     Alpha,
     AlphaBase,
-    Check,
     Classification,
     Competition,
-    Regular,
-    Sample,
+    Expression,
     Setting,
     alphas_classifications,
     alphas_competitions,
@@ -180,7 +179,7 @@ class TestAlphaRegular:
         Args:
             session: 数据库会话对象。
         """
-        regular: Regular = Regular(
+        regular: Expression = Expression(
             code="x = close(0) - open(0)",
             description="简单的日内收益率",
             operator_count=3,
@@ -189,9 +188,9 @@ class TestAlphaRegular:
         await session.flush()
 
         result: Result = await session.execute(
-            select(Regular).where(Regular.id == regular.id)
+            select(Expression).where(Expression.id == regular.id)
         )
-        db_regular: Optional[Regular] = result.scalars().first()
+        db_regular: Optional[Expression] = result.scalars().first()
 
         assert db_regular is not None
         assert db_regular.code == "x = close(0) - open(0)"
@@ -262,110 +261,6 @@ class TestCompetition:
         assert db_competition.name == "2023全球Alpha大赛"
 
 
-class TestSampleCheck:
-    """测试 SampleCheck 实体类的各项功能。"""
-
-    async def test_create_sample_check(self, session: AsyncSession) -> None:
-        """测试创建和查询 SampleCheck 实例。
-
-        验证 SampleCheck 对象的创建、保存和查询功能，包括日期字段的处理。
-
-        Args:
-            session: 数据库会话对象。
-        """
-        now: datetime.datetime = datetime.datetime.now()
-        sample_check: Check = Check(
-            name="mean_exposure_check",
-            result="PASS",
-            limit=0.05,
-            value=0.03,
-            date=now,
-            competitions=["GLOBAL2023"],
-            message="通过检查",
-            sample_id=1,  # 假设 Sample ID 为 1
-        )
-        session.add(sample_check)
-        await session.flush()
-
-        result: Result = await session.execute(
-            select(Check).where(Check.name == "mean_exposure_check")
-        )
-        db_sample_check: Optional[Check] = result.scalars().first()
-
-        assert db_sample_check is not None
-        assert db_sample_check.name == "mean_exposure_check"
-        assert db_sample_check.result == "PASS"
-        assert db_sample_check.limit == 0.05
-        assert db_sample_check.value == 0.03
-        assert db_sample_check.date == now
-        assert db_sample_check.competitions == ["GLOBAL2023"]
-        assert db_sample_check.message == "通过检查"
-
-
-class TestSample:
-    """测试 Sample 实体类的各项功能。"""
-
-    async def test_create_sample(self, session: AsyncSession) -> None:
-        """测试创建和查询 Sample 实例，以及与 SampleCheck 的关联关系。
-
-        本测试验证 Sample 对象的创建、保存和查询功能，同时测试 Sample 与
-        SampleCheck 之间的外键关联关系是否正确保存和恢复。
-
-        Args:
-            session: 数据库会话对象。
-        """
-        # 先创建一个 SampleCheck 用于建立关联关系
-        sample_check: Check = Check(name="basic_check", result="PASS")
-        session.add(sample_check)
-
-        now: datetime.datetime = datetime.datetime.now()
-        sample: Sample = Sample(
-            pnl=5000.0,
-            book_size=100000.0,
-            long_count=50,
-            short_count=50,
-            turnover=0.2,
-            returns=0.05,
-            drawdown=0.02,
-            margin=0.1,
-            sharpe=1.8,
-            fitness=0.75,
-            start_date=now,
-            checks=[sample_check],  # 关联 SampleCheck
-            self_correration=0.2,
-            prod_correration=0.3,
-            os_is_sharpe_ratio=0.9,
-            pre_close_sharpe_ratio=1.2,
-        )
-        session.add(sample)
-        await session.flush()
-
-        result: Result = await session.execute(
-            select(Sample).where(Sample.id == sample.id)
-        )
-        first_db_sample = result.scalars().first()
-        assert first_db_sample is not None  # Ensure db_sample is not None
-        db_sample: Optional[Sample] = first_db_sample  # Type hint after the assertion
-
-        # 验证所有字段都正确保存
-        assert db_sample is not None
-        assert db_sample.pnl == 5000.0
-        assert db_sample.book_size == 100000.0
-        assert db_sample.long_count == 50
-        assert db_sample.short_count == 50
-        assert db_sample.turnover == 0.2
-        assert db_sample.returns == 0.05
-        assert db_sample.drawdown == 0.02
-        assert db_sample.margin == 0.1
-        assert db_sample.sharpe == 1.8
-        assert db_sample.fitness == 0.75
-        assert db_sample.start_date == now
-        assert db_sample.self_correration == 0.2
-        assert db_sample.prod_correration == 0.3
-        assert db_sample.os_is_sharpe_ratio == 0.9
-        assert db_sample.pre_close_sharpe_ratio == 1.2
-
-
 class TestAlpha:
     """测试 Alpha 实体类的各项功能，包括各种关联关系。"""
 
@@ -397,7 +292,7 @@ class TestAlpha:
             visualization=True,
         )
 
-        regular: Regular = Regular(
+        regular: Expression = Expression(
             code="return (close(0) - close(5)) / close(5)",
             description="5日收益率",
             operator_count=4,
@@ -407,11 +302,21 @@ class TestAlpha:
         await session.flush()
 
         # 创建 Sample 实例用于关联
-        sample1: Sample = Sample(pnl=1000.0, start_date=datetime.datetime.now())
-        sample2: Sample = Sample(pnl=1200.0, start_date=datetime.datetime.now())
-        sample3: Sample = Sample(pnl=900.0, start_date=datetime.datetime.now())
-        sample4: Sample = Sample(pnl=1100.0, start_date=datetime.datetime.now())
-        sample5: Sample = Sample(pnl=1300.0, start_date=datetime.datetime.now())
+        sample1: AggregateData = AggregateData(
+            pnl=1000.0, start_date=datetime.datetime.now()
+        )
+        sample2: AggregateData = AggregateData(
+            pnl=1200.0, start_date=datetime.datetime.now()
+        )
+        sample3: AggregateData = AggregateData(
+            pnl=900.0, start_date=datetime.datetime.now()
+        )
+        sample4: AggregateData = AggregateData(
+            pnl=1100.0, start_date=datetime.datetime.now()
+        )
+        sample5: AggregateData = AggregateData(
+            pnl=1300.0, start_date=datetime.datetime.now()
+        )
 
         session.add_all([sample1, sample2, sample3, sample4, sample5])
         await session.flush()

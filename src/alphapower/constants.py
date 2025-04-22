@@ -66,6 +66,7 @@ ENV_DEV: Final[str] = "dev"  # 开发环境标识符
 ENV_TEST: Final[str] = "test"  # 测试环境标识符
 
 ALPHA_ID_LENGTH: Final[int] = 7  # Alpha ID的长度
+MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY: Final[int] = 10000  # 单个Alpha列表查询的最大数量
 
 
 class Database(Enum):
@@ -799,7 +800,7 @@ class CheckRecordType(Enum):
     SUBMISSION = "SUBMISSION"  # 提交检查
 
 
-class SampleCheckType(Enum):
+class SubmissionCheckType(Enum):
     """检查类型枚举。
     定义了系统中可能使用的检查类型。
     Attributes:
@@ -879,7 +880,7 @@ class RecordSetType(Enum):
     YEARLY_STATS = "YEARLY_STATS"  # 年度统计
 
 
-class SampleCheckResult(Enum):
+class SubmissionCheckResult(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     PASS = "PASS"  # 检查通过
     PENDING = "PENDING"  # 检查待定

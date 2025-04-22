@@ -2,20 +2,13 @@
 通用方法，用于获取或创建数据库实体。
 """
 
-from typing import List, Optional, Protocol, Type, TypeVar
+from typing import Optional, Protocol, Type, TypeVar
 
-from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from alphapower.client import (
-    AlphaCheckItemView,
-    AlphaSampleView,
-    CompetitionRefView,
-    PyramidRefView,
-    ThemeRefView,
-)
-from alphapower.entity import Category, Check, Sample
+from alphapower.entity import AggregateData, Category
+from alphapower.view.alpha import AggregateDataView
 
 
 class HasIdAndName(Protocol):
@@ -99,9 +92,9 @@ async def get_or_create_subcategory(
     return subcategory
 
 
-def create_sample(
-    sample_data: Optional[AlphaSampleView],
-) -> Optional[Sample]:
+def create_aggregate_data(
+    sample_data: Optional[AggregateDataView],
+) -> Optional[AggregateData]:
     """
     创建样本数据。
 
@@ -114,61 +107,7 @@ def create_sample(
     if sample_data is None:
         return None
 
-    def create_checks(checks_view: Optional[List[AlphaCheckItemView]]) -> List[Check]:
-        """
-        创建检查项列表。
-
-        参数:
-        checks: 检查项数据列表。
-
-        返回:
-        检查项实体对象列表。
-        """
-        if checks_view is None:
-            return []
-
-        checks: List[Check] = []
-
-        for check_view in checks_view:
-            check = Check(
-                name=check_view.name,
-                result=check_view.result,
-                message=check_view.message,
-                limit=check_view.limit,
-                value=check_view.value,
-                date=check_view.date,
-                year=check_view.year,
-                start_date=check_view.start_date,
-                end_date=check_view.end_date,
-                multiplier=check_view.multiplier,
-            )
-
-            competitions_adapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
-                List[CompetitionRefView]
-            )
-            pyramids_adapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
-                List[PyramidRefView]
-            )
-            themes_adapter: TypeAdapter[List[ThemeRefView]] = TypeAdapter(
-                List[ThemeRefView]
-            )
-
-            if check_view.competitions:
-                check.competitions = competitions_adapter.dump_python(
-                    check_view.competitions
-                )
-
-            if check_view.pyramids:
-                check.pyramids = pyramids_adapter.dump_python(check_view.pyramids)
-
-            if check_view.themes:
-                check.themes = themes_adapter.dump_python(check_view.themes)
-
-            checks.append(check)
-
-        return checks
-
-    return Sample(
+    return AggregateData(
         pnl=sample_data.pnl,
         book_size=sample_data.book_size,
         long_count=sample_data.long_count,
@@ -179,10 +118,10 @@ def create_sample(
         margin=sample_data.margin,
         sharpe=sample_data.sharpe,
         fitness=sample_data.fitness,
-        self_correration=sample_data.self_correlation,  # 自相关性
-        prod_correration=sample_data.prod_correlation,  # 生产相关性
-        os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,  # 样本外-样本内夏普比率
-        pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,  # 收盘前夏普比率
+        self_correration=sample_data.self_correlation,
+        prod_correration=sample_data.prod_correlation,
+        os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,
+        pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,
         start_date=sample_data.start_date,
-        checks=create_checks(sample_data.checks),  # 检查项列表
+        checks=sample_data.checks,
     )

@@ -10,7 +10,6 @@ import pytest
 from aiohttp import ClientSession
 
 from alphapower.client import (
-    AlphaCheckItemView,
     AlphaDetailView,
     AlphaPropertiesPayload,
     AlphaView,
@@ -19,10 +18,10 @@ from alphapower.client import (
     CompetitionListView,
     CompetitionRefView,
     CompetitionView,
+    ExpressionView,
     MultiSimulationResultView,
     PyramidRefView,
     RateLimit,
-    RegularView,
     SelfAlphaListView,
     SimulationProgressView,
     SimulationSettingsView,
@@ -42,6 +41,7 @@ from alphapower.client.raw_api import (
     set_alpha_properties,
 )
 from alphapower.constants import AlphaType, CompetitionStatus, CorrelationType
+from alphapower.view.alpha import SubmissionCheckView
 
 
 def assert_alpha_check_result(result: Optional[SubmissionCheckResultView]) -> None:
@@ -53,7 +53,7 @@ def assert_alpha_check_result(result: Optional[SubmissionCheckResultView]) -> No
         assert isinstance(result.in_sample, SubmissionCheckResultView.Sample)
         if result.in_sample.checks:
             assert all(
-                isinstance(check, AlphaCheckItemView)
+                isinstance(check, SubmissionCheckView)
                 for check in result.in_sample.checks
             )
         if result.in_sample.self_correlated:
@@ -64,7 +64,7 @@ def assert_alpha_check_result(result: Optional[SubmissionCheckResultView]) -> No
         assert isinstance(result.out_sample, SubmissionCheckResultView.Sample)
         if result.out_sample.checks:
             assert all(
-                isinstance(check, AlphaCheckItemView)
+                isinstance(check, SubmissionCheckView)
                 for check in result.out_sample.checks
             )
 
@@ -116,7 +116,7 @@ def assert_alpha_list(result: Optional[SelfAlphaListView]) -> None:
         assert isinstance(alpha.type, str)
         assert isinstance(alpha.author, str)
         assert isinstance(alpha.settings, SimulationSettingsView)
-        assert isinstance(alpha.regular, RegularView)
+        assert isinstance(alpha.regular, ExpressionView)
         if alpha.date_created:
             assert isinstance(alpha.date_created, datetime)
         if alpha.date_submitted:
@@ -128,7 +128,9 @@ def assert_alpha_list(result: Optional[SelfAlphaListView]) -> None:
                 isinstance(comp, CompetitionRefView) for comp in alpha.competitions
             )
         if alpha.pyramids:
-            assert all(isinstance(pyramid, PyramidRefView) for pyramid in alpha.pyramids)
+            assert all(
+                isinstance(pyramid, PyramidRefView) for pyramid in alpha.pyramids
+            )
 
     assert isinstance(result, SelfAlphaListView)
     assert isinstance(result.count, int)

@@ -154,19 +154,19 @@ async def complex_query_example(min_sharpe: float, author: str) -> List[Alpha]:
         # 创建自定义查询
         from sqlalchemy import and_, select
 
-        from alphapower.entity import Alpha, Sample
+        from alphapower.entity import AggregateData, Alpha
 
         query = (
             select(Alpha)
             .join(Alpha.in_sample)
             .where(
                 and_(
-                    Sample.sharpe >= min_sharpe,
+                    AggregateData.sharpe >= min_sharpe,
                     Alpha.author == author,
                     Alpha.hidden == False,
                 )
             )
-            .order_by(Sample.sharpe.desc())
+            .order_by(AggregateData.sharpe.desc())
         )
 
         # 执行查询

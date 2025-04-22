@@ -12,12 +12,11 @@ from sqlalchemy.sql.expression import Select
 from alphapower.constants import Stage, Status
 from alphapower.dal.base import EntityDAL
 from alphapower.entity.alphas import (
+    AggregateData,
     Alpha,
-    Check,
     Classification,
     Competition,
-    Regular,
-    Sample,
+    Expression,
     Setting,
 )
 
@@ -245,28 +244,14 @@ class AlphaDAL(EntityDAL[Alpha]):
             new_entity.selection.id = existing_entity.selection_id
         if existing_entity.in_sample_id and new_entity.in_sample:
             new_entity.in_sample.id = existing_entity.in_sample_id
-            await self._clear_sample_checks(existing_entity.in_sample)
         if existing_entity.out_sample_id and new_entity.out_sample:
             new_entity.out_sample.id = existing_entity.out_sample_id
-            await self._clear_sample_checks(existing_entity.out_sample)
         if existing_entity.test_id and new_entity.test:
             new_entity.test.id = existing_entity.test_id
-            await self._clear_sample_checks(existing_entity.test)
         if existing_entity.train_id and new_entity.train:
             new_entity.train.id = existing_entity.train_id
-            await self._clear_sample_checks(existing_entity.train)
         if existing_entity.prod_id and new_entity.prod:
             new_entity.prod.id = existing_entity.prod_id
-            await self._clear_sample_checks(existing_entity.prod)
-
-    async def _clear_sample_checks(
-        self,
-        entity: Sample,
-    ) -> Sample:
-        for check in entity.checks:
-            await self.session.delete(check)
-        await self.session.flush()
-        return entity
 
 
 class SettingDAL(EntityDAL[Setting]):
@@ -279,18 +264,18 @@ class SettingDAL(EntityDAL[Setting]):
     entity_class: Type[Setting] = Setting
 
 
-class RegularDAL(EntityDAL[Regular]):
+class RegularDAL(EntityDAL[Expression]):
     """
     Regular 数据访问层类，提供对 Regular 实体的特定操作。
 
     管理Alpha规则相关的数据访问，包括规则查询和代码分析。
     """
 
-    entity_class: Type[Regular] = Regular
+    entity_class: Type[Expression] = Expression
 
     async def find_similar_code(
         self, code_fragment: str, session: Optional[AsyncSession] = None
-    ) -> List[Regular]:
+    ) -> List[Expression]:
         """
         查询包含特定代码片段的所有规则。
 
@@ -304,7 +289,9 @@ class RegularDAL(EntityDAL[Regular]):
             符合条件的规则列表。
         """
         actual_session: AsyncSession = session or self.session
-        query: Select = select(Regular).where(Regular.code.contains(code_fragment))
+        query: Select = select(Expression).where(
+            Expression.code.contains(code_fragment)
+        )
         result = await actual_session.execute(query)
         return list(result.scalars().all())
 
@@ -361,18 +348,18 @@ class CompetitionDAL(EntityDAL[Competition]):
         return await self.find_one_by(session=session, competition_id=competition_id)
 
 
-class SampleDAL(EntityDAL[Sample]):
+class SampleDAL(EntityDAL[AggregateData]):
     """
     Sample 数据访问层类，提供对 Sample 实体的特定操作。
 
     管理样本数据的访问，包括性能指标分析和查询。
     """
 
-    entity_class: Type[Sample] = Sample
+    entity_class: Type[AggregateData] = AggregateData
 
     async def find_by_performance(
         self, min_sharpe: float, session: Optional[AsyncSession] = None
-    ) -> List[Sample]:
+    ) -> List[AggregateData]:
         """
         查询 sharpe 比率大于指定值的所有样本。
 
@@ -386,16 +373,6 @@ class SampleDAL(EntityDAL[Sample]):
             符合条件的样本列表。
         """
         actual_session: AsyncSession = session or self.session
-        query: Select = select(Sample).where(Sample.sharpe >= min_sharpe)
+        query: Select = select(AggregateData).where(AggregateData.sharpe >= min_sharpe)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
-
-
-class SampleCheckDAL(EntityDAL[Check]):
-    """
-    SampleCheck 数据访问层类，提供对 SampleCheck 实体的特定操作。
-
-    管理样本检查记录，支持通用的CRUD操作。
-    """
-
-    entity_class: Type[Check] = Check

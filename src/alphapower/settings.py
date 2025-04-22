@@ -63,7 +63,7 @@ class AppConfig(BaseSettings):
     log_dir: str = "./logs"
     log_file_max_bytes: int = 32 * 1024 * 1024  # 5 MB
     log_file_backup_count: int = 3
-    sql_echo: bool = False
+    sql_echo: bool = True
     environment: str = Environment.PROD.value
     credential: CredentialConfig = CredentialConfig()
 

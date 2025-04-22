@@ -22,17 +22,16 @@ from alphapower.dal.data import (
 )
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import (
+    AggregateData,
     Alpha,
     Category,
-    Check,
     Classification,
     Competition,
     DataField,
     Dataset,
+    Expression,
     Pyramid,
-    Regular,
     ResearchPaper,
-    Sample,
     Setting,
     SimulationTask,
     StatsData,
@@ -48,10 +47,10 @@ class DALRegistry:
     _dals: Dict[Type, Type[BaseDAL]] = {
         Alpha: AlphaDAL,
         Setting: SettingDAL,
-        Regular: RegularDAL,
+        Expression: RegularDAL,
         Classification: ClassificationDAL,
         Competition: CompetitionDAL,
-        Sample: SampleDAL,
+        AggregateData: SampleDAL,
         Check: SampleCheckDAL,
         Dataset: DatasetDAL,
         Category: CategoryDAL,

@@ -13,8 +13,8 @@ from alphapower.constants import (
     CheckRecordType,
     CorrelationType,
     RefreshPolicy,
-    SampleCheckResult,
-    SampleCheckType,
+    SubmissionCheckResult,
+    SubmissionCheckType,
 )
 from alphapower.dal.evaluate import (
     CheckRecordDAL,
@@ -51,7 +51,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
     def __init__(
         self,
         next_stage: Optional[AbstractEvaluateStage],
-        check_pass_result_map: Dict[SampleCheckType, Set[SampleCheckResult]],
+        check_pass_result_map: Dict[SubmissionCheckType, Set[SubmissionCheckResult]],
     ) -> None:
         super().__init__(next_stage)
         self._check_pass_result_map = check_pass_result_map
@@ -106,25 +106,25 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
             return False
 
         for check in alpha.in_sample.checks:
-            pass_result_set: Set[SampleCheckResult] = self._check_pass_result_map.get(
-                SampleCheckType(check.name), set()
+            pass_result_set: Set[SubmissionCheckResult] = self._check_pass_result_map.get(
+                SubmissionCheckType(check.name), set()
             )
 
             if (
-                check.name == SampleCheckType.MATCHES_PYRAMID.value
-                and check.result == SampleCheckResult.PASS
+                check.name == SubmissionCheckType.MATCHES_PYRAMID.value
+                and check.result == SubmissionCheckResult.PASS
             ):
                 record.pyramid_multiplier = (
                     check.multiplier if check.multiplier else 1.0
                 )
 
             if (
-                check.name == SampleCheckType.MATCHES_THEMES.value
-                and check.result == SampleCheckResult.PASS
+                check.name == SubmissionCheckType.MATCHES_THEMES.value
+                and check.result == SubmissionCheckResult.PASS
             ):
                 record.theme_multiplier = check.multiplier if check.multiplier else 1.0
 
-            if check.result == SampleCheckResult.FAIL:
+            if check.result == SubmissionCheckResult.FAIL:
                 await log.awarning(
                     "Alpha 对象的 in_sample 检查未通过",
                     emoji="❌",
@@ -134,7 +134,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 )
                 return False
 
-            if check.result == SampleCheckResult.PASS:
+            if check.result == SubmissionCheckResult.PASS:
                 await log.ainfo(
                     "Alpha 对象的 in_sample 检查通过",
                     emoji="✅",
@@ -1036,7 +1036,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
             return False
 
         for check in submission_check_view.in_sample.checks:
-            if check.result != SampleCheckResult.PASS:
+            if check.result != SubmissionCheckResult.PASS:
                 return False
 
         return True

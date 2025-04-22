@@ -15,7 +15,7 @@ from typing import Optional
 
 import asyncclick as click  # 替换为 asyncclick
 
-from alphapower.constants import Status
+from alphapower.constants import MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY, Status
 from alphapower.internal.logging import get_logger
 from alphapower.internal.storage import close_resources
 from alphapower.internal.utils import safe_async_run
@@ -145,12 +145,21 @@ async def datasets(
     "--increamental", is_flag=True, default=False, help="增量同步，默认为全量同步"
 )
 @click.option("--parallel", default=5, type=int, help="并行数 默认为5")
+@click.option("--dry_run", is_flag=True, default=False, help="仿真模式，默认为 False")
+@click.option(
+    "--max_count_per_loop",
+    default=MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
+    type=int,
+    help=f"每次循环的最大计数，默认为 {MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY}",
+)
 async def alphas(
     start_time: Optional[str],
     end_time: Optional[str],
     status: Optional[Status],
     increamental: bool = False,
     parallel: int = 5,
+    dry_run: bool = False,
+    max_count_per_loop: int = MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
 ) -> None:
     """
     同步因子。
@@ -210,6 +219,8 @@ async def alphas(
         status=Status(status) if status else None,
         increamental=increamental,
         parallel=parallel,
+        dry_run=dry_run,
+        max_count_per_loop=max_count_per_loop,
     )
     await logger.ainfo("因子同步完成。", emoji="✅")
 

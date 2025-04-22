@@ -1,0 +1,405 @@
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import AliasChoices, BaseModel, Field, TypeAdapter
+
+from alphapower.constants import (
+    Color,
+    Delay,
+    Grade,
+    InstrumentType,
+    Neutralization,
+    Region,
+    RegularLanguage,
+    Stage,
+    Status,
+    SubmissionCheckResult,
+    Switch,
+    UnitHandling,
+    Universe,
+)
+
+
+class CompetitionRefView(BaseModel):
+    id: str
+    name: str
+
+
+CompetitionRefViewListAdapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
+    List[CompetitionRefView],
+)
+
+
+class ClassificationRefView(BaseModel):
+    id: str
+    name: str
+
+
+ClassificationRefViewListAdapter: TypeAdapter[List[ClassificationRefView]] = (
+    TypeAdapter(
+        List[ClassificationRefView],
+    )
+)
+
+
+class ThemeRefView(BaseModel):
+    id: str
+    multiplier: float = Field(default=1.0)
+    name: str
+
+
+ThemeRefViewListAdapter: TypeAdapter[List[ThemeRefView]] = TypeAdapter(
+    List[ThemeRefView],
+)
+
+
+class PyramidRefView(BaseModel):
+    name: str
+    multiplier: float
+
+
+PyramidRefViewListAdapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
+    List[PyramidRefView],
+)
+
+
+class SubmissionCheckView(BaseModel):
+    name: str  # 已知的提交检查名称都定义在了 constants.py 中的 SubmissionCheckType 枚举值中
+    result: SubmissionCheckResult
+    limit: Optional[float] = None
+    value: Optional[float] = None
+    date: Optional[datetime] = None
+    competitions: Optional[List[CompetitionRefView]] = None
+    themes: Optional[List[ThemeRefView]] = None
+    message: Optional[str] = None
+    year: Optional[int] = None
+    pyramids: Optional[List[PyramidRefView]] = None
+    start_date: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("startDate", "start_date"),
+        serialization_alias="startDate",
+    )
+    end_date: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("endDate", "end_date"),
+        serialization_alias="endDate",
+    )
+    multiplier: Optional[float] = None
+
+
+SubmissionCheckViewListAdapter: TypeAdapter[List[SubmissionCheckView]] = TypeAdapter(
+    List[SubmissionCheckView],
+)
+
+
+class ExpressionView(BaseModel):
+    """常规信息。
+
+    表示常规Alpha信息，包括代码、描述和操作符计数。
+
+    Attributes:
+        code: Alpha或策略的代码。
+        description: Alpha或策略的描述，可选。
+        operator_count: Alpha中使用的操作符数量，可选。
+    """
+
+    code: str
+    description: Optional[str] = None
+    operator_count: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("operatorCount", "operator_count"),
+        serialization_alias="operatorCount",
+    )
+
+
+class AggregateDataView(BaseModel):
+    pnl: Optional[float] = None
+    book_size: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("bookSize", "book_size"),
+        serialization_alias="bookSize",
+    )
+    long_count: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("longCount", "long_count"),
+        serialization_alias="longCount",
+    )
+    short_count: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("shortCount", "short_count"),
+        serialization_alias="shortCount",
+    )
+    turnover: Optional[float] = None
+    returns: Optional[float] = None
+    drawdown: Optional[float] = None
+    margin: Optional[float] = None
+    sharpe: Optional[float] = None
+    fitness: Optional[float] = None
+    start_date: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("startDate", "start_date"),
+        serialization_alias="startDate",
+    )
+    checks: Optional[List[SubmissionCheckView]] = None
+    self_correlation: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("selfCorrelation", "self_correlation"),
+        serialization_alias="selfCorrelation",
+    )
+    prod_correlation: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("prodCorrelation", "prod_correlation"),
+        serialization_alias="prodCorrelation",
+    )
+    os_is_sharpe_ratio: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("osISSharpeRatio", "os_is_sharpe_ratio"),
+        serialization_alias="osISSharpeRatio",
+    )
+    pre_close_sharpe_ratio: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("preCloseSharpeRatio", "pre_close_sharpe_ratio"),
+        serialization_alias="preCloseSharpeRatio",
+    )
+
+
+class SimulationSettingsView(BaseModel):
+
+    nan_handling: Optional[Switch] = Field(
+        None,
+        validation_alias=AliasChoices("nanHandling", "nan_handling"),
+        serialization_alias="nanHandling",
+    )
+    instrument_type: Optional[InstrumentType] = Field(
+        None,
+        validation_alias=AliasChoices("instrumentType", "instrument_type"),
+        serialization_alias="instrumentType",
+    )
+    delay: Optional[Delay] = Delay.DEFAULT
+    universe: Optional[Universe] = None
+    truncation: Optional[float] = None
+    unit_handling: Optional[UnitHandling] = Field(
+        None,
+        validation_alias=AliasChoices("unitHandling", "unit_handling"),
+        serialization_alias="unitHandling",
+    )
+    test_period: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("testPeriod", "test_period"),
+        serialization_alias="testPeriod",
+    )
+    pasteurization: Optional[Switch] = None
+    region: Optional[Region] = None
+    language: Optional[RegularLanguage] = None
+    decay: Optional[int] = None
+    neutralization: Optional[Neutralization] = None
+    visualization: Optional[bool] = None
+    max_trade: Optional[Switch] = Field(
+        None,
+        validation_alias=AliasChoices("maxTrade", "max_trade"),
+        serialization_alias="maxTrade",
+    )
+
+
+class AlphaView(BaseModel):
+
+    id: str
+    type: str
+    author: str
+    settings: SimulationSettingsView
+    regular: Optional[ExpressionView] = None
+    combo: Optional[ExpressionView] = None
+    selection: Optional[ExpressionView] = None
+    date_created: datetime = Field(
+        validation_alias=AliasChoices("dateCreated", "date_created")
+    )
+    date_submitted: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("dateSubmitted", "date_submitted")
+    )
+    date_modified: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("dateModified", "date_modified")
+    )
+    name: Optional[str] = ""
+    favorite: bool = False
+    hidden: bool = False
+    color: Optional[Color] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    classifications: Optional[List[ClassificationRefView]] = None
+    grade: Optional[Grade] = None
+    stage: Optional[Stage] = None
+    status: Optional[Status] = None
+    in_sample: Optional[AggregateDataView] = Field(
+        default=None,
+        validation_alias=AliasChoices("is", "in_sample"),
+        serialization_alias="is",
+    )
+    out_sample: Optional[AggregateDataView] = Field(
+        default=None,
+        validation_alias=AliasChoices("os", "out_sample"),
+        serialization_alias="os",
+    )
+    train: Optional[AggregateDataView] = None
+    test: Optional[AggregateDataView] = None
+    prod: Optional[AggregateDataView] = None
+    competitions: Optional[List[CompetitionRefView]] = None
+    themes: Optional[List[str]] = None
+    pyramids: Optional[List[PyramidRefView]] = None
+    team: Optional[str] = None
+
+
+class AlphaDetailView(BaseModel):
+
+    id: str
+    type: str
+    author: str
+    settings: SimulationSettingsView
+    regular: Optional[ExpressionView] = None
+    selection: Optional[ExpressionView] = None
+    combo: Optional[ExpressionView] = None
+    date_created: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("dateCreated", "date_created")
+    )
+    date_submitted: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("dateSubmitted", "date_submitted")
+    )
+    date_modified: Optional[datetime] = Field(
+        default=None, validation_alias=AliasChoices("dateModified", "date_modified")
+    )
+    name: Optional[str] = None
+    favorite: bool = False
+    hidden: bool = False
+    color: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    classifications: Optional[List[ClassificationRefView]] = None
+    grade: Optional[str] = None
+    stage: Optional[str] = None
+    status: Optional[str] = None
+    in_sample: Optional["AlphaDetailView.Sample"] = Field(
+        default=None, validation_alias=AliasChoices("is", "in_sample")
+    )
+    out_sample: Optional["AlphaDetailView.Sample"] = Field(
+        default=None, validation_alias=AliasChoices("os", "out_sample")
+    )
+    train: Optional["AlphaDetailView.Sample"] = None
+    test: Optional["AlphaDetailView.Sample"] = None
+    prod: Optional["AlphaDetailView.Sample"] = None
+    competitions: Optional[List[CompetitionRefView]] = None
+    themes: Optional[List[str]] = None
+    pyramids: Optional[List[PyramidRefView]] = None
+    team: Optional[str] = None
+
+    class Sample(BaseModel):
+
+        investability_constrained: Optional[AggregateDataView] = Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "investabilityConstrained", "investability_constrained"
+            ),
+            serialization_alias="investabilityConstrained",
+        )
+        risk_neutralized: Optional[AggregateDataView] = Field(
+            default=None,
+            validation_alias=AliasChoices("riskNeutralized", "risk_neutralized"),
+            serialization_alias="riskNeutralized",
+        )
+        pnl: Optional[float] = None
+        book_size: Optional[float] = Field(
+            default=None,
+            validation_alias=AliasChoices("bookSize", "book_size"),
+            serialization_alias="bookSize",
+        )
+        long_count: Optional[int] = Field(
+            default=None,
+            validation_alias=AliasChoices("longCount", "long_count"),
+            serialization_alias="longCount",
+        )
+        short_count: Optional[int] = Field(
+            default=None,
+            validation_alias=AliasChoices("shortCount", "short_count"),
+            serialization_alias="shortCount",
+        )
+        turnover: Optional[float] = None
+        returns: Optional[float] = None
+        drawdown: Optional[float] = None
+        margin: Optional[float] = None
+        sharpe: Optional[float] = None
+        fitness: Optional[float] = None
+        start_date: Optional[datetime] = Field(
+            default=None,
+            validation_alias=AliasChoices("startDate", "start_date"),
+            serialization_alias="startDate",
+        )
+        checks: Optional[List[SubmissionCheckView]] = None
+        self_correlation: Optional[float] = Field(
+            default=None,
+            validation_alias=AliasChoices("selfCorrelation", "self_correlation"),
+            serialization_alias="selfCorrelation",
+        )
+        prod_correlation: Optional[float] = Field(
+            default=None,
+            validation_alias=AliasChoices("prodCorrelation", "prod_correlation"),
+            serialization_alias="prodCorrelation",
+        )
+        os_is_sharpe_ratio: Optional[float] = Field(
+            default=None,
+            validation_alias=AliasChoices("osISSharpeRatio", "os_is_sharpe_ratio"),
+            serialization_alias="osISSharpeRatio",
+        )
+        pre_close_sharpe_ratio: Optional[float] = Field(
+            default=None,
+            validation_alias=AliasChoices(
+                "preCloseSharpeRatio", "pre_close_sharpe_ratio"
+            ),
+            serialization_alias="preCloseSharpeRatio",
+        )
+
+
+class SelfAlphaListView(BaseModel):
+
+    count: int
+    next: Optional[str]
+    previous: Optional[str]
+    results: List[AlphaView]
+
+
+class SelfAlphaListQueryParams(BaseModel):
+
+    hidden: Optional[bool] = None
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+    order: Optional[str] = None
+    status_eq: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("status", "status_eq")
+    )
+    status_ne: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("status//!", "status_ne")
+    )
+    date_created_gt: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("dateCreated>", "date_created_gt")
+    )
+    date_created_lt: Optional[str] = Field(
+        default=None, validation_alias=AliasChoices("dateCreated<", "date_created_lt")
+    )
+
+    def to_params(self) -> dict:
+
+        params = {}
+        if self.hidden is not None:
+            params["hidden"] = "true" if self.hidden else "false"
+        if self.limit is not None:
+            params["limit"] = str(self.limit)
+        if self.offset is not None:
+            params["offset"] = str(self.offset)
+        if self.order is not None:
+            params["order"] = self.order
+        if self.status_eq is not None:
+            params["status"] = self.status_eq
+        if self.status_ne is not None:
+            params["status//!"] = self.status_ne
+        if self.date_created_gt is not None:
+            params["dateCreated>"] = self.date_created_gt
+        if self.date_created_lt is not None:
+            params["dateCreated<"] = self.date_created_lt
+        return params

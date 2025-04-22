@@ -14,7 +14,6 @@ __all__ = [
     "alphas_classifications",
     "alphas_competitions",
     "Category",
-    "Check",
     "CheckRecord",
     "ChecksBase",
     "Classification",
@@ -27,9 +26,9 @@ __all__ = [
     "EvaluateRecord",
     "Pyramid",
     "RecordSet",
-    "Regular",
+    "Expression",
     "ResearchPaper",
-    "Sample",
+    "AggregateData",
     "Setting",
     "SimulationBase",
     "SimulationTask",
@@ -46,15 +45,14 @@ from alphapower.settings import settings
 
 # Alpha 策略相关实体
 from .alphas import (
+    AggregateData,
     Alpha,
 )
 from .alphas import Base as AlphaBase
 from .alphas import (
-    Check,
     Classification,
     Competition,
-    Regular,
-    Sample,
+    Expression,
     Setting,
     alphas_classifications,
     alphas_competitions,

@@ -1,19 +1,3 @@
-"""
-同步因子数据模块。
-
-该模块提供了从 AlphaPower API 同步因子数据到数据库的功能，支持全量和增量同步。
-主要功能包括：
-1. 获取因子数据并处理（支持并行分片处理）。
-2. 将因子数据插入或更新到数据库。
-3. 支持因子分类和竞赛数据的关联处理。
-4. 提供日志记录，支持调试、信息、警告和错误级别的日志输出。
-
-模块特点：
-- 使用异步 IO 提高数据同步效率。
-- 支持通过信号处理器优雅地终止同步操作。
-- 提供详细的日志记录，便于问题排查和性能监控。
-"""
-
 import asyncio
 import gc
 import signal
@@ -25,16 +9,16 @@ from pydantic import TypeAdapter
 from structlog.stdlib import BoundLogger
 
 from alphapower.client import (
-    AlphaView,
-    ClassificationView,
-    PyramidRefView,
-    RegularView,
-    SelfAlphaListQueryParams,
-    SelfAlphaListView,
     WorldQuantClient,
     wq_client,
 )
-from alphapower.constants import Color, Database, Grade, Status
+from alphapower.constants import (
+    MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
+    Color,
+    Database,
+    Grade,
+    Status,
+)
 from alphapower.dal.alphas import (
     AlphaDAL,
     ClassificationDAL,
@@ -45,35 +29,33 @@ from alphapower.entity import (
     Alpha,
     Classification,
     Competition,
-    Regular,
+    Expression,
     Setting,
 )
 from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
+from alphapower.view.alpha import (
+    AlphaView,
+    ClassificationRefView,
+    ExpressionView,
+    PyramidRefView,
+    SelfAlphaListQueryParams,
+    SelfAlphaListView,
+)
 
 from .sync_competition import competition_data_expire_check, sync_competition
-from .utils import create_sample
+from .utils import create_aggregate_data
 
 
 class AlphaSyncService:
-    """
-    Alpha 同步服务类，提供因子数据的同步功能。
-    """
 
     def __init__(self) -> None:
-        """
-        初始化 AlphaSyncService 服务类。
-        """
+
         self.log: BoundLogger = get_logger(__name__)
         self.exit_event: asyncio.Event = asyncio.Event()
         self._db_lock: asyncio.Lock = asyncio.Lock()
 
     def setup_exit_signal_handler(self) -> None:
-        """
-        设置退出信号处理器。
-
-        在接收到退出信号时，执行资源清理操作并通知协程退出。
-        """
 
         def handle_exit_signal(signum: int, _: Optional[types.FrameType]) -> None:
             self.log.warning(
@@ -89,18 +71,7 @@ class AlphaSyncService:
         signal.signal(signal.SIGTERM, handle_exit_signal)  # 处理终止信号
 
     def create_alphas_settings(self, alpha_data: AlphaView) -> Setting:
-        """
-        创建 AlphaSettings 实例。
 
-        参数:
-            alpha_data: 包含因子设置信息的数据对象。
-
-        返回:
-            创建的因子设置实例。
-
-        异常:
-            AttributeError: 如果 alpha_data 中缺少必要的字段。
-        """
         try:
             return Setting(
                 instrument_type=alpha_data.settings.instrument_type,
@@ -120,43 +91,27 @@ class AlphaSyncService:
         except AttributeError as e:
             raise AttributeError(f"因子数据缺少必要字段: {e}") from e
 
-    def create_alphas_regular(
-        self, regular_view: Optional[RegularView]
-    ) -> Optional[Regular]:
-        """
-        创建 AlphaRegular 实例。
+    def create_expression(
+        self, expression_view: Optional[ExpressionView]
+    ) -> Optional[Expression]:
 
-        参数:
-            regular: 包含因子规则详细信息的对象。
-
-        返回:
-            创建的因子规则实例。
-        """
-        if regular_view is None:
+        if expression_view is None:
             return None
 
-        regular: Regular = Regular(
-            code=regular_view.code,
-            description=regular_view.description,
-            operator_count=regular_view.operator_count,
+        expression: Expression = Expression(
+            code=expression_view.code,
+            description=expression_view.description,
+            operator_count=expression_view.operator_count,
         )
 
-        return regular
+        return expression
 
     async def create_alpha_classifications(
         self,
         classification_dal: ClassificationDAL,
-        classifications_data: Optional[List[ClassificationView]],
+        classifications_data: Optional[List[ClassificationRefView]],
     ) -> List[Classification]:
-        """
-        创建或获取 Classification 实例列表。
 
-        参数:
-            classifications_data: 分类数据列表。
-
-        返回:
-            Classification 实例列表。
-        """
         if classifications_data is None:
             return []
 
@@ -179,25 +134,12 @@ class AlphaSyncService:
         self,
         alpha_data: AlphaView,
         settings: Setting,
-        regular: Optional[Regular],
-        combo: Optional[Regular],
-        selection: Optional[Regular],
+        regular: Optional[Expression],
+        combo: Optional[Expression],
+        selection: Optional[Expression],
         classifications: List[Classification],
         competitions: List[Competition],
     ) -> Alpha:
-        """
-        创建 Alpha 实例。
-
-        参数:
-            alpha_data: 包含因子详细信息的对象。
-            settings: 因子设置实例。
-            regular: 因子规则实例。
-            classifications: 分类实例列表。
-            competitions: 比赛实例列表。
-
-        返回:
-            创建的 Alpha 实例。
-        """
 
         pyramids_adapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
             List[PyramidRefView]
@@ -223,11 +165,11 @@ class AlphaSyncService:
             grade=alpha_data.grade if alpha_data.grade else Grade.DEFAULT,
             stage=alpha_data.stage,
             status=alpha_data.status,
-            in_sample=create_sample(alpha_data.in_sample),
-            out_sample=create_sample(alpha_data.out_sample),
-            train=create_sample(alpha_data.train),
-            test=create_sample(alpha_data.test),
-            prod=create_sample(alpha_data.prod),
+            in_sample=create_aggregate_data(alpha_data.in_sample),
+            out_sample=create_aggregate_data(alpha_data.out_sample),
+            train=create_aggregate_data(alpha_data.train),
+            test=create_aggregate_data(alpha_data.test),
+            prod=create_aggregate_data(alpha_data.prod),
             competitions=competitions,
             classifications=classifications,
             themes=",".join(alpha_data.themes) if alpha_data.themes else None,
@@ -242,15 +184,7 @@ class AlphaSyncService:
     async def fetch_last_sync_time_range(
         self, client: WorldQuantClient
     ) -> Tuple[datetime, datetime]:
-        """
-        获取上次同步的时间范围。
 
-        参数:
-            client: WorldQuantClient 客户端实例。
-
-        返回:
-            上次同步的开始和结束时间。
-        """
         await self.log.adebug(
             "进入 fetch_last_sync_time_range 函数", client=str(client), emoji="🔍"
         )
@@ -316,15 +250,7 @@ class AlphaSyncService:
         competition_dal: CompetitionDAL,
         classification_dal: ClassificationDAL,
     ) -> Tuple[List[Alpha], int, int]:
-        """
-        异步处理单页 alphas 数据。
 
-        参数:
-            alphas_results: 要处理的因子数据列表。
-
-        返回:
-            插入和更新的因子数量元组。
-        """
         inserted_alphas: int = 0
         updated_alphas: int = 0
         uncommitted_alphas: List[Alpha] = []
@@ -354,13 +280,13 @@ class AlphaSyncService:
                     raise RuntimeError("退出事件触发，停止处理因子页面。")
                 try:
                     settings: Setting = self.create_alphas_settings(alpha_data)
-                    regular: Optional[Regular] = self.create_alphas_regular(
+                    regular: Optional[Expression] = self.create_expression(
                         alpha_data.regular
                     )
-                    combo: Optional[Regular] = self.create_alphas_regular(
+                    combo: Optional[Expression] = self.create_expression(
                         alpha_data.combo
                     )
-                    selection: Optional[Regular] = self.create_alphas_regular(
+                    selection: Optional[Expression] = self.create_expression(
                         alpha_data.selection
                     )
 
@@ -420,19 +346,10 @@ class AlphaSyncService:
         end_time: datetime,
         status: Optional[Status],
         parallel: int,
+        dry_run: bool,
+        max_count_per_loop: int = MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
     ) -> Tuple[int, int, int]:
-        """
-        同步处理指定日期的 alphas 数据，支持分片并行处理。
 
-        参数:
-            client: WorldQuantClient 客户端实例
-            start_time: 开始时间
-            end_time: 结束时间
-            parallel: 并行处理任务数
-
-        返回:
-            获取、插入和更新的因子数量元组
-        """
         fetched_alphas: int = 0
         inserted_alphas: int = 0
         updated_alphas: int = 0
@@ -464,7 +381,9 @@ class AlphaSyncService:
                     query=query_params
                 )
 
-                if alphas_data_result.count < 10000:
+                if alphas_data_result.count < min(
+                    max_count_per_loop, MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY
+                ):
                     await self.log.ainfo(
                         "获取日期范围数据",
                         cur_time=cur_time,
@@ -535,31 +454,42 @@ class AlphaSyncService:
                             inserted_alphas += inserted
                             updated_alphas += updated
 
-                            async with self._db_lock:
+                            if dry_run:
                                 await self.log.ainfo(
-                                    "写入因子数据",
+                                    "干运行模式，跳过数据写入",
                                     start_time=start_time,
                                     end_time=end_time,
                                     cur_time=cur_time,
                                     truncated_end_time=truncated_end_time,
                                     count=len(uncommitted_alphas),
-                                    emoji="🔄",
+                                    emoji="🛠️",
                                 )
+                            else:
+                                async with self._db_lock:
+                                    await self.log.ainfo(
+                                        "写入因子数据",
+                                        start_time=start_time,
+                                        end_time=end_time,
+                                        cur_time=cur_time,
+                                        truncated_end_time=truncated_end_time,
+                                        count=len(uncommitted_alphas),
+                                        emoji="🔄",
+                                    )
 
-                                await alpha_dal.bulk_upsert_by_unique_key(
-                                    uncommitted_alphas, unique_key="alpha_id"
-                                )
-                                await alpha_dal.session.commit()
+                                    await alpha_dal.bulk_upsert_by_unique_key(
+                                        uncommitted_alphas, unique_key="alpha_id"
+                                    )
+                                    await alpha_dal.session.commit()
 
-                                await self.log.ainfo(
-                                    "因子数据写入完成",
-                                    start_time=start_time,
-                                    end_time=end_time,
-                                    cur_time=cur_time,
-                                    truncated_end_time=truncated_end_time,
-                                    count=len(uncommitted_alphas),
-                                    emoji="✅",
-                                )
+                                    await self.log.ainfo(
+                                        "因子数据写入完成",
+                                        start_time=start_time,
+                                        end_time=end_time,
+                                        cur_time=cur_time,
+                                        truncated_end_time=truncated_end_time,
+                                        count=len(uncommitted_alphas),
+                                        emoji="✅",
+                                    )
 
                     cur_time = truncated_end_time
                     truncated_end_time = end_time
@@ -607,20 +537,7 @@ class AlphaSyncService:
         competition_dal: CompetitionDAL,
         classification_dal: ClassificationDAL,
     ) -> Tuple[List[Alpha], int, int, int]:
-        """
-        处理指定页范围内的 alphas 数据。
 
-        参数:
-            client: WorldQuantClient 客户端实例
-            start_time: 开始时间
-            end_time: 结束时间
-            start_page: 起始页码
-            end_page: 结束页码
-            page_size: 每页大小
-
-        返回:
-            获取、插入和更新的因子数量元组
-        """
         fetched_alphas: int = 0
         inserted_alphas: int = 0
         updated_alphas: int = 0
@@ -686,16 +603,10 @@ class AlphaSyncService:
         status: Optional[Status] = None,
         increamental: bool = False,
         parallel: int = 1,
+        dry_run: bool = False,
+        max_count_per_loop: int = MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
     ) -> None:
-        """
-        异步同步因子。
 
-        参数:
-            start_time: 开始时间。
-            end_time: 结束时间。
-            increamental: 是否增量同步。
-            parallel: 并行任务数。
-        """
         if increamental:
             async with wq_client:
                 sync_time_range: Tuple[datetime, datetime] = (
@@ -770,6 +681,8 @@ class AlphaSyncService:
                             end_time=cur_end_time,
                             status=status,
                             parallel=parallel,
+                            dry_run=dry_run,
+                            max_count_per_loop=max_count_per_loop,
                         )
                     )
                 await self.log.ainfo(

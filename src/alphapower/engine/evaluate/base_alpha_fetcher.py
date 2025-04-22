@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from alphapower import constants  # 导入常量模块
 from alphapower.constants import AlphaType, Delay, Region, Stage
 from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
-from alphapower.entity import Alpha, Sample, Setting
+from alphapower.entity import AggregateData, Alpha, Setting
 from alphapower.internal.logging import get_logger
 
 from .alpha_fetcher_abc import AbstractAlphaFetcher
@@ -89,9 +89,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
             .join(Alpha.in_sample)  # 连接到 Alpha 的样本内数据
             .options(
                 selectinload(Alpha.settings),  # 预加载设置
-                selectinload(Alpha.in_sample).selectinload(
-                    Sample.checks
-                ),  # 预加载样本内数据
+                selectinload(Alpha.in_sample),  # 预加载样本内数据
             )
         )
 
@@ -100,8 +98,8 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         criteria: List[ColumnExpressionArgument] = [
             Alpha.stage == Stage.IS,
             # Sample 相关条件 (通用)
-            Sample.turnover > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
-            Sample.turnover < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
+            AggregateData.turnover > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
+            AggregateData.turnover < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
             # 区域和延迟相关的条件 (使用 case 语句)
             case(
                 (
@@ -110,18 +108,18 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                         (
                             Setting.delay == Delay.ZERO,  # 延迟为 0
                             and_(
-                                Sample.sharpe
+                                AggregateData.sharpe
                                 > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_0,
-                                Sample.fitness
+                                AggregateData.fitness
                                 > constants.CONSULTANT_FITNESS_THRESHOLD_DELAY_0,
                             ),
                         ),
                         (
                             Setting.delay == Delay.ONE,  # 延迟为 1
                             and_(
-                                Sample.sharpe
+                                AggregateData.sharpe
                                 > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_1,
-                                Sample.fitness
+                                AggregateData.fitness
                                 > constants.CONSULTANT_FITNESS_THRESHOLD_DELAY_1,
                             ),
                         ),
@@ -133,28 +131,28 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                     (
                         Setting.delay == Delay.ZERO,  # 延迟为 0
                         and_(
-                            Sample.sharpe
+                            AggregateData.sharpe
                             > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_0,
-                            Sample.returns
+                            AggregateData.returns
                             > (
                                 constants.CONSULTANT_CHN_RETURNS_MIN_PERCENT_DELAY_0
                                 / 100.0
                             ),
-                            Sample.fitness
+                            AggregateData.fitness
                             >= constants.CONSULTANT_CHN_FITNESS_THRESHOLD_DELAY_0,
                         ),
                     ),
                     (
                         Setting.delay == Delay.ONE,  # 延迟为 1
                         and_(
-                            Sample.sharpe
+                            AggregateData.sharpe
                             > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_1,
-                            Sample.returns
+                            AggregateData.returns
                             > (
                                 constants.CONSULTANT_CHN_RETURNS_MIN_PERCENT_DELAY_1
                                 / 100.0
                             ),
-                            Sample.fitness
+                            AggregateData.fitness
                             >= constants.CONSULTANT_CHN_FITNESS_THRESHOLD_DELAY_1,
                         ),
                     ),
@@ -166,11 +164,11 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 (
                     Alpha.type == AlphaType.SUPER,  # 如果是超级 Alpha
                     and_(
-                        Sample.turnover
+                        AggregateData.turnover
                         >= (
                             constants.CONSULTANT_SUPERALPHA_TURNOVER_MIN_PERCENT / 100.0
                         ),
-                        Sample.turnover
+                        AggregateData.turnover
                         < (
                             constants.CONSULTANT_SUPERALPHA_TURNOVER_MAX_PERCENT / 100.0
                         ),

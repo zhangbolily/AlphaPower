@@ -32,11 +32,14 @@ from alphapower.constants import (
     CorrelationType,
 )
 from alphapower.internal.logging import get_logger
+from alphapower.view.alpha import (
+    AlphaDetailView,
+    SelfAlphaListView,
+)
 
 from .checks_view import BeforeAndAfterPerformanceView, SubmissionCheckResultView
 from .common_view import TableView
 from .models import (
-    AlphaDetailView,
     AlphaPropertiesPayload,
     AuthenticationView,
     CompetitionListView,
@@ -48,7 +51,6 @@ from .models import (
     MultiSimulationResultView,
     Operators,
     RateLimit,
-    SelfAlphaListView,
     SelfSimulationActivitiesView,
     SimulationProgressView,
     SingleSimulationResultView,

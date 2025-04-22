@@ -36,7 +36,7 @@ from alphapower.dal.base import (
     BaseDAL,
     DALFactory,
 )
-from alphapower.entity import Alpha, Regular, Setting
+from alphapower.entity import Alpha, Expression, Setting
 from alphapower.internal.db_session import get_db_session
 
 
@@ -132,10 +132,10 @@ class TestBaseDAL:
         """
         # 创建测试数据
         regular_dal = RegularDAL(alphas_session)
-        regular1: Regular = Regular(
+        regular1: Expression = Expression(
             code="x = close(0)", description="收盘价", operator_count=1
         )
-        regular2: Regular = Regular(
+        regular2: Expression = Expression(
             code="x = open(0)", description="开盘价", operator_count=1
         )
         alphas_session.add_all([regular1, regular2])
@@ -258,7 +258,7 @@ class TestBaseDAL:
         regular_dal = RegularDAL(alphas_session)
 
         # 创建测试数据
-        regular: Regular = Regular(
+        regular: Expression = Expression(
             code="x = (high(0) + low(0)) / 2",
             description="中间价",
             operator_count=5,
@@ -422,7 +422,7 @@ class TestBaseDAL:
 
         # 创建测试数据
         regulars = [
-            Regular(
+            Expression(
                 code=f"batch_code_{i}", description="批量更新测试", operator_count=i
             )
             for i in range(1, 4)
@@ -456,7 +456,7 @@ class TestBaseDAL:
 
         # 创建测试数据
         regulars = [
-            Regular(
+            Expression(
                 code=f"delete_test_{i}", description="批量删除测试", operator_count=i
             )
             for i in range(1, 4)
@@ -485,7 +485,7 @@ class TestBaseDAL:
 
         # 创建测试数据
         regulars = [
-            Regular(
+            Expression(
                 code=f"count_test_{i}", description=f"测试描述_{i}", operator_count=i
             )
             for i in range(1, 4)
@@ -755,4 +755,4 @@ class TestDALFactory:
         regular_dal = DALFactory.create_dal(RegularDAL, alphas_session)
         assert isinstance(regular_dal, RegularDAL)
         assert regular_dal.session is alphas_session
-        assert regular_dal.entity_type is Regular
+        assert regular_dal.entity_type is Expression
