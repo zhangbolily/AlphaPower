@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
@@ -10,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    event,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -27,9 +30,17 @@ from alphapower.constants import (
     Color,
     CompetitionScoring,
     CompetitionStatus,
+    Delay,
     Grade,
+    InstrumentType,
+    Neutralization,
+    Region,
+    RegularLanguage,
     Stage,
     Status,
+    Switch,
+    UnitHandling,
+    Universe,
 )
 from alphapower.view.alpha import (
     ClassificationRefView,
@@ -39,7 +50,6 @@ from alphapower.view.alpha import (
     ExpressionView,
     PyramidRefView,
     PyramidRefViewListAdapter,
-    SettingsView,
     SubmissionCheckView,
     SubmissionCheckViewListAdapter,
 )
@@ -289,6 +299,46 @@ class Alpha(Base):
     status: MappedColumn[Status] = mapped_column(
         Enum(Status), nullable=False, default=Status.DEFAULT
     )
+
+    # 因子模拟配置数据，拍平存储到这张表里
+    language: MappedColumn[RegularLanguage] = mapped_column(
+        Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
+    )
+    test_period: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    decay: MappedColumn[int] = mapped_column(Integer, nullable=False)
+    truncation: MappedColumn[float] = mapped_column(Float, nullable=False)
+    visualization: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
+    instrument_type: MappedColumn[InstrumentType] = mapped_column(
+        Enum(InstrumentType), nullable=False, default=InstrumentType.DEFAULT
+    )
+    region: MappedColumn[Region] = mapped_column(
+        Enum(Region), nullable=False, default=Region.DEFAULT
+    )
+    universe: MappedColumn[Universe] = mapped_column(
+        Enum(Universe), nullable=False, default=Universe.DEFAULT
+    )
+    delay: MappedColumn[Delay] = mapped_column(
+        Enum(Delay), nullable=False, default=Delay.DEFAULT
+    )
+    neutralization: MappedColumn[Neutralization] = mapped_column(
+        Enum(Neutralization), nullable=False, default=Neutralization.DEFAULT
+    )
+    pasteurization: MappedColumn[Switch] = mapped_column(
+        Enum(Switch), nullable=False, default=Switch.DEFAULT
+    )
+    unit_handling: MappedColumn[UnitHandling] = mapped_column(
+        Enum(UnitHandling), nullable=False, default=UnitHandling.DEFAULT
+    )
+    nan_handling: MappedColumn[Switch] = mapped_column(
+        Enum(Switch), nullable=False, default=Switch.DEFAULT
+    )
+    max_trade: MappedColumn[Optional[Switch]] = mapped_column(
+        Enum(Switch), nullable=True, default=Switch.DEFAULT
+    )
+    # 配置数据结束
+
+    signature: MappedColumn[str] = mapped_column(String(32), nullable=False, index=True)
+
     date_created: MappedColumn[datetime] = mapped_column(DateTime, nullable=False)
     date_submitted: MappedColumn[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
@@ -351,7 +401,6 @@ class Alpha(Base):
         lazy="joined",
         cascade="all",
     )
-    _settings: MappedColumn[JSON] = mapped_column(JSON, nullable=True, name="settings")
     _regular: MappedColumn[JSON] = mapped_column(JSON, nullable=True, name="regular")
     _combo: MappedColumn[JSON] = mapped_column(JSON, nullable=True, name="combo")
     _selection: MappedColumn[JSON] = mapped_column(
@@ -370,7 +419,6 @@ class Alpha(Base):
 
     def __init__(self, **kwargs: Any) -> None:
 
-        settings: Optional[SettingsView] = kwargs.pop("settings", None)
         regular: Optional[ExpressionView] = kwargs.pop("regular", None)
         combo: Optional[ExpressionView] = kwargs.pop("combo", None)
         selection: Optional[ExpressionView] = kwargs.pop("selection", None)
@@ -391,10 +439,6 @@ class Alpha(Base):
                     [tag.strip() if isinstance(tag, str) else str(tag) for tag in tags],
                 )
             )
-
-        if settings is not None:
-            self._settings = cast(Any, settings.model_dump(mode="json"))
-            self._settings_view_cache: Optional[SettingsView] = settings
 
         if regular is not None:
             self._regular = cast(Any, regular.model_dump(mode="json"))
@@ -434,42 +478,16 @@ class Alpha(Base):
             )
 
     @hybrid_property
-    def settings(self) -> SettingsView:
-
-        if self._settings is None:
-            return SettingsView()
-
-        if self._settings_view_cache is not None:
-            return self._settings_view_cache
-        settings: SettingsView = SettingsView.model_validate(self._settings)
-        if settings is None:
-            return SettingsView()
-
-        # 缓存设置
-        self._settings_view_cache = settings
-        return settings
-
-    @settings.setter  # type: ignore[no-redef]
-    def settings(self, value: Optional[SettingsView]) -> None:
-
-        if value is None:
-            self._settings = None
-            self._settings_view_cache = None
-        else:
-            self._settings = value.model_dump(mode="json")
-            self._settings_view_cache = value
-
-    @hybrid_property
-    def regular(self) -> ExpressionView:
+    def regular(self) -> Optional[ExpressionView]:
 
         if self._regular is None:
-            return ExpressionView()
+            return None
 
         if self._regular_view_cache is not None:
             return self._regular_view_cache
         regular: ExpressionView = ExpressionView.model_validate(self._regular)
         if regular is None:
-            return ExpressionView()
+            return None
 
         self._regular_view_cache = regular
         return regular
@@ -485,15 +503,15 @@ class Alpha(Base):
             self._regular_view_cache = value
 
     @hybrid_property
-    def combo(self) -> ExpressionView:
+    def combo(self) -> Optional[ExpressionView]:
         if self._combo is None:
-            return ExpressionView()
+            return None
 
         if self._combo_view_cache is not None:
             return self._combo_view_cache
         combo: ExpressionView = ExpressionView.model_validate(self._combo)
         if combo is None:
-            return ExpressionView()
+            return None
 
         self._combo_view_cache = combo
         return combo
@@ -508,15 +526,15 @@ class Alpha(Base):
             self._combo_view_cache = value
 
     @hybrid_property
-    def selection(self) -> ExpressionView:
+    def selection(self) -> Optional[ExpressionView]:
         if self._selection is None:
-            return ExpressionView()
+            return None
 
         if self._selection_view_cache is not None:
             return self._selection_view_cache
         selection: ExpressionView = ExpressionView.model_validate(self._selection)
         if selection is None:
-            return ExpressionView()
+            return None
 
         # 缓存选择
         self._selection_view_cache = selection
@@ -667,3 +685,85 @@ class Alpha(Base):
         if tag.strip() in current_tags:
             current_tags.remove(tag.strip())
             self.tags = current_tags  # type: ignore[method-assign]
+
+
+@event.listens_for(Alpha, "before_insert")
+@event.listens_for(Alpha, "before_update")
+def generate_signature(
+    mapper: Any,  # pylint: disable=unused-argument
+    connection: Any,  # pylint: disable=unused-argument
+    target: "Alpha",
+) -> None:
+    target.signature = get_alpha_signature(
+        target.regular,
+        target.combo,
+        target.selection,
+        target.region,
+        target.delay,
+        target.language,
+        target.instrument_type,
+        target.universe,
+        target.truncation,
+        target.unit_handling,
+        target.test_period,
+        target.pasteurization,
+        target.decay,
+        target.neutralization,
+        target.visualization,
+        target.max_trade,
+    )
+
+
+def get_alpha_signature(
+    regular: Optional[ExpressionView],
+    combo: Optional[ExpressionView],
+    selection: Optional[ExpressionView],
+    region: Region,
+    delay: Delay,
+    language: RegularLanguage,
+    instrument_type: InstrumentType,
+    universe: Universe,
+    truncation: Optional[float],
+    unit_handling: UnitHandling,
+    test_period: Optional[str],
+    pasteurization: Switch,
+    decay: int,
+    neutralization: Neutralization,
+    visualization: bool,
+    max_trade: Optional[Switch],
+) -> str:
+    features_dict: Dict[str, Any] = {
+        "regular": regular,
+        "combo": combo,
+        "selection": selection,
+        "region": region,
+        "delay": delay,
+        "language": language,
+        "instrument_type": instrument_type,
+        "universe": universe,
+        "truncation": truncation,
+        "unit_handling": unit_handling,
+        "test_period": test_period,
+        "pasteurization": pasteurization,
+        "decay": decay,
+        "neutralization": neutralization,
+        "visualization": visualization,
+        "max_trade": max_trade,
+    }
+    # 过滤掉值为 None 的键值对
+    filtered_features = {
+        k: v
+        for k, v in features_dict.items()
+        if v is not None and (not isinstance(v, str) or v.strip())
+    }
+    # 将过滤后的字典转换为字符串
+    features_str = json.dumps(
+        filtered_features,
+        sort_keys=True,
+        default=lambda x: (
+            x.model_dump(mode="json") if hasattr(x, "model_dump") else str(x)
+        ),
+    )
+    # 生成 MD5 哈希值
+    signature: str = hashlib.md5(features_str.encode("utf-8")).hexdigest()
+    return signature

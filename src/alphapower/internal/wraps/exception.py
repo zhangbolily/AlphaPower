@@ -52,7 +52,7 @@ def exception_handler(func: T) -> T:
     async def wrapper(*args: Any, **kwargs: Any) -> Awaitable[Any]:
         retry_count: int = 0
         max_retries: int = 6
-        wait_time: int = 5  # 5S
+        wait_time: int = 30  # 5S
         func_name: str = func.__name__
 
         # 记录函数调用的 DEBUG 日志

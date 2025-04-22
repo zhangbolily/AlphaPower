@@ -70,10 +70,25 @@ class AlphaSyncService:
                 alpha_id=alpha_view.id,
                 type=alpha_view.type,
                 author=alpha_view.author,
-                settings=alpha_view.settings,
                 regular=alpha_view.regular,
                 combo=alpha_view.combo,
                 selection=alpha_view.selection,
+                # 因子模拟配置
+                language=alpha_view.settings.language,
+                test_period=alpha_view.settings.test_period,
+                decay=alpha_view.settings.decay,
+                truncation=alpha_view.settings.truncation,
+                visualization=alpha_view.settings.visualization,
+                instrument_type=alpha_view.settings.instrument_type,
+                region=alpha_view.settings.region,
+                universe=alpha_view.settings.universe,
+                delay=alpha_view.settings.delay,
+                neutralization=alpha_view.settings.neutralization,
+                pasteurization=alpha_view.settings.pasteurization,
+                unit_handling=alpha_view.settings.unit_handling,
+                nan_handling=alpha_view.settings.nan_handling,
+                max_trade=alpha_view.settings.max_trade,
+                # 因子模拟配置结束
                 date_created=alpha_view.date_created,
                 date_submitted=alpha_view.date_submitted,
                 date_modified=alpha_view.date_modified,
@@ -307,8 +322,8 @@ class AlphaSyncService:
 
                             tasks.append(task)
 
-                        results: List[Tuple[List[Alpha], int, int, int]] = (
-                            await asyncio.gather(*tasks)
+                        results: List[Tuple[List[Alpha], int]] = await asyncio.gather(
+                            *tasks
                         )
 
                         for (
@@ -549,14 +564,17 @@ class AlphaSyncService:
                             max_count_per_loop=max_count_per_loop,
                         )
                     )
-                await self.log.ainfo(
-                    "因子同步完成",
-                    fetched=fetched_alphas,
-                    inserted=inserted_alphas,
-                    updated=updated_alphas,
-                    module=__name__,
-                    emoji="✅",
-                )
+                    await self.log.ainfo(
+                        "处理时间范围完成",
+                        start_time=cur_start_time,
+                        end_time=cur_end_time,
+                        fetched=fetched_alphas,
+                        inserted=inserted_alphas,
+                        updated=updated_alphas,
+                        module=__name__,
+                        emoji="✅",
+                    )
+
             except ValueError as ve:
                 await self.log.aerror(
                     "参数错误，无法同步因子",
