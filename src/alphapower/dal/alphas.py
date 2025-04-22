@@ -14,10 +14,7 @@ from alphapower.dal.base import EntityDAL
 from alphapower.entity.alphas import (
     AggregateData,
     Alpha,
-    Classification,
     Competition,
-    Expression,
-    Setting,
 )
 
 
@@ -105,54 +102,6 @@ class AlphaDAL(EntityDAL[Alpha]):
         """
         return await self.find_by(session=session, author=author, favorite=True)
 
-    async def find_by_classification(
-        self, classification_id: str, session: Optional[AsyncSession] = None
-    ) -> List[Alpha]:
-        """
-        查询属于特定分类的所有 Alpha。
-
-        通过分类ID查找所有关联的Alpha模型，使用连接查询实现。
-
-        Args:
-            classification_id: 分类 ID 字符串。
-            session: 可选的会话对象，若提供则优先使用。
-
-        Returns:
-            符合条件的 Alpha 列表。
-        """
-        actual_session: AsyncSession = session or self.session
-        query: Select = (
-            select(Alpha)
-            .join(Alpha.classifications)
-            .where(Classification.classification_id == classification_id)
-        )
-        result = await actual_session.execute(query)
-        return list(result.scalars().all())
-
-    async def find_by_competition(
-        self, competition_id: str, session: Optional[AsyncSession] = None
-    ) -> List[Alpha]:
-        """
-        查询参与特定比赛的所有 Alpha。
-
-        通过比赛ID查找所有参与的Alpha模型，使用连接查询实现。
-
-        Args:
-            competition_id: 比赛 ID 字符串。
-            session: 可选的会话对象，若提供则优先使用。
-
-        Returns:
-            符合条件的 Alpha 列表。
-        """
-        actual_session: AsyncSession = session or self.session
-        query: Select = (
-            select(Alpha)
-            .join(Alpha.competitions)
-            .where(Competition.competition_id == competition_id)
-        )
-        result = await actual_session.execute(query)
-        return list(result.scalars().all())
-
     async def upsert(
         self,
         entity: Alpha,
@@ -236,12 +185,6 @@ class AlphaDAL(EntityDAL[Alpha]):
         # 更新引用字段的 ID
         if existing_entity.id:
             new_entity.id = existing_entity.id
-        if existing_entity.regular_id and new_entity.regular:
-            new_entity.regular.id = existing_entity.regular_id
-        if existing_entity.combo_id and new_entity.combo:
-            new_entity.combo.id = existing_entity.combo_id
-        if existing_entity.selection_id and new_entity.selection:
-            new_entity.selection.id = existing_entity.selection_id
         if existing_entity.in_sample_id and new_entity.in_sample:
             new_entity.in_sample.id = existing_entity.in_sample_id
         if existing_entity.out_sample_id and new_entity.out_sample:
@@ -252,75 +195,6 @@ class AlphaDAL(EntityDAL[Alpha]):
             new_entity.train.id = existing_entity.train_id
         if existing_entity.prod_id and new_entity.prod:
             new_entity.prod.id = existing_entity.prod_id
-
-
-class SettingDAL(EntityDAL[Setting]):
-    """
-    Setting 数据访问层类，提供对 Setting 实体的特定操作。
-
-    管理Alpha相关的设置信息，支持通用的CRUD操作。
-    """
-
-    entity_class: Type[Setting] = Setting
-
-
-class RegularDAL(EntityDAL[Expression]):
-    """
-    Regular 数据访问层类，提供对 Regular 实体的特定操作。
-
-    管理Alpha规则相关的数据访问，包括规则查询和代码分析。
-    """
-
-    entity_class: Type[Expression] = Expression
-
-    async def find_similar_code(
-        self, code_fragment: str, session: Optional[AsyncSession] = None
-    ) -> List[Expression]:
-        """
-        查询包含特定代码片段的所有规则。
-
-        此方法用于代码相似性分析，可帮助识别重复或相似的规则代码。
-
-        Args:
-            code_fragment: 要搜索的代码片段。
-            session: 可选的会话对象，若提供则优先使用。
-
-        Returns:
-            符合条件的规则列表。
-        """
-        actual_session: AsyncSession = session or self.session
-        query: Select = select(Expression).where(
-            Expression.code.contains(code_fragment)
-        )
-        result = await actual_session.execute(query)
-        return list(result.scalars().all())
-
-
-class ClassificationDAL(EntityDAL[Classification]):
-    """
-    Classification 数据访问层类，提供对 Classification 实体的特定操作。
-
-    管理Alpha分类相关的数据访问，支持通过ID查询分类信息。
-    """
-
-    entity_class: Type[Classification] = Classification
-
-    async def find_by_classification_id(
-        self, classification_id: str, session: Optional[AsyncSession] = None
-    ) -> Optional[Classification]:
-        """
-        通过 classification_id 查询分类。
-
-        Args:
-            classification_id: 分类的唯一标识符。
-            session: 可选的会话对象，若提供则优先使用。
-
-        Returns:
-            找到的分类实体，若不存在则返回None。
-        """
-        return await self.find_one_by(
-            session=session, classification_id=classification_id
-        )
 
 
 class CompetitionDAL(EntityDAL[Competition]):
@@ -348,7 +222,7 @@ class CompetitionDAL(EntityDAL[Competition]):
         return await self.find_one_by(session=session, competition_id=competition_id)
 
 
-class SampleDAL(EntityDAL[AggregateData]):
+class AggregateDataDAL(EntityDAL[AggregateData]):
     """
     Sample 数据访问层类，提供对 Sample 实体的特定操作。
 

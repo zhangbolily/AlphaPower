@@ -163,7 +163,7 @@ class AggregateDataView(BaseModel):
     )
 
 
-class SimulationSettingsView(BaseModel):
+class SettingsView(BaseModel):
 
     nan_handling: Optional[Switch] = Field(
         None,
@@ -206,7 +206,7 @@ class AlphaView(BaseModel):
     id: str
     type: str
     author: str
-    settings: SimulationSettingsView
+    settings: SettingsView
     regular: Optional[ExpressionView] = None
     combo: Optional[ExpressionView] = None
     selection: Optional[ExpressionView] = None
@@ -253,7 +253,7 @@ class AlphaDetailView(BaseModel):
     id: str
     type: str
     author: str
-    settings: SimulationSettingsView
+    settings: SettingsView
     regular: Optional[ExpressionView] = None
     selection: Optional[ExpressionView] = None
     combo: Optional[ExpressionView] = None

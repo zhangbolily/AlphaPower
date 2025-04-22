@@ -209,7 +209,7 @@ if __name__ == "__main__":
 
     from alphapower.client import wq_client
     from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
-    from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
+    from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
     from alphapower.dal.evaluate import (
         CheckRecordDAL,
         CorrelationDAL,
@@ -236,7 +236,7 @@ if __name__ == "__main__":
                 async with wq_client as client:
                     alpha_dal = AlphaDAL(alpha_session)
                     setting_dal = SettingDAL(alpha_session)
-                    sample_dal = SampleDAL(alpha_session)
+                    sample_dal = AggregateDataDAL(alpha_session)
 
                     correlation_dal = CorrelationDAL(evaluate_session)
                     check_record_dal = CheckRecordDAL(evaluate_session)

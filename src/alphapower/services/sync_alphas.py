@@ -5,7 +5,6 @@ import types
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
-from pydantic import TypeAdapter
 from structlog.stdlib import BoundLogger
 
 from alphapower.client import (
@@ -21,24 +20,15 @@ from alphapower.constants import (
 )
 from alphapower.dal.alphas import (
     AlphaDAL,
-    ClassificationDAL,
-    CompetitionDAL,
 )
 from alphapower.dal.base import DALFactory
 from alphapower.entity import (
     Alpha,
-    Classification,
-    Competition,
-    Expression,
-    Setting,
 )
 from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 from alphapower.view.alpha import (
     AlphaView,
-    ClassificationRefView,
-    ExpressionView,
-    PyramidRefView,
     SelfAlphaListQueryParams,
     SelfAlphaListView,
 )
@@ -70,116 +60,63 @@ class AlphaSyncService:
         signal.signal(signal.SIGINT, handle_exit_signal)  # 处理 Ctrl+C
         signal.signal(signal.SIGTERM, handle_exit_signal)  # 处理终止信号
 
-    def create_alphas_settings(self, alpha_data: AlphaView) -> Setting:
-
-        try:
-            return Setting(
-                instrument_type=alpha_data.settings.instrument_type,
-                region=alpha_data.settings.region,
-                universe=alpha_data.settings.universe,
-                delay=alpha_data.settings.delay,
-                decay=alpha_data.settings.decay,
-                neutralization=alpha_data.settings.neutralization,
-                truncation=alpha_data.settings.truncation,
-                pasteurization=alpha_data.settings.pasteurization,
-                unit_handling=alpha_data.settings.unit_handling,
-                nan_handling=alpha_data.settings.nan_handling,
-                language=alpha_data.settings.language,
-                visualization=alpha_data.settings.visualization,
-                test_period=getattr(alpha_data.settings, "test_period", None),
-            )
-        except AttributeError as e:
-            raise AttributeError(f"因子数据缺少必要字段: {e}") from e
-
-    def create_expression(
-        self, expression_view: Optional[ExpressionView]
-    ) -> Optional[Expression]:
-
-        if expression_view is None:
-            return None
-
-        expression: Expression = Expression(
-            code=expression_view.code,
-            description=expression_view.description,
-            operator_count=expression_view.operator_count,
-        )
-
-        return expression
-
-    async def create_alpha_classifications(
+    def create_alpha(
         self,
-        classification_dal: ClassificationDAL,
-        classifications_data: Optional[List[ClassificationRefView]],
-    ) -> List[Classification]:
-
-        if classifications_data is None:
-            return []
-
-        entity_objs: List[Classification] = []
-
-        for data in classifications_data:
-            classification = Classification(
-                classification_id=data.id,
-                name=data.name,
-            )
-            async with self._db_lock:
-                classification = await classification_dal.upsert_by_unique_key(
-                    classification, "classification_id"
-                )
-            entity_objs.append(classification)
-
-        return entity_objs
-
-    def create_alphas(
-        self,
-        alpha_data: AlphaView,
-        settings: Setting,
-        regular: Optional[Expression],
-        combo: Optional[Expression],
-        selection: Optional[Expression],
-        classifications: List[Classification],
-        competitions: List[Competition],
+        alpha_view: AlphaView,
     ) -> Alpha:
 
-        pyramids_adapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
-            List[PyramidRefView]
-        )
+        try:
+            alpha: Alpha = Alpha(
+                alpha_id=alpha_view.id,
+                type=alpha_view.type,
+                author=alpha_view.author,
+                settings=alpha_view.settings,
+                regular=alpha_view.regular,
+                combo=alpha_view.combo,
+                selection=alpha_view.selection,
+                date_created=alpha_view.date_created,
+                date_submitted=alpha_view.date_submitted,
+                date_modified=alpha_view.date_modified,
+                name=alpha_view.name,
+                favorite=alpha_view.favorite,
+                hidden=alpha_view.hidden,
+                color=alpha_view.color if alpha_view.color else Color.NONE,
+                category=alpha_view.category,
+                tags=alpha_view.tags,
+                grade=alpha_view.grade if alpha_view.grade else Grade.DEFAULT,
+                stage=alpha_view.stage,
+                status=alpha_view.status,
+                in_sample=create_aggregate_data(alpha_view.in_sample),
+                out_sample=create_aggregate_data(alpha_view.out_sample),
+                train=create_aggregate_data(alpha_view.train),
+                test=create_aggregate_data(alpha_view.test),
+                prod=create_aggregate_data(alpha_view.prod),
+                pyramids=alpha_view.pyramids,
+                competitions=alpha_view.competitions,
+                classifications=alpha_view.classifications,
+                themes=",".join(alpha_view.themes) if alpha_view.themes else None,
+                team=",".join(alpha_view.team) if alpha_view.team else None,
+            )
 
-        alpha: Alpha = Alpha(
-            alpha_id=alpha_data.id,
-            type=alpha_data.type,
-            author=alpha_data.author,
-            settings=settings,
-            regular=regular,
-            combo=combo,
-            selection=selection,
-            date_created=alpha_data.date_created,
-            date_submitted=getattr(alpha_data, "date_submitted", None),
-            date_modified=alpha_data.date_modified,
-            name=getattr(alpha_data, "name", None),
-            favorite=alpha_data.favorite,
-            hidden=alpha_data.hidden,
-            color=alpha_data.color if alpha_data.color else Color.NONE,
-            category=getattr(alpha_data, "category", None),
-            tags=alpha_data.tags,
-            grade=alpha_data.grade if alpha_data.grade else Grade.DEFAULT,
-            stage=alpha_data.stage,
-            status=alpha_data.status,
-            in_sample=create_aggregate_data(alpha_data.in_sample),
-            out_sample=create_aggregate_data(alpha_data.out_sample),
-            train=create_aggregate_data(alpha_data.train),
-            test=create_aggregate_data(alpha_data.test),
-            prod=create_aggregate_data(alpha_data.prod),
-            competitions=competitions,
-            classifications=classifications,
-            themes=",".join(alpha_data.themes) if alpha_data.themes else None,
-            pyramids=None,
-            team=",".join(alpha_data.team) if alpha_data.team else None,
-        )
-        if alpha_data.pyramids:
-            alpha.pyramids = pyramids_adapter.dump_python(alpha_data.pyramids)
-
-        return alpha
+            return alpha
+        except AttributeError as e:
+            self.log.error(
+                "创建因子时发生错误",
+                error=str(e),
+                exc_info=True,
+                module=__name__,
+                emoji="❌",
+            )
+            raise AttributeError(f"因子数据缺少必要字段: {e}") from e
+        except Exception as e:
+            self.log.error(
+                "创建因子时发生错误",
+                error=str(e),
+                exc_info=True,
+                module=__name__,
+                emoji="❌",
+            )
+            raise RuntimeError(f"创建因子时发生错误: {e}") from e
 
     async def fetch_last_sync_time_range(
         self, client: WorldQuantClient
@@ -247,76 +184,26 @@ class AlphaSyncService:
     async def process_alphas_page(
         self,
         alphas_results: List[AlphaView],
-        competition_dal: CompetitionDAL,
-        classification_dal: ClassificationDAL,
-    ) -> Tuple[List[Alpha], int, int]:
-
-        inserted_alphas: int = 0
-        updated_alphas: int = 0
+    ) -> List[Alpha]:
         uncommitted_alphas: List[Alpha] = []
 
         try:
-            competition_ids: List[str] = [
-                competition.id
-                for alpha_data in alphas_results
-                if alpha_data.competitions
-                for competition in alpha_data.competitions
-                if competition.id
-            ]
-
-            async with self._db_lock:
-                competitions_dict: dict[str, Competition] = {
-                    competition.competition_id: competition
-                    for competition in await competition_dal.find_by(
-                        in_={"competition_id": competition_ids}
-                    )
-                }
-
-            for alpha_data in alphas_results:
+            for alpha_view in alphas_results:
                 if self.exit_event.is_set():
                     await self.log.awarning(
                         "检测到退出事件，中止处理因子页面", emoji="⚠️"
                     )
                     raise RuntimeError("退出事件触发，停止处理因子页面。")
                 try:
-                    settings: Setting = self.create_alphas_settings(alpha_data)
-                    regular: Optional[Expression] = self.create_expression(
-                        alpha_data.regular
-                    )
-                    combo: Optional[Expression] = self.create_expression(
-                        alpha_data.combo
-                    )
-                    selection: Optional[Expression] = self.create_expression(
-                        alpha_data.selection
-                    )
-
-                    classifications: List[Classification] = (
-                        await self.create_alpha_classifications(
-                            classification_dal=classification_dal,
-                            classifications_data=alpha_data.classifications,
-                        )
-                    )
-                    competitions: List[Competition] = [
-                        competitions_dict[competition.id]
-                        for competition in alpha_data.competitions or []
-                        if competition.id in competitions_dict
-                    ]
-
-                    alpha: Alpha = self.create_alphas(
-                        alpha_data=alpha_data,
-                        settings=settings,
-                        regular=regular,
-                        combo=combo,
-                        selection=selection,
-                        classifications=classifications,
-                        competitions=competitions,
+                    alpha: Alpha = self.create_alpha(
+                        alpha_view=alpha_view,
                     )
 
                     uncommitted_alphas.append(alpha)
                 except Exception as e:
                     await self.log.aerror(
                         "处理单个因子数据时发生错误",
-                        alpha_id=alpha_data.id,
+                        alpha_id=alpha_view.id,
                         error=str(e),
                         exc_info=True,
                         emoji="❌",
@@ -324,20 +211,19 @@ class AlphaSyncService:
                     raise
         except Exception as e:
             await self.log.aerror(
-                "处理因子页面数据时发生错误",
+                "单页数据处理时发生错误",
                 error=str(e),
                 exc_info=True,
                 emoji="❌",
             )
-            raise RuntimeError(f"处理因子页面数据时发生错误: {e}") from e
+            raise RuntimeError(f"单页数据处理时发生错误: {e}") from e
 
         await self.log.adebug(
-            "处理因子页面数据完成",
-            inserted=inserted_alphas,
-            updated=updated_alphas,
+            "单页数据处理完成",
+            count=len(uncommitted_alphas),
             emoji="✅",
         )
-        return uncommitted_alphas, inserted_alphas, updated_alphas
+        return uncommitted_alphas
 
     async def process_alphas_for_time_range(
         self,
@@ -400,12 +286,6 @@ class AlphaSyncService:
 
                     async with get_db_session(Database.ALPHAS) as session:
                         alpha_dal: AlphaDAL = AlphaDAL(session)
-                        competition_dal: CompetitionDAL = DALFactory.create_dal(
-                            CompetitionDAL, session
-                        )
-                        classification_dal: ClassificationDAL = DALFactory.create_dal(
-                            ClassificationDAL, session
-                        )
 
                         for i in range(parallel):
                             start_page: int = i * pages_per_task + 1
@@ -422,8 +302,6 @@ class AlphaSyncService:
                                     start_page=start_page,
                                     end_page=end_page,
                                     page_size=page_size,
-                                    competition_dal=competition_dal,
-                                    classification_dal=classification_dal,
                                 )
                             )
 
@@ -436,8 +314,6 @@ class AlphaSyncService:
                         for (
                             uncommitted_alphas,
                             fetched,
-                            inserted,
-                            updated,
                         ) in results:
                             if self.exit_event.is_set():
                                 await self.log.awarning(
@@ -451,8 +327,6 @@ class AlphaSyncService:
                                 break
 
                             fetched_alphas += fetched
-                            inserted_alphas += inserted
-                            updated_alphas += updated
 
                             if dry_run:
                                 await self.log.ainfo(
@@ -497,8 +371,6 @@ class AlphaSyncService:
                     del tasks
                     del alphas_data_result
                     del alpha_dal
-                    del competition_dal
-                    del classification_dal
                     gc.collect()
 
                 else:
@@ -534,22 +406,18 @@ class AlphaSyncService:
         start_page: int,
         end_page: int,
         page_size: int,
-        competition_dal: CompetitionDAL,
-        classification_dal: ClassificationDAL,
-    ) -> Tuple[List[Alpha], int, int, int]:
+    ) -> Tuple[List[Alpha], int]:
 
         fetched_alphas: int = 0
-        inserted_alphas: int = 0
-        updated_alphas: int = 0
         uncommited_alphas: List[Alpha] = []
 
         try:
             for page in range(start_page, end_page + 1):
                 if self.exit_event.is_set():
                     await self.log.awarning(
-                        "检测到退出事件，中止处理因子页范围", emoji="⚠️"
+                        "检测到退出事件，中止处理多页数据", emoji="⚠️"
                     )
-                    raise RuntimeError("退出事件触发，停止处理因子页范围。")
+                    raise RuntimeError("退出事件触发，停止处理多页数据。")
                 query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
                     limit=page_size,
                     offset=(page - 1) * page_size,
@@ -568,33 +436,29 @@ class AlphaSyncService:
 
                 fetched_alphas += len(alphas_data_result.results)
                 await self.log.ainfo(
-                    "获取因子页面数据",
+                    "获取多页数据",
                     start_time=start_time,
                     end_time=end_time,
                     page=page,
                     count=len(alphas_data_result.results),
                     emoji="🔍",
                 )
-                alphas, inserted, updated = await self.process_alphas_page(
+                alphas = await self.process_alphas_page(
                     alphas_data_result.results,
-                    competition_dal=competition_dal,
-                    classification_dal=classification_dal,
                 )
-                inserted_alphas += inserted
-                updated_alphas += updated
                 uncommited_alphas.extend(alphas)
         except Exception as e:
             await self.log.aerror(
-                "处理因子页范围数据时发生错误",
+                "处理多页数据时发生错误",
                 start_time=start_time,
                 end_time=end_time,
                 error=str(e),
                 exc_info=True,
                 emoji="❌",
             )
-            raise RuntimeError(f"处理因子页范围数据时发生错误: {e}") from e
+            raise RuntimeError(f"处理多页数据时发生错误: {e}") from e
 
-        return uncommited_alphas, fetched_alphas, inserted_alphas, updated_alphas
+        return uncommited_alphas, fetched_alphas
 
     async def sync_alphas(
         self,

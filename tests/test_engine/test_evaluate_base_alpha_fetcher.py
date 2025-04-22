@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import compiler
 
 from alphapower.constants import AlphaType
-from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
+from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
 from alphapower.engine.evaluate.base_alpha_fetcher import BaseAlphaFetcher
 from alphapower.entity import Alpha
 
@@ -28,7 +28,7 @@ def fixture_mock_alpha_dal() -> MagicMock:
 @pytest.fixture(name="mock_sample_dal")
 def fixture_mock_sample_dal() -> MagicMock:
     """创建 SampleDAL 的模拟对象。"""
-    return MagicMock(spec=SampleDAL)
+    return MagicMock(spec=AggregateDataDAL)
 
 
 @pytest.fixture(name="mock_setting_dal")

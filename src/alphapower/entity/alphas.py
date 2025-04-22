@@ -1,17 +1,15 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy import (
     JSON,
     Boolean,
-    Column,
     DateTime,
     Enum,
     Float,
     ForeignKey,
     Integer,
     String,
-    Table,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -21,7 +19,6 @@ from sqlalchemy.orm import (
     MappedColumn,
     mapped_column,
     relationship,
-    validates,
 )
 
 from alphapower.constants import (
@@ -30,37 +27,28 @@ from alphapower.constants import (
     Color,
     CompetitionScoring,
     CompetitionStatus,
-    Decay,
-    Delay,
     Grade,
-    InstrumentType,
-    Neutralization,
-    Region,
-    RegularLanguage,
     Stage,
     Status,
-    Switch,
-    UnitHandling,
-    Universe,
 )
-from alphapower.view.alpha import SubmissionCheckView, SubmissionCheckViewListAdapter
+from alphapower.view.alpha import (
+    ClassificationRefView,
+    ClassificationRefViewListAdapter,
+    CompetitionRefView,
+    CompetitionRefViewListAdapter,
+    ExpressionView,
+    PyramidRefView,
+    PyramidRefViewListAdapter,
+    SettingsView,
+    SubmissionCheckView,
+    SubmissionCheckViewListAdapter,
+)
 
 # pylint: disable=E1136
 
 
 class Base(AsyncAttrs, DeclarativeBase):
     pass
-
-
-class Classification(Base):
-
-    __tablename__ = "classifications"
-
-    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    classification_id: MappedColumn[str] = mapped_column(
-        String, nullable=False, unique=True
-    )
-    name: MappedColumn[str] = mapped_column(String)
 
 
 class Competition(Base):
@@ -271,66 +259,6 @@ class AggregateData(Base):
             self._checks_view_cache = value
 
 
-class Setting(Base):
-
-    __tablename__ = "settings"
-
-    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    language: MappedColumn[RegularLanguage] = mapped_column(
-        Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
-    )
-    test_period: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    decay: MappedColumn[int] = mapped_column(Integer, nullable=False)
-    truncation: MappedColumn[float] = mapped_column(Float, nullable=False)
-    visualization: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
-    instrument_type: MappedColumn[InstrumentType] = mapped_column(
-        Enum(InstrumentType), nullable=False, default=InstrumentType.DEFAULT
-    )
-    region: MappedColumn[Region] = mapped_column(
-        Enum(Region), nullable=False, default=Region.DEFAULT
-    )
-    universe: MappedColumn[Universe] = mapped_column(
-        Enum(Universe), nullable=False, default=Universe.DEFAULT
-    )
-    delay: MappedColumn[Delay] = mapped_column(
-        Enum(Delay), nullable=False, default=Delay.DEFAULT
-    )
-    neutralization: MappedColumn[Neutralization] = mapped_column(
-        Enum(Neutralization), nullable=False, default=Neutralization.DEFAULT
-    )
-    pasteurization: MappedColumn[Switch] = mapped_column(
-        Enum(Switch), nullable=False, default=Switch.DEFAULT
-    )
-    unit_handling: MappedColumn[UnitHandling] = mapped_column(
-        Enum(UnitHandling), nullable=False, default=UnitHandling.DEFAULT
-    )
-    nan_handling: MappedColumn[Switch] = mapped_column(
-        Enum(Switch), nullable=False, default=Switch.DEFAULT
-    )
-    max_trade: MappedColumn[Optional[Switch]] = mapped_column(
-        Enum(Switch), nullable=True, default=Switch.DEFAULT
-    )
-
-    @validates("decay")
-    def validate_decay(self, key: str, value: int) -> int:
-
-        if value and not (Decay.MIN.value <= value <= Decay.MAX.value):
-            raise ValueError(
-                f"{key} 必须在 {Decay.MIN.value} 到 {Decay.MAX.value} 之间"
-            )
-        return value
-
-
-class Expression(Base):
-
-    __tablename__ = "expressions"
-
-    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    code: MappedColumn[str] = mapped_column(String)
-    description: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    operator_count: MappedColumn[Optional[int]] = mapped_column(Integer, nullable=True)
-
-
 class Alpha(Base):
 
     __tablename__ = "alphas"
@@ -342,9 +270,7 @@ class Alpha(Base):
     author: MappedColumn[str] = mapped_column(String, nullable=False)
     name: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     category: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    _tags: MappedColumn[Optional[str]] = mapped_column(String, name="tags")
     themes: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    pyramids: MappedColumn[Optional[JSON]] = mapped_column(JSON, nullable=True)
     team: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
     favorite: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     hidden: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
@@ -369,51 +295,6 @@ class Alpha(Base):
     )
     date_modified: MappedColumn[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
-    )
-    settings_id: MappedColumn[int] = mapped_column(
-        Integer, ForeignKey("settings.id"), nullable=False
-    )
-    settings: Mapped[Setting] = relationship(
-        "Setting", backref="alphas", lazy="joined", cascade="all"
-    )
-    regular_id: MappedColumn[int] = mapped_column(
-        Integer,
-        ForeignKey("expressions.id"),
-        nullable=True,
-    )
-    regular: Mapped[Expression] = relationship(
-        "Expression",
-        foreign_keys=[regular_id],
-        uselist=False,
-        backref="alphas_regular",
-        lazy="joined",
-        cascade="all",
-    )
-    combo_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("expressions.id"),
-        nullable=True,
-    )
-    combo: Mapped[Expression] = relationship(
-        "Expression",
-        foreign_keys=[combo_id],
-        uselist=False,
-        backref="alphas_combo",
-        lazy="joined",
-        cascade="all",
-    )
-    selection_id: MappedColumn[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("expressions.id"),
-        nullable=True,
-    )
-    selection: Mapped[Expression] = relationship(
-        "Expression",
-        foreign_keys=[selection_id],
-        uselist=False,
-        backref="alphas_selection",
-        lazy="joined",
-        cascade="all",
     )
     in_sample_id: MappedColumn[Optional[int]] = mapped_column(
         Integer, ForeignKey("aggregate_data.id"), nullable=True
@@ -470,24 +351,38 @@ class Alpha(Base):
         lazy="joined",
         cascade="all",
     )
-    classifications: Mapped[List[Classification]] = relationship(
-        "Classification",
-        secondary="alpha_classification",
-        backref="alphas",
-        cascade="",
-        lazy="selectin",
+    _settings: MappedColumn[JSON] = mapped_column(JSON, nullable=True, name="settings")
+    _regular: MappedColumn[JSON] = mapped_column(JSON, nullable=True, name="regular")
+    _combo: MappedColumn[JSON] = mapped_column(JSON, nullable=True, name="combo")
+    _selection: MappedColumn[JSON] = mapped_column(
+        JSON, nullable=True, name="selection"
     )
-    competitions: Mapped[List[Competition]] = relationship(
-        "Competition",
-        secondary="alpha_competition",
-        backref="alphas",
-        cascade="",
-        lazy="selectin",
+    _pyramids: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON, nullable=True, name="pyramids"
     )
+    _classifications: MappedColumn[JSON] = mapped_column(
+        JSON, nullable=True, name="classifications"
+    )
+    _competitions: MappedColumn[JSON] = mapped_column(
+        JSON, nullable=True, name="competitions"
+    )
+    _tags: MappedColumn[Optional[str]] = mapped_column(String, name="tags")
 
     def __init__(self, **kwargs: Any) -> None:
 
+        settings: Optional[SettingsView] = kwargs.pop("settings", None)
+        regular: Optional[ExpressionView] = kwargs.pop("regular", None)
+        combo: Optional[ExpressionView] = kwargs.pop("combo", None)
+        selection: Optional[ExpressionView] = kwargs.pop("selection", None)
+        pyramids: Optional[List[PyramidRefView]] = kwargs.pop("pyramids", None)
+        classifications: Optional[List[ClassificationRefView]] = kwargs.pop(
+            "classifications", None
+        )
+        competitions: Optional[List[CompetitionRefView]] = kwargs.pop(
+            "competitions", None
+        )
         tags = kwargs.pop("tags", None)
+
         super().__init__(**kwargs)
         if tags is not None:
             self._tags = ",".join(
@@ -496,6 +391,239 @@ class Alpha(Base):
                     [tag.strip() if isinstance(tag, str) else str(tag) for tag in tags],
                 )
             )
+
+        if settings is not None:
+            self._settings = cast(Any, settings.model_dump(mode="json"))
+            self._settings_view_cache: Optional[SettingsView] = settings
+
+        if regular is not None:
+            self._regular = cast(Any, regular.model_dump(mode="json"))
+            self._regular_view_cache: Optional[ExpressionView] = regular
+
+        if combo is not None:
+            self._combo = cast(Any, combo.model_dump(mode="json"))
+            self._combo_view_cache: Optional[ExpressionView] = combo
+
+        if selection is not None:
+            self._selection = cast(Any, selection.model_dump(mode="json"))
+            self._selection_view_cache: Optional[ExpressionView] = selection
+
+        if pyramids is not None:
+            self._pyramids = PyramidRefViewListAdapter.dump_python(
+                pyramids,
+                mode="json",
+            )
+            self._pyramids_view_cache: Optional[List[PyramidRefView]] = pyramids
+
+        if classifications is not None:
+            self._classifications = ClassificationRefViewListAdapter.dump_python(
+                classifications,
+                mode="json",
+            )
+            self._classifications_view_cache: Optional[List[ClassificationRefView]] = (
+                classifications
+            )
+
+        if competitions is not None:
+            self._competitions = CompetitionRefViewListAdapter.dump_python(
+                competitions,
+                mode="json",
+            )
+            self._competitions_view_cache: Optional[List[CompetitionRefView]] = (
+                competitions
+            )
+
+    @hybrid_property
+    def settings(self) -> SettingsView:
+
+        if self._settings is None:
+            return SettingsView()
+
+        if self._settings_view_cache is not None:
+            return self._settings_view_cache
+        settings: SettingsView = SettingsView.model_validate(self._settings)
+        if settings is None:
+            return SettingsView()
+
+        # 缓存设置
+        self._settings_view_cache = settings
+        return settings
+
+    @settings.setter  # type: ignore[no-redef]
+    def settings(self, value: Optional[SettingsView]) -> None:
+
+        if value is None:
+            self._settings = None
+            self._settings_view_cache = None
+        else:
+            self._settings = value.model_dump(mode="json")
+            self._settings_view_cache = value
+
+    @hybrid_property
+    def regular(self) -> ExpressionView:
+
+        if self._regular is None:
+            return ExpressionView()
+
+        if self._regular_view_cache is not None:
+            return self._regular_view_cache
+        regular: ExpressionView = ExpressionView.model_validate(self._regular)
+        if regular is None:
+            return ExpressionView()
+
+        self._regular_view_cache = regular
+        return regular
+
+    @regular.setter  # type: ignore[no-redef]
+    def regular(self, value: Optional[ExpressionView]) -> None:
+
+        if value is None:
+            self._regular = None
+            self._regular_view_cache = None
+        else:
+            self._regular = value.model_dump(mode="json")
+            self._regular_view_cache = value
+
+    @hybrid_property
+    def combo(self) -> ExpressionView:
+        if self._combo is None:
+            return ExpressionView()
+
+        if self._combo_view_cache is not None:
+            return self._combo_view_cache
+        combo: ExpressionView = ExpressionView.model_validate(self._combo)
+        if combo is None:
+            return ExpressionView()
+
+        self._combo_view_cache = combo
+        return combo
+
+    @combo.setter  # type: ignore[no-redef]
+    def combo(self, value: Optional[ExpressionView]) -> None:
+        if value is None:
+            self._combo = None
+            self._combo_view_cache = None
+        else:
+            self._combo = value.model_dump(mode="json")
+            self._combo_view_cache = value
+
+    @hybrid_property
+    def selection(self) -> ExpressionView:
+        if self._selection is None:
+            return ExpressionView()
+
+        if self._selection_view_cache is not None:
+            return self._selection_view_cache
+        selection: ExpressionView = ExpressionView.model_validate(self._selection)
+        if selection is None:
+            return ExpressionView()
+
+        # 缓存选择
+        self._selection_view_cache = selection
+        return selection
+
+    @selection.setter  # type: ignore[no-redef]
+    def selection(self, value: Optional[ExpressionView]) -> None:
+
+        if value is None:
+            self._selection = None
+            self._selection_view_cache = None
+        else:
+            self._selection = value.model_dump(mode="json")
+            self._selection_view_cache = value
+
+    @hybrid_property
+    def pyramids(self) -> List[PyramidRefView]:
+
+        if self._pyramids is None:
+            return []
+
+        if self._pyramids_view_cache is not None:
+            return self._pyramids_view_cache
+        pyramids: List[PyramidRefView] = PyramidRefViewListAdapter.validate_python(
+            self._pyramids
+        )
+        if pyramids is None:
+            return []
+
+        # 缓存金字塔
+        self._pyramids_view_cache = pyramids
+        return pyramids
+
+    @pyramids.setter  # type: ignore[no-redef]
+    def pyramids(self, value: Optional[List[PyramidRefView]]) -> None:
+
+        if value is None:
+            self._pyramids = None
+            self._pyramids_view_cache = None
+        else:
+            self._pyramids = PyramidRefViewListAdapter.dump_python(
+                value,
+                mode="json",
+            )
+            self._pyramids_view_cache = value
+
+    @hybrid_property
+    def classifications(self) -> List[ClassificationRefView]:
+
+        if self._classifications is None:
+            return []
+
+        if self._classifications_view_cache is not None:
+            return self._classifications_view_cache
+        classifications: List[ClassificationRefView] = (
+            ClassificationRefViewListAdapter.validate_python(self._classifications)
+        )
+        if classifications is None:
+            return []
+
+        # 缓存分类
+        self._classifications_view_cache = classifications
+        return classifications
+
+    @classifications.setter  # type: ignore[no-redef]
+    def classifications(self, value: Optional[List[ClassificationRefView]]) -> None:
+
+        if value is None:
+            self._classifications = None
+            self._classifications_view_cache = None
+        else:
+            self._classifications = ClassificationRefViewListAdapter.dump_python(
+                value,
+                mode="json",
+            )
+            self._classifications_view_cache = value
+
+    @hybrid_property
+    def competitions(self) -> List[CompetitionRefView]:
+
+        if self._competitions is None:
+            return []
+
+        if self._competitions_view_cache is not None:
+            return self._competitions_view_cache
+        competitions: List[CompetitionRefView] = (
+            CompetitionRefViewListAdapter.validate_python(self._competitions)
+        )
+        if competitions is None:
+            return []
+
+        # 缓存比赛
+        self._competitions_view_cache = competitions
+        return competitions
+
+    @competitions.setter  # type: ignore[no-redef]
+    def competitions(self, value: Optional[List[CompetitionRefView]]) -> None:
+
+        if value is None:
+            self._competitions = None
+            self._competitions_view_cache = None
+        else:
+            self._competitions = CompetitionRefViewListAdapter.dump_python(
+                value,
+                mode="json",
+            )
+            self._competitions_view_cache = value
 
     @hybrid_property
     def tags(self) -> List[str]:
@@ -539,29 +667,3 @@ class Alpha(Base):
         if tag.strip() in current_tags:
             current_tags.remove(tag.strip())
             self.tags = current_tags  # type: ignore[method-assign]
-
-
-alphas_classifications = Table(
-    "alpha_classification",
-    Base.metadata,
-    Column("alpha_id", Integer, ForeignKey("alphas.id"), primary_key=True),
-    Column(
-        "classification_id",
-        Integer,
-        ForeignKey("classifications.id"),
-        primary_key=True,
-    ),
-)
-
-
-alphas_competitions = Table(
-    "alpha_competition",
-    Base.metadata,
-    Column("alpha_id", Integer, ForeignKey("alphas.id"), primary_key=True),
-    Column(
-        "competition_id",
-        Integer,
-        ForeignKey("competitions.id"),
-        primary_key=True,
-    ),
-)

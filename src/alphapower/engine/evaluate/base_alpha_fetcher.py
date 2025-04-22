@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
 from alphapower.constants import AlphaType, Delay, Region, Stage
-from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
+from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
 from alphapower.entity import AggregateData, Alpha, Setting
 from alphapower.internal.logging import get_logger
 
@@ -36,7 +36,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
     def __init__(
         self,
         alpha_dal: AlphaDAL,
-        sample_dal: SampleDAL,
+        sample_dal: AggregateDataDAL,
         setting_dal: SettingDAL,
         **kwargs: Any,
     ):

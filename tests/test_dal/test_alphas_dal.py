@@ -38,12 +38,12 @@ from alphapower.constants import (
     Universe,
 )
 from alphapower.dal.alphas import (
+    AggregateDataDAL,
     AlphaDAL,
     ClassificationDAL,
     CompetitionDAL,
     RegularDAL,
     SampleCheckDAL,
-    SampleDAL,
 )
 from alphapower.entity import (
     AggregateData,
@@ -662,7 +662,7 @@ class TestSampleDAL:
             alphas_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        sample_dal = SampleDAL(alphas_session)
+        sample_dal = AggregateDataDAL(alphas_session)
 
         # 创建测试数据
         samples = [
@@ -689,7 +689,7 @@ class TestSampleDAL:
             alphas_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        sample_dal = SampleDAL(alphas_session)
+        sample_dal = AggregateDataDAL(alphas_session)
 
         # 测试创建
         sample = await sample_dal.create_entity(

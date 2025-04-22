@@ -3,12 +3,12 @@ from typing import Dict, Type, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.dal.alphas import (
+    AggregateDataDAL,
     AlphaDAL,
     ClassificationDAL,
     CompetitionDAL,
     RegularDAL,
     SampleCheckDAL,
-    SampleDAL,
     SettingDAL,
 )
 from alphapower.dal.base import BaseDAL
@@ -50,7 +50,7 @@ class DALRegistry:
         Expression: RegularDAL,
         Classification: ClassificationDAL,
         Competition: CompetitionDAL,
-        AggregateData: SampleDAL,
+        AggregateData: AggregateDataDAL,
         Check: SampleCheckDAL,
         Dataset: DatasetDAL,
         Category: CategoryDAL,

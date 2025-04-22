@@ -107,21 +107,26 @@ def create_aggregate_data(
     if sample_data is None:
         return None
 
-    return AggregateData(
-        pnl=sample_data.pnl,
-        book_size=sample_data.book_size,
-        long_count=sample_data.long_count,
-        short_count=sample_data.short_count,
-        turnover=sample_data.turnover,
-        returns=sample_data.returns,
-        drawdown=sample_data.drawdown,
-        margin=sample_data.margin,
-        sharpe=sample_data.sharpe,
-        fitness=sample_data.fitness,
-        self_correration=sample_data.self_correlation,
-        prod_correration=sample_data.prod_correlation,
-        os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,
-        pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,
-        start_date=sample_data.start_date,
-        checks=sample_data.checks,
-    )
+    try:
+        aggregate_data: AggregateData = AggregateData(
+            pnl=sample_data.pnl,
+            book_size=sample_data.book_size,
+            long_count=sample_data.long_count,
+            short_count=sample_data.short_count,
+            turnover=sample_data.turnover,
+            returns=sample_data.returns,
+            drawdown=sample_data.drawdown,
+            margin=sample_data.margin,
+            sharpe=sample_data.sharpe,
+            fitness=sample_data.fitness,
+            self_correration=sample_data.self_correlation,
+            prod_correration=sample_data.prod_correlation,
+            os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,
+            pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,
+            start_date=sample_data.start_date,
+            checks=sample_data.checks,
+        )
+    except Exception as e:
+        raise ValueError(f"创建样本数据失败: {e}, 样本数据: {sample_data}") from e
+    finally:
+        return aggregate_data

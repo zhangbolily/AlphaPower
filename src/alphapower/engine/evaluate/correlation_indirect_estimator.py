@@ -146,7 +146,7 @@ if __name__ == "__main__":
 
     from alphapower.client import wq_client
     from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
-    from alphapower.dal.alphas import AlphaDAL, SampleDAL, SettingDAL
+    from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
     from alphapower.dal.evaluate import (
         CheckRecordDAL,
         CorrelationDAL,

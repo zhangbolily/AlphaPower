@@ -11,12 +11,9 @@
 __all__ = [
     "Alpha",
     "AlphaBase",
-    "alphas_classifications",
-    "alphas_competitions",
     "Category",
     "CheckRecord",
     "ChecksBase",
-    "Classification",
     "Competition",
     "Correlation",
     "DataBase",
@@ -26,10 +23,8 @@ __all__ = [
     "EvaluateRecord",
     "Pyramid",
     "RecordSet",
-    "Expression",
     "ResearchPaper",
     "AggregateData",
-    "Setting",
     "SimulationBase",
     "SimulationTask",
     "SimulationTaskStatus",
@@ -50,12 +45,7 @@ from .alphas import (
 )
 from .alphas import Base as AlphaBase
 from .alphas import (
-    Classification,
     Competition,
-    Expression,
-    Setting,
-    alphas_classifications,
-    alphas_competitions,
 )
 
 # 数据相关实体
