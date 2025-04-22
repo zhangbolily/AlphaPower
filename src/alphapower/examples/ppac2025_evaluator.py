@@ -1,6 +1,6 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from alphapower.client import BeforeAndAfterPerformanceView, WorldQuantClient
 from alphapower.constants import (
@@ -9,6 +9,7 @@ from alphapower.constants import (
     Delay,
     RefreshPolicy,
     Region,
+    Stage,
 )
 from alphapower.engine.evaluate.base_evaluate_stages import PerformanceDiffEvaluateStage
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
@@ -221,8 +222,8 @@ if __name__ == "__main__":
         CorrelationPlatformEvaluateStage,
         InSampleChecksEvaluateStage,
     )
-    from alphapower.engine.evaluate.self_correlation_calculator import (
-        SelfCorrelationCalculator,
+    from alphapower.engine.evaluate.correlation_calculator import (
+        CorrelationCalculator,
     )
     from alphapower.internal.db_session import get_db_session
 
@@ -242,8 +243,33 @@ if __name__ == "__main__":
                     record_set_dal = RecordSetDAL(evaluate_session)
                     evaluate_record_dal = EvaluateRecordDAL(evaluate_session)
 
-                    correlation_calculator = SelfCorrelationCalculator(
+                    async def alpha_generator() -> AsyncGenerator[Alpha, None]:
+                        for alpha in await alpha_dal.find_by_stage(
+                            stage=Stage.OS,
+                        ):
+                            for classification in alpha.classifications:
+                                if (
+                                    classification.classification_id
+                                    == "POWER_POOL:POWER_POOL_ELIGIBLE"
+                                ):
+                                    await log.ainfo(
+                                        event="Alpha 策略符合 Power Pool 条件",
+                                        alpha_id=alpha.alpha_id,
+                                        classifications=alpha.classifications,
+                                        emoji="✅",
+                                    )
+                                    yield alpha
+
+                            await log.ainfo(
+                                event="Alpha 策略不符合 Power Pool 条件",
+                                alpha_id=alpha.alpha_id,
+                                classifications=alpha.classifications,
+                                emoji="❌",
+                            )
+
+                    correlation_calculator = CorrelationCalculator(
                         client=client,
+                        alpha_stream=alpha_generator(),
                         alpha_dal=alpha_dal,
                         record_set_dal=record_set_dal,
                         correlation_dal=correlation_dal,
@@ -253,8 +279,8 @@ if __name__ == "__main__":
                         alpha_dal=alpha_dal,
                         setting_dal=setting_dal,
                         sample_dal=sample_dal,
-                        start_time=datetime(2025, 3, 30),
-                        end_time=datetime(2025, 4, 15, 23, 59, 59),
+                        start_time=datetime(2025, 4, 15),
+                        end_time=datetime(2025, 4, 22, 23, 59, 59),
                     )
 
                     check_pass_result_map: Dict[
@@ -311,7 +337,7 @@ if __name__ == "__main__":
                     )
 
                     async for alpha in evaluator.evaluate_many(
-                        policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING, concurrency=1
+                        policy=RefreshPolicy.FORCE_REFRESH, concurrency=1
                     ):
                         print(alpha)
 

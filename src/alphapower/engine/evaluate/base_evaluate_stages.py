@@ -24,7 +24,7 @@ from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import Alpha, CheckRecord, EvaluateRecord
 from alphapower.internal.logging import get_logger
 
-from .self_correlation_calculator import SelfCorrelationCalculator
+from .correlation_calculator import CorrelationCalculator
 
 log = get_logger(module_name=__name__)
 
@@ -110,12 +110,18 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 SampleCheckType(check.name), set()
             )
 
-            if check.name == SampleCheckType.MATCHES_PYRAMID:
+            if (
+                check.name == SampleCheckType.MATCHES_PYRAMID.value
+                and check.result == SampleCheckResult.PASS
+            ):
                 record.pyramid_multiplier = (
                     check.multiplier if check.multiplier else 1.0
                 )
 
-            if check.name == SampleCheckType.MATCHES_THEMES:
+            if (
+                check.name == SampleCheckType.MATCHES_THEMES.value
+                and check.result == SampleCheckResult.PASS
+            ):
                 record.theme_multiplier = check.multiplier if check.multiplier else 1.0
 
             if check.result == SampleCheckResult.FAIL:
@@ -182,7 +188,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
     def __init__(
         self,
         next_stage: Optional[AbstractEvaluateStage],
-        correlation_calculator: SelfCorrelationCalculator,
+        correlation_calculator: CorrelationCalculator,
     ) -> None:
         """
         初始化本地相关性评估阶段。
@@ -192,7 +198,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             correlation_calculator: 相关性计算器实例。
         """
         super().__init__(next_stage)
-        self.correlation_calculator: SelfCorrelationCalculator = correlation_calculator
+        self.correlation_calculator: CorrelationCalculator = correlation_calculator
 
     async def _evaluate_stage(
         self,
@@ -216,7 +222,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
         """
         try:
             pairwise_correlation: Dict[str, float] = (
-                await self.correlation_calculator.calculate_self_correlation(
+                await self.correlation_calculator.calculate_correlation(
                     alpha=alpha,
                 )
             )

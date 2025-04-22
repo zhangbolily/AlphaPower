@@ -15,6 +15,7 @@
 """
 
 import asyncio
+import gc
 import signal
 import types
 from datetime import datetime, timedelta
@@ -535,13 +536,41 @@ class AlphaSyncService:
                             updated_alphas += updated
 
                             async with self._db_lock:
+                                await self.log.ainfo(
+                                    "写入因子数据",
+                                    start_time=start_time,
+                                    end_time=end_time,
+                                    cur_time=cur_time,
+                                    truncated_end_time=truncated_end_time,
+                                    count=len(uncommitted_alphas),
+                                    emoji="🔄",
+                                )
+
                                 await alpha_dal.bulk_upsert_by_unique_key(
                                     uncommitted_alphas, unique_key="alpha_id"
                                 )
                                 await alpha_dal.session.commit()
 
+                                await self.log.ainfo(
+                                    "因子数据写入完成",
+                                    start_time=start_time,
+                                    end_time=end_time,
+                                    cur_time=cur_time,
+                                    truncated_end_time=truncated_end_time,
+                                    count=len(uncommitted_alphas),
+                                    emoji="✅",
+                                )
+
                     cur_time = truncated_end_time
                     truncated_end_time = end_time
+                    # 这里清理一下资源，进行垃圾回收
+                    del tasks
+                    del alphas_data_result
+                    del alpha_dal
+                    del competition_dal
+                    del classification_dal
+                    gc.collect()
+
                 else:
                     mid_time: datetime = cur_time + (truncated_end_time - cur_time) / 2
                     truncated_end_time = mid_time

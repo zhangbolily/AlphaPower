@@ -233,6 +233,7 @@ class AlphaDAL(EntityDAL[Alpha]):
             existing_entity: 数据库中已存在的实体。
             new_entity: 新的实体数据。
         """
+
         # 更新引用字段的 ID
         if existing_entity.id:
             new_entity.id = existing_entity.id

@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime
-from typing import Dict, List, Optional  # 用于可选类型注解
+from typing import AsyncGenerator, Dict, List, Optional  # 用于可选类型注解
 
 import pandas as pd
 from structlog.stdlib import BoundLogger
@@ -11,7 +11,6 @@ from alphapower.constants import (
     RecordSetType,
     Region,
     Stage,
-    Status,
 )
 from alphapower.dal.alphas import AlphaDAL
 from alphapower.dal.evaluate import CorrelationDAL, RecordSetDAL
@@ -21,35 +20,46 @@ from alphapower.internal.logging import get_logger
 log: BoundLogger = get_logger(__name__)
 
 
-class SelfCorrelationCalculator:
+class CorrelationCalculator:
     def __init__(
         self,
         client: WorldQuantClient,
+        alpha_stream: AsyncGenerator[
+            Alpha, None
+        ],  # 建议将 alpha_generator 改为 alpha_stream，更符合流式数据的语义
         alpha_dal: AlphaDAL,
         record_set_dal: RecordSetDAL,
         correlation_dal: CorrelationDAL,
     ) -> None:
         """
-        初始化 SelfCorrelationCalculator。
+        初始化 CorrelationCalculator
 
         :param client: WorldQuant 客户端实例
+        :param alpha_stream: Alpha 策略流生成器
+        :param alpha_dal: Alpha 数据访问层实例
         :param record_set_dal: RecordSet 数据访问层实例
+        :param correlation_dal: Correlation 数据访问层实例
         """
         self.client: WorldQuantClient = client
+        self.alpha_stream: AsyncGenerator[Alpha, None] = alpha_stream  # 修改变量名
         self.alpha_dal: AlphaDAL = alpha_dal
         self.record_set_dal: RecordSetDAL = record_set_dal
         self.correlation_dal: CorrelationDAL = correlation_dal
-        self._initialized: bool = False
-        self._os_alpha_map: Dict[Region, List[str]] = {}
+        self._is_initialized: bool = (
+            False  # 建议将 _initialized 改为 _is_initialized，更符合布尔变量的命名习惯
+        )
+        self._region_to_alpha_map: Dict[Region, List[str]] = (
+            {}
+        )  # 建议改为 _region_to_alpha_map，更清晰表达区域到 Alpha 的映射关系
 
-    async def _handle_missing_pnl(self, alpha_id: str) -> None:
+    async def _load_missing_pnl(self, alpha_id: str) -> None:
         """
         处理缺失的 pnl 数据。
 
         :param alpha_id: Alpha 策略 ID
         """
         try:
-            await self._load_pnl_from_platform(alpha_id)
+            await self._retrieve_pnl_from_platform(alpha_id)
         except ValueError as ve:
             await log.aerror(
                 event="加载 Alpha 策略的 pnl 数据失败 - 数据错误",
@@ -111,12 +121,17 @@ class SelfCorrelationCalculator:
             module=__name__,
         )
 
-        os_alphas: List[Alpha] = await self.alpha_dal.find_by_stage(
-            stage=Stage.OS,
-        )
         missing_pnl_alpha_ids: List[str] = []
 
-        for alpha in os_alphas:
+        if not self.alpha_stream:
+            await log.aerror(
+                event="Alpha 策略加载器未初始化",
+                emoji="❌",
+                module=__name__,
+            )
+            raise RuntimeError("Alpha 策略加载器未初始化")
+
+        async for alpha in self.alpha_stream:
             try:
                 region: Region = alpha.settings.region
             except AttributeError:
@@ -128,7 +143,7 @@ class SelfCorrelationCalculator:
                 )
                 continue
 
-            self._os_alpha_map.setdefault(region, []).append(alpha.alpha_id)
+            self._region_to_alpha_map.setdefault(region, []).append(alpha.alpha_id)
 
             record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
                 alpha_id=alpha.alpha_id,
@@ -153,60 +168,17 @@ class SelfCorrelationCalculator:
                 module=__name__,
             )
             for alpha_id in missing_pnl_alpha_ids:
-                await self._handle_missing_pnl(alpha_id)
+                await self._load_missing_pnl(alpha_id)
 
-        self._initialized = True
+        self._is_initialized = True
         await log.ainfo(
             event="自相关性计算器初始化完成",
-            os_stage_alpha_ids=self._os_alpha_map,
+            os_stage_alpha_ids=self._region_to_alpha_map,
             emoji="✅",
             module=__name__,
         )
 
-    async def load_active_alpha_pnl(self) -> None:
-        """
-        从平台加载活动的 Alpha 策略的 pnl 数据。
-        """
-        active_alphas: List[Alpha] = await self.alpha_dal.find_by_status(
-            status=Status.ACTIVE,
-        )
-
-        if not active_alphas:
-            await log.ainfo(
-                event="没有找到任何活动的 Alpha 策略",
-                emoji="🔍",
-                module=__name__,
-            )
-            return
-
-        await log.ainfo(
-            event="开始从平台加载活动的 Alpha 策略的 pnl 数据",
-            active_alpha_count=len(active_alphas),
-            emoji="📊",
-            module=__name__,
-        )
-
-        for alpha in active_alphas:
-            try:
-                await self._load_pnl_from_platform(alpha.alpha_id)
-            except Exception as e:
-                await log.aerror(
-                    event="加载 Alpha 策略的 pnl 数据失败",
-                    alpha_id=alpha.alpha_id,
-                    error=str(e),
-                    emoji="❌",
-                    module=__name__,
-                )
-                continue
-
-        await log.ainfo(
-            event="完成从平台加载活动的 Alpha 策略的 pnl 数据",
-            active_alpha_count=len(active_alphas),
-            emoji="✅",
-            module=__name__,
-        )
-
-    async def _load_pnl_from_platform(self, alpha_id: str) -> pd.DataFrame:
+    async def _retrieve_pnl_from_platform(self, alpha_id: str) -> pd.DataFrame:
         """
         从平台加载指定 Alpha 的 pnl 数据。
         """
@@ -316,7 +288,7 @@ class SelfCorrelationCalculator:
             )
             raise
 
-    async def _load_pnl_from_local(self, alpha_id: str) -> Optional[pd.DataFrame]:
+    async def _retrieve_pnl_from_local(self, alpha_id: str) -> Optional[pd.DataFrame]:
         pnl_record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
             alpha_id=alpha_id,
             set_type=RecordSetType.PNL,
@@ -351,13 +323,13 @@ class SelfCorrelationCalculator:
 
         return pnl_series_df
 
-    async def _retrieve_pnl_dataframe(
+    async def _get_pnl_dataframe(
         self, alpha_id: str, force_refresh: bool = False
     ) -> pd.DataFrame:
         # 调试日志记录函数入参
         pnl_series_df: Optional[pd.DataFrame]
         if force_refresh:
-            pnl_series_df = await self._load_pnl_from_platform(alpha_id)
+            pnl_series_df = await self._retrieve_pnl_from_platform(alpha_id)
             if pnl_series_df is None:
                 await log.aerror(
                     event="Alpha in_sample 为 None, 无法计算自相关性, 请检查 Alpha 的配置",
@@ -367,9 +339,9 @@ class SelfCorrelationCalculator:
                 raise ValueError("Alpha in_sample 为 None")
             return pnl_series_df
 
-        pnl_series_df = await self._load_pnl_from_local(alpha_id)
+        pnl_series_df = await self._retrieve_pnl_from_local(alpha_id)
         if pnl_series_df is None:
-            pnl_series_df = await self._load_pnl_from_platform(alpha_id)
+            pnl_series_df = await self._retrieve_pnl_from_platform(alpha_id)
             if pnl_series_df is None:
                 await log.aerror(
                     event="Alpha in_sample 为 None, 无法计算自相关性, 请检查 Alpha 的配置",
@@ -386,7 +358,7 @@ class SelfCorrelationCalculator:
 
         return pnl_series_df
 
-    async def _process_pnl_dataframe(self, pnl_df: pd.DataFrame) -> pd.DataFrame:
+    async def _prepare_pnl_dataframe(self, pnl_df: pd.DataFrame) -> pd.DataFrame:
         """
         处理 pnl 数据框，包括日期转换、过滤、设置索引和填充缺失值。
 
@@ -414,7 +386,7 @@ class SelfCorrelationCalculator:
         )
         return pnl_df
 
-    async def calculate_self_correlation(self, alpha: Alpha) -> Dict[str, float]:
+    async def calculate_correlation(self, alpha: Alpha) -> Dict[str, float]:
         """
         计算自相关性。
 
@@ -427,7 +399,7 @@ class SelfCorrelationCalculator:
             emoji="🔄",
         )
 
-        if not self._initialized:
+        if not self._is_initialized:
             await log.awarning(
                 event="SelfCorrelationCalculator 尚未初始化, 正在初始化",
                 emoji="⚠️",
@@ -446,7 +418,7 @@ class SelfCorrelationCalculator:
             )
             raise ValueError("Alpha 策略缺少 region 设置") from e
 
-        matched_region_alpha_ids: List[str] = self._os_alpha_map.get(region, [])
+        matched_region_alpha_ids: List[str] = self._region_to_alpha_map.get(region, [])
 
         if not matched_region_alpha_ids:
             await log.awarning(
@@ -457,14 +429,14 @@ class SelfCorrelationCalculator:
             )
             return {}
 
-        x_pnl_series_df: pd.DataFrame = await self._retrieve_pnl_dataframe(
+        x_pnl_series_df: pd.DataFrame = await self._get_pnl_dataframe(
             alpha_id=alpha.alpha_id,
             force_refresh=False,
         )
         x_pnl_series_df = await self._validate_pnl_dataframe(
             x_pnl_series_df, alpha.alpha_id
         )
-        x_pnl_series_df = await self._process_pnl_dataframe(x_pnl_series_df)
+        x_pnl_series_df = await self._prepare_pnl_dataframe(x_pnl_series_df)
         x_pnl_diff_series: pd.DataFrame = (
             x_pnl_series_df - x_pnl_series_df.shift(1)
         ).ffill()
@@ -477,13 +449,13 @@ class SelfCorrelationCalculator:
             if alpha_id == alpha.alpha_id:
                 continue
 
-            y_pnl_series_df: Optional[pd.DataFrame] = await self._load_pnl_from_local(
-                alpha_id=alpha_id
+            y_pnl_series_df: Optional[pd.DataFrame] = (
+                await self._retrieve_pnl_from_local(alpha_id=alpha_id)
             )
             y_pnl_series_df = await self._validate_pnl_dataframe(
                 y_pnl_series_df, alpha_id
             )
-            y_pnl_series_df = await self._process_pnl_dataframe(y_pnl_series_df)
+            y_pnl_series_df = await self._prepare_pnl_dataframe(y_pnl_series_df)
             y_pnl_diff_series: pd.DataFrame = (
                 y_pnl_series_df - y_pnl_series_df.shift(1)
             ).ffill()
@@ -537,8 +509,33 @@ if __name__ == "__main__":
                     record_set_dal = RecordSetDAL(session=evaluate_session)
                     correlation_dal = CorrelationDAL(session=evaluate_session)
 
-                    calculator = SelfCorrelationCalculator(
+                    async def alpha_generator() -> AsyncGenerator[Alpha]:
+                        for alpha in await alpha_dal.find_by_stage(
+                            stage=Stage.OS,
+                        ):
+                            for classification in alpha.classifications:
+                                if (
+                                    classification.classification_id
+                                    == "POWER_POOL:POWER_POOL_ELIGIBLE"
+                                ):
+                                    await log.ainfo(
+                                        event="Alpha 策略符合 Power Pool 条件",
+                                        alpha_id=alpha.alpha_id,
+                                        classifications=alpha.classifications,
+                                        emoji="✅",
+                                    )
+                                    yield alpha
+
+                            await log.ainfo(
+                                event="Alpha 策略不符合 Power Pool 条件",
+                                alpha_id=alpha.alpha_id,
+                                classifications=alpha.classifications,
+                                emoji="❌",
+                            )
+
+                    calculator = CorrelationCalculator(
                         client=client,
+                        alpha_stream=alpha_generator(),
                         alpha_dal=alpha_dal,
                         record_set_dal=record_set_dal,
                         correlation_dal=correlation_dal,
@@ -556,10 +553,8 @@ if __name__ == "__main__":
                             emoji="❌",
                         )
                         return
-                    corr: Dict[str, float] = (
-                        await calculator.calculate_self_correlation(
-                            alpha=alpha,
-                        )
+                    corr: Dict[str, float] = await calculator.calculate_correlation(
+                        alpha=alpha,
                     )
                     await log.ainfo(
                         event="计算完成",
@@ -567,7 +562,5 @@ if __name__ == "__main__":
                         corr=corr,
                         emoji="✅",
                     )
-
-    import asyncio
 
     asyncio.run(main())

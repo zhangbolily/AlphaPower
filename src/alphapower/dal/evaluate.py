@@ -61,7 +61,7 @@ class CorrelationDAL(EntityDAL[Correlation]):
             最新的 Correlation 对象，如果未找到则返回 None。
         """
 
-        await self.logger.adebug(
+        await self.log.adebug(
             "🔍 正在查询最新的相关性记录",
             alpha_id=alpha_id,
             calc_type=calc_type.value,
@@ -86,7 +86,7 @@ class CorrelationDAL(EntityDAL[Correlation]):
         result = await self.session.execute(query.limit(1))
         latest_record: Optional[Correlation] = result.scalars().first()
 
-        await self.logger.adebug(
+        await self.log.adebug(
             "✅ 查询最新相关性记录完成",
             found=latest_record is not None,
             record_id=latest_record.id if latest_record else None,

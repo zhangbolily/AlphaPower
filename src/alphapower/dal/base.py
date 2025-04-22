@@ -68,10 +68,10 @@ class BaseDAL(Generic[T]):
         self.session: AsyncSession = session
 
         # 使用 setup_logging 获取 structlog 的 logger
-        self.logger: BoundLogger = get_logger(
+        self.log: BoundLogger = get_logger(
             f"alphapower.dal.{self.__class__.__name__}"
         )
-        self.logger.info(
+        self.log.info(
             "初始化DAL实例",
             entity_type=self.entity_type.__name__,
             emoji="✅",
@@ -161,7 +161,7 @@ class BaseDAL(Generic[T]):
         Raises:
             SQLAlchemyError: 当数据库操作失败时。
         """
-        self.logger.debug(
+        self.log.debug(
             "创建实体",
             entity_type=self.entity_type.__name__,
             attributes=kwargs,
@@ -171,14 +171,14 @@ class BaseDAL(Generic[T]):
             entity: T = self.entity_type(**kwargs)
             self.session.add(entity)
             await self.session.flush()
-            self.logger.info(
+            self.log.info(
                 "成功创建实体",
                 entity_id=getattr(entity, "id", "unknown"),
                 emoji="✅",
             )
             return entity
         except Exception as e:
-            self.logger.error(
+            self.log.error(
                 "实体创建失败",
                 entity_type=self.entity_type.__name__,
                 attributes=kwargs,
@@ -186,7 +186,7 @@ class BaseDAL(Generic[T]):
                 emoji="❌",
             )
 
-            self.logger.error(
+            self.log.error(
                 "错误堆栈",
                 traceback=traceback.format_exc(),
                 emoji="🛠️",
@@ -336,7 +336,7 @@ class BaseDAL(Generic[T]):
         Returns:
             找到的实体对象，如果未找到则返回 None。
         """
-        self.logger.debug(
+        self.log.debug(
             "查询实体",
             entity_id=entity_id,
             emoji="🔍",
@@ -344,13 +344,13 @@ class BaseDAL(Generic[T]):
         actual_session: AsyncSession = session or self.session
         entity = await actual_session.get(self.entity_type, entity_id)
         if entity:
-            self.logger.info(
+            self.log.info(
                 "查询成功",
                 entity_id=entity_id,
                 emoji="✅",
             )
         else:
-            self.logger.warning(
+            self.log.warning(
                 "未找到实体",
                 entity_id=entity_id,
                 emoji="⚠️",
@@ -458,7 +458,7 @@ class BaseDAL(Generic[T]):
         Returns:
             更新后的实体对象，如果未找到则返回 None。
         """
-        self.logger.debug(
+        self.log.debug(
             "更新实体",
             entity_id=entity_id,
             update_fields=kwargs,
@@ -470,14 +470,14 @@ class BaseDAL(Generic[T]):
             for key, value in kwargs.items():
                 setattr(entity, key, value)
             await actual_session.flush()
-            self.logger.info(
+            self.log.info(
                 "更新成功",
                 entity_id=entity_id,
                 updated_fields=kwargs,
                 emoji="✅",
             )
             return entity
-        self.logger.warning(
+        self.log.warning(
             "更新失败，实体不存在",
             entity_id=entity_id,
             emoji="⚠️",
@@ -552,7 +552,7 @@ class BaseDAL(Generic[T]):
         Returns:
             如果成功删除返回 True，否则返回 False。
         """
-        self.logger.debug(
+        self.log.debug(
             "删除实体",
             entity_id=entity_id,
             emoji="🗑️",
@@ -562,13 +562,13 @@ class BaseDAL(Generic[T]):
         if entity:
             await actual_session.delete(entity)
             await actual_session.flush()
-            self.logger.info(
+            self.log.info(
                 "删除成功",
                 entity_id=entity_id,
                 emoji="✅",
             )
             return True
-        self.logger.warning(
+        self.log.warning(
             "删除失败，实体不存在",
             entity_id=entity_id,
             emoji="⚠️",
@@ -617,7 +617,7 @@ class BaseDAL(Generic[T]):
         Returns:
             删除的记录数量。
         """
-        self.logger.debug(
+        self.log.debug(
             "按条件删除实体",
             filter_conditions=kwargs,
             emoji="🗑️",
@@ -629,14 +629,14 @@ class BaseDAL(Generic[T]):
         result = await actual_session.execute(query)
         deleted_count = result.rowcount
         if deleted_count > 0:
-            self.logger.info(
+            self.log.info(
                 "删除成功",
                 deleted_count=deleted_count,
                 filter_conditions=kwargs,
                 emoji="✅",
             )
         else:
-            self.logger.warning(
+            self.log.warning(
                 "未删除任何实体",
                 filter_conditions=kwargs,
                 emoji="⚠️",
@@ -660,7 +660,7 @@ class BaseDAL(Generic[T]):
         Returns:
             符合条件的实体数量。
         """
-        self.logger.debug(
+        self.log.debug(
             "统计实体数量",
             filter_conditions=kwargs,
             in_conditions=in_,
@@ -681,7 +681,7 @@ class BaseDAL(Generic[T]):
         count_query = select(func.count()).select_from(query.subquery())
         result = await actual_session.execute(count_query)
         count = cast(int, result.scalar())
-        self.logger.info(
+        self.log.info(
             "统计完成",
             count=count,
             filter_conditions=kwargs,
@@ -800,7 +800,7 @@ class EntityDAL(BaseDAL[T]):
             raise ValueError(f"子类 {self.__class__.__name__} 必须定义 entity_class")
         super().__init__(self.entity_class, session)
         # self.logger 在 super().__init__ 中初始化，这里可以直接使用
-        self.logger.info(
+        self.log.info(
             "初始化实体 DAL 实例",
             entity_class=self.entity_class.__name__,
             emoji="✅",
