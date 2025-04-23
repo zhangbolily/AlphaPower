@@ -14,7 +14,7 @@ from typing import Any, AsyncGenerator
 # SQLAlchemy 列元素，用于构建数据库查询条件
 from sqlalchemy import Select
 
-from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
+from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
 from alphapower.entity import Alpha
 
 
@@ -29,8 +29,7 @@ class AbstractAlphaFetcher(abc.ABC):
     def __init__(
         self,
         alpha_dal: AlphaDAL,
-        sample_dal: AggregateDataDAL,
-        setting_dal: SettingDAL,
+        aggregate_data_dal: AggregateDataDAL,
     ):
         """初始化 AlphaFetcher。
 
@@ -40,8 +39,7 @@ class AbstractAlphaFetcher(abc.ABC):
             setting_dal: Setting 数据访问层对象。
         """
         self.alpha_dal = alpha_dal
-        self.sample_dal = sample_dal
-        self.setting_dal = setting_dal
+        self.aggregate_data_dal = aggregate_data_dal
 
     @abc.abstractmethod
     async def _build_alpha_select_query(

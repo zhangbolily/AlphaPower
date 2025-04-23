@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from multiprocessing import Manager, Process
 from typing import AsyncGenerator, Dict, List, Optional  # 用于可选类型注解
 
 import pandas as pd
@@ -7,14 +8,15 @@ from structlog.stdlib import BoundLogger
 
 from alphapower.client import TableView, WorldQuantClient
 from alphapower.constants import (
-    CorrelationCalcType,
+    Database,
     RecordSetType,
     Region,
     Stage,
 )
 from alphapower.dal.alphas import AlphaDAL
 from alphapower.dal.evaluate import CorrelationDAL, RecordSetDAL
-from alphapower.entity import Alpha, Correlation, RecordSet
+from alphapower.entity import Alpha, RecordSet
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 log: BoundLogger = get_logger(__name__)
@@ -30,6 +32,7 @@ class CorrelationCalculator:
         alpha_dal: AlphaDAL,
         record_set_dal: RecordSetDAL,
         correlation_dal: CorrelationDAL,
+        multiprocess: bool = False,
     ) -> None:
         """
         初始化 CorrelationCalculator
@@ -51,6 +54,7 @@ class CorrelationCalculator:
         self._region_to_alpha_map: Dict[Region, List[str]] = (
             {}
         )  # 建议改为 _region_to_alpha_map，更清晰表达区域到 Alpha 的映射关系
+        self.multiprocess: bool = multiprocess
 
     async def _load_missing_pnl(self, alpha_id: str) -> None:
         """
@@ -133,7 +137,7 @@ class CorrelationCalculator:
 
         async for alpha in self.alpha_stream:
             try:
-                region: Region = alpha.settings.region
+                region: Region = alpha.region
             except AttributeError:
                 await log.aerror(
                     event="Alpha 策略缺少 region 设置",
@@ -145,10 +149,13 @@ class CorrelationCalculator:
 
             self._region_to_alpha_map.setdefault(region, []).append(alpha.alpha_id)
 
-            record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
-                alpha_id=alpha.alpha_id,
-                set_type=RecordSetType.PNL,
-            )
+            # FIXME: 数据库连接池测试
+            async with get_db_session(Database.EVALUATE, readonly=True) as session:
+                self.record_set_dal.session = session
+                record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
+                    alpha_id=alpha.alpha_id,
+                    set_type=RecordSetType.PNL,
+                )
 
             if record_set is None or record_set.content is None:
                 missing_pnl_alpha_ids.append(alpha.alpha_id)
@@ -228,22 +235,24 @@ class CorrelationCalculator:
                 content=pnl_table_view.model_dump(),
             )
 
-            existing_record_set: Optional[RecordSet] = (
-                await self.record_set_dal.find_one_by(
-                    alpha_id=alpha_id,
-                    set_type=RecordSetType.PNL,
+            # FIXME: 数据库连接池测试
+            async with get_db_session(Database.EVALUATE) as session:
+                self.record_set_dal.session = session
+                existing_record_set: Optional[RecordSet] = (
+                    await self.record_set_dal.find_one_by(
+                        alpha_id=alpha_id,
+                        set_type=RecordSetType.PNL,
+                    )
                 )
-            )
 
-            if existing_record_set is None:
-                await self.record_set_dal.create(record_set_pnl)
-            else:
-                record_set_pnl.id = existing_record_set.id
-                await self.record_set_dal.update(
-                    record_set_pnl,
-                )
-            # FIXME: 貌似因为没有 commit 导致数据没有保存到数据库
-            await self.record_set_dal.session.commit()
+                if existing_record_set is None:
+                    await self.record_set_dal.create(record_set_pnl)
+                else:
+                    record_set_pnl.id = existing_record_set.id
+                    await self.record_set_dal.update(
+                        record_set_pnl,
+                    )
+                await session.commit()
 
             pnl_series_df: Optional[pd.DataFrame] = pnl_table_view.to_dataframe()
             if pnl_series_df is None:
@@ -289,10 +298,14 @@ class CorrelationCalculator:
             raise
 
     async def _retrieve_pnl_from_local(self, alpha_id: str) -> Optional[pd.DataFrame]:
-        pnl_record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
-            alpha_id=alpha_id,
-            set_type=RecordSetType.PNL,
-        )
+        # FIXME: 数据库连接池测试
+        async with get_db_session(Database.EVALUATE, readonly=True) as session:
+            self.record_set_dal.session = session
+            # 从数据库中获取 pnl 数据
+            pnl_record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
+                alpha_id=alpha_id,
+                set_type=RecordSetType.PNL,
+            )
 
         if pnl_record_set is None:
             await log.awarning(
@@ -400,16 +413,17 @@ class CorrelationCalculator:
         )
 
         if not self._is_initialized:
-            await log.awarning(
-                event="SelfCorrelationCalculator 尚未初始化, 正在初始化",
-                emoji="⚠️",
+            await log.aerror(
+                event="自相关性计算器未初始化",
+                emoji="❌",
+                module=__name__,
             )
-            await self.initialize()
+            raise RuntimeError("自相关性计算器未初始化")
 
         start_time: datetime = datetime.now()
 
         try:
-            region: Region = alpha.settings.region
+            region: Region = alpha.region
         except AttributeError as e:
             await log.aerror(
                 event="Alpha 策略缺少 region 设置",
@@ -441,9 +455,7 @@ class CorrelationCalculator:
             x_pnl_series_df - x_pnl_series_df.shift(1)
         ).ffill()
 
-        max_corr: float = -1.0
-        min_corr: float = 1.0
-        pairwise_correlation: Dict[str, float] = {}
+        shared_y_pnl_dict: Dict[str, pd.DataFrame] = {}
 
         for alpha_id in matched_region_alpha_ids:
             if alpha_id == alpha.alpha_id:
@@ -460,37 +472,76 @@ class CorrelationCalculator:
                 y_pnl_series_df - y_pnl_series_df.shift(1)
             ).ffill()
 
-            corr: float = x_pnl_diff_series.corrwith(y_pnl_diff_series, axis=0).iloc[0]
-            if pd.isna(corr):
-                await log.awarning(
-                    event="相关性计算结果为 NaN",
-                    alpha_id_a=alpha.alpha_id,
-                    alpha_id_b=alpha_id,
-                    emoji="⚠️",
+            shared_y_pnl_dict[alpha_id] = y_pnl_diff_series
+
+        def compute_correlation_in_subprocess(
+            shared_corr_val: Dict[str, float],
+            shared_y_pnl_data: Dict[str, pd.DataFrame],
+        ) -> None:
+            """
+            子进程中计算相关性并存储到共享变量中。
+
+            :param shared_corr_val: 用于存储相关性值的共享字典
+            """
+            for alpha_id, y_pnl_diff_series in shared_y_pnl_data.items():
+                corr: float = x_pnl_diff_series.corrwith(
+                    y_pnl_diff_series, axis=0
+                ).iloc[0]
+                if pd.isna(corr):
+                    log.warning(
+                        event="相关性计算结果为 NaN",
+                        alpha_id_a=alpha.alpha_id,
+                        alpha_id_b=alpha_id,
+                        emoji="⚠️",
+                    )
+
+                    continue
+                shared_corr_val[alpha_id] = corr
+
+        pairwise_correlation: Dict[str, float] = {}
+
+        # 使用 Manager 创建共享字典
+        if self.multiprocess:
+            with Manager() as manager:
+                pairwise_corr_val = manager.dict()
+
+                # 创建子进程并传递共享字典
+                sub_process: Process = Process(
+                    target=compute_correlation_in_subprocess,
+                    args=(pairwise_corr_val, shared_y_pnl_dict),
                 )
-                continue
+                sub_process.start()
+                sub_process.join()
 
-            self_correlation: Correlation = Correlation(
-                alpha_id_a=alpha.alpha_id,
-                alpha_id_b=alpha_id,
-                correlation=corr,
-                calc_type=CorrelationCalcType.LOCAL,
-            )
-            await self.correlation_dal.create(self_correlation)
-            pairwise_correlation[alpha_id] = corr
-
-            max_corr = max(max_corr, corr)
-            min_corr = min(min_corr, corr)
+                # 将共享字典转换为普通字典
+                pairwise_correlation = dict(pairwise_corr_val)
+        else:
+            for alpha_id, y_pnl_diff_series in shared_y_pnl_dict.items():
+                corr: float = x_pnl_diff_series.corrwith(
+                    y_pnl_diff_series, axis=0
+                ).iloc[0]
+                if pd.isna(corr):
+                    await log.awarning(
+                        event="相关性计算结果为 NaN",
+                        alpha_id_a=alpha.alpha_id,
+                        alpha_id_b=alpha_id,
+                        emoji="⚠️",
+                    )
+                    continue
+                pairwise_correlation[alpha_id] = corr
 
         end_time: datetime = datetime.now()
         elapsed_time: float = (end_time - start_time).total_seconds()
+
+        max_corr: float = max(pairwise_correlation.values(), default=0.0)
+        min_corr: float = min(pairwise_correlation.values(), default=0.0)
 
         await log.ainfo(
             event="完成自相关性计算",
             alpha_id=alpha.alpha_id,
             max_corr=max_corr,
             min_corr=min_corr,
-            elapsed_time="{:.2f} 秒".format(elapsed_time),
+            elapsed_time=f"{elapsed_time:.2f}秒",
             emoji="✅",
         )
         return pairwise_correlation
@@ -509,13 +560,13 @@ if __name__ == "__main__":
                     record_set_dal = RecordSetDAL(session=evaluate_session)
                     correlation_dal = CorrelationDAL(session=evaluate_session)
 
-                    async def alpha_generator() -> AsyncGenerator[Alpha]:
+                    async def alpha_generator() -> AsyncGenerator[Alpha, None]:
                         for alpha in await alpha_dal.find_by_stage(
                             stage=Stage.OS,
                         ):
                             for classification in alpha.classifications:
                                 if (
-                                    classification.classification_id
+                                    classification.id
                                     == "POWER_POOL:POWER_POOL_ELIGIBLE"
                                 ):
                                     await log.ainfo(

@@ -141,23 +141,13 @@ class CorrelationIndirectEstimator:
 
 if __name__ == "__main__":
     # 运行测试
-    from datetime import datetime
-    from typing import Dict, Set
+    from typing import Dict
 
     from alphapower.client import wq_client
-    from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
-    from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
+    from alphapower.dal.alphas import AlphaDAL
     from alphapower.dal.evaluate import (
-        CheckRecordDAL,
         CorrelationDAL,
-        EvaluateRecordDAL,
         RecordSetDAL,
-    )
-    from alphapower.engine.evaluate.base_alpha_fetcher import BaseAlphaFetcher
-    from alphapower.engine.evaluate.base_evaluate_stages import (
-        CorrelationLocalEvaluateStage,
-        CorrelationPlatformEvaluateStage,
-        InSampleChecksEvaluateStage,
     )
     from alphapower.engine.evaluate.correlation_calculator import (
         CorrelationCalculator,
@@ -182,7 +172,7 @@ if __name__ == "__main__":
                         ):
                             for classification in alpha.classifications:
                                 if (
-                                    classification.classification_id
+                                    classification.id
                                     == "POWER_POOL:POWER_POOL_ELIGIBLE"
                                 ):
                                     await log.ainfo(
@@ -201,11 +191,11 @@ if __name__ == "__main__":
                             )
 
                     alpha_id: str = "7LQXXJZ"
-                    alpha: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
+                    alpha_a: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
                         alpha_id=alpha_id,
                     )
 
-                    if not alpha:
+                    if not alpha_a:
                         await log.ainfo(
                             event="Alpha 策略不存在",
                             alpha_id=alpha_id,
@@ -227,6 +217,60 @@ if __name__ == "__main__":
                         prod_alpha_stream=alpha_generator(),
                         corr_calculator=correlation_calculator,
                     )
+
+                    alpha_a_corrs: Dict[str, float] = (
+                        await correlation_calculator.calculate_correlation(alpha_a)
+                    )
+                    for alpha_id_b, rho_ab in alpha_a_corrs.items():
+                        await log.ainfo(
+                            event="Alpha 与其他 Alpha 的相关性",
+                            alpha_id_a=alpha_a.alpha_id,
+                            alpha_id_b=alpha_id_b,
+                            correlation=rho_ab,
+                            emoji="🔄",
+                        )
+
+                        alpha_b: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
+                            alpha_id=alpha_id_b,
+                        )
+                        if not alpha_b:
+                            await log.ainfo(
+                                event="Alpha 策略不存在",
+                                alpha_id=alpha_id_b,
+                                emoji="❌",
+                            )
+                            continue
+
+                        alpha_b_corrs: Dict[str, float] = (
+                            await correlation_calculator.calculate_correlation(
+                                alpha_b,
+                            )
+                        )
+                        for alpha_id_c, rho_bc in alpha_b_corrs.items():
+                            await log.ainfo(
+                                event="Alpha 与其他 Alpha 的相关性",
+                                alpha_id_a=alpha_b.alpha_id,
+                                alpha_id_b=alpha_id_c,
+                                correlation=rho_bc,
+                                emoji="🔄",
+                            )
+
+                            real_p_ac: float = alpha_a_corrs.get(alpha_id_c, 0.0)
+                            estimated_p_ac: float = (
+                                correlation_estimator._calculate_upper_bound(
+                                    rho_ab=rho_ab,
+                                    rho_bc=rho_bc,
+                                )
+                            )
+
+                            await log.ainfo(
+                                event="Alpha 相关性估算",
+                                alpha_id_a=alpha_a.alpha_id,
+                                alpha_id_b=alpha_id_c,
+                                real_p_ac=real_p_ac,
+                                estimated_p_ac=estimated_p_ac,
+                                emoji="🔄",
+                            )
 
     # 运行异步测试函数
     import asyncio

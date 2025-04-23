@@ -1,5 +1,4 @@
 import asyncio
-import gc
 import signal
 import types
 from datetime import datetime, timedelta
@@ -64,7 +63,6 @@ class AlphaSyncService:
         self,
         alpha_view: AlphaView,
     ) -> Alpha:
-
         try:
             alpha: Alpha = Alpha(
                 alpha_id=alpha_view.id,
@@ -112,26 +110,27 @@ class AlphaSyncService:
                 themes=",".join(alpha_view.themes) if alpha_view.themes else None,
                 team=",".join(alpha_view.team) if alpha_view.team else None,
             )
-
             return alpha
         except AttributeError as e:
             self.log.error(
-                "创建因子时发生错误",
+                "创建因子时发生属性错误",
                 error=str(e),
+                alpha_view=alpha_view.__dict__,
                 exc_info=True,
                 module=__name__,
                 emoji="❌",
             )
-            raise AttributeError(f"因子数据缺少必要字段: {e}") from e
+            raise
         except Exception as e:
             self.log.error(
-                "创建因子时发生错误",
+                "创建因子时发生未知错误",
                 error=str(e),
+                alpha_view=alpha_view.__dict__,
                 exc_info=True,
                 module=__name__,
                 emoji="❌",
             )
-            raise RuntimeError(f"创建因子时发生错误: {e}") from e
+            raise
 
     async def fetch_last_sync_time_range(
         self, client: WorldQuantClient
@@ -185,8 +184,26 @@ class AlphaSyncService:
                             start_time=start_time,
                             emoji="⚠️",
                         )
+        except AttributeError as e:
+            await self.log.aerror(
+                "获取同步时间范围时发生属性错误",
+                error=str(e),
+                client=str(client),
+                exc_info=True,
+                module=__name__,
+                emoji="❌",
+            )
+            raise
         except Exception as e:
-            raise RuntimeError(f"获取同步时间范围时发生错误: {e}") from e
+            await self.log.acritical(
+                "获取同步时间范围时发生未知错误",
+                error=str(e),
+                client=str(client),
+                exc_info=True,
+                module=__name__,
+                emoji="💥",
+            )
+            raise
 
         await self.log.adebug(
             "退出 fetch_last_sync_time_range 函数",
@@ -206,14 +223,15 @@ class AlphaSyncService:
             for alpha_view in alphas_results:
                 if self.exit_event.is_set():
                     await self.log.awarning(
-                        "检测到退出事件，中止处理因子页面", emoji="⚠️"
+                        "检测到退出事件，中止处理因子页面",
+                        emoji="⚠️",
                     )
-                    raise RuntimeError("退出事件触发，停止处理因子页面。")
+                    return []  # 优雅退出，返回空结果
+
                 try:
                     alpha: Alpha = self.create_alpha(
                         alpha_view=alpha_view,
                     )
-
                     uncommitted_alphas.append(alpha)
                 except Exception as e:
                     await self.log.aerror(
@@ -221,17 +239,20 @@ class AlphaSyncService:
                         alpha_id=alpha_view.id,
                         error=str(e),
                         exc_info=True,
+                        module=__name__,
                         emoji="❌",
                     )
-                    raise
+                    # 捕获异常后继续处理其他因子，而不是直接抛出
+                    continue
         except Exception as e:
-            await self.log.aerror(
-                "单页数据处理时发生错误",
+            await self.log.acritical(
+                "单页数据处理时发生严重错误",
                 error=str(e),
                 exc_info=True,
-                emoji="❌",
+                module=__name__,
+                emoji="💥",
             )
-            raise RuntimeError(f"单页数据处理时发生错误: {e}") from e
+            raise  # 终止继续同步，抛出异常
 
         await self.log.adebug(
             "单页数据处理完成",
@@ -249,12 +270,9 @@ class AlphaSyncService:
         parallel: int,
         dry_run: bool,
         max_count_per_loop: int = MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
-    ) -> Tuple[int, int, int]:
-
+    ) -> int:
+        """处理指定时间范围内的因子数据"""
         fetched_alphas: int = 0
-        inserted_alphas: int = 0
-        updated_alphas: int = 0
-
         cur_time: datetime = start_time
         truncated_end_time: datetime = end_time
 
@@ -271,126 +289,28 @@ class AlphaSyncService:
                     )
                     break
 
-                query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
-                    limit=1,
-                    date_created_gt=cur_time.isoformat(),
-                    date_created_lt=truncated_end_time.isoformat(),
-                    status_eq=status.value if status else None,
+                query_params = self._build_query_params(
+                    cur_time, truncated_end_time, status
                 )
-                alphas_data_result: SelfAlphaListView
-                alphas_data_result, _ = await client.alpha_get_self_list(
-                    query=query_params
-                )
+                alphas_data_result = await self._fetch_alphas_data(client, query_params)
 
                 if alphas_data_result.count < min(
                     max_count_per_loop, MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY
                 ):
-                    await self.log.ainfo(
-                        "获取日期范围数据",
-                        cur_time=cur_time,
-                        truncated_end_time=truncated_end_time,
-                        count=alphas_data_result.count,
-                        emoji="📅",
+                    await self._process_alphas_in_range(
+                        client,
+                        cur_time,
+                        truncated_end_time,
+                        alphas_data_result,
+                        status,
+                        parallel,
+                        dry_run,
+                        fetched_alphas,
                     )
-                    tasks: List[asyncio.Task] = []
-                    page_size: int = 100
-                    total_pages: int = (
-                        alphas_data_result.count + page_size - 1
-                    ) // page_size
-                    pages_per_task: int = (total_pages + parallel - 1) // parallel
-
-                    async with get_db_session(Database.ALPHAS) as session:
-                        alpha_dal: AlphaDAL = AlphaDAL(session)
-
-                        for i in range(parallel):
-                            start_page: int = i * pages_per_task + 1
-                            end_page: int = min((i + 1) * pages_per_task, total_pages)
-                            if start_page > end_page:
-                                break
-
-                            task: asyncio.Task = asyncio.create_task(
-                                self.process_alphas_pages(
-                                    client=client,
-                                    start_time=cur_time,
-                                    end_time=truncated_end_time,
-                                    status=status,
-                                    start_page=start_page,
-                                    end_page=end_page,
-                                    page_size=page_size,
-                                )
-                            )
-
-                            tasks.append(task)
-
-                        results: List[Tuple[List[Alpha], int]] = await asyncio.gather(
-                            *tasks
-                        )
-
-                        for (
-                            uncommitted_alphas,
-                            fetched,
-                        ) in results:
-                            if self.exit_event.is_set():
-                                await self.log.awarning(
-                                    "检测到退出事件，中止处理日期范围",
-                                    start_time=start_time,
-                                    end_time=end_time,
-                                    cur_time=cur_time,
-                                    truncated_end_time=truncated_end_time,
-                                    emoji="⚠️",
-                                )
-                                break
-
-                            fetched_alphas += fetched
-
-                            if dry_run:
-                                await self.log.ainfo(
-                                    "干运行模式，跳过数据写入",
-                                    start_time=start_time,
-                                    end_time=end_time,
-                                    cur_time=cur_time,
-                                    truncated_end_time=truncated_end_time,
-                                    count=len(uncommitted_alphas),
-                                    emoji="🛠️",
-                                )
-                            else:
-                                async with self._db_lock:
-                                    await self.log.ainfo(
-                                        "写入因子数据",
-                                        start_time=start_time,
-                                        end_time=end_time,
-                                        cur_time=cur_time,
-                                        truncated_end_time=truncated_end_time,
-                                        count=len(uncommitted_alphas),
-                                        emoji="🔄",
-                                    )
-
-                                    await alpha_dal.bulk_upsert_by_unique_key(
-                                        uncommitted_alphas, unique_key="alpha_id"
-                                    )
-                                    await alpha_dal.session.commit()
-
-                                    await self.log.ainfo(
-                                        "因子数据写入完成",
-                                        start_time=start_time,
-                                        end_time=end_time,
-                                        cur_time=cur_time,
-                                        truncated_end_time=truncated_end_time,
-                                        count=len(uncommitted_alphas),
-                                        emoji="✅",
-                                    )
-
                     cur_time = truncated_end_time
                     truncated_end_time = end_time
-                    # 这里清理一下资源，进行垃圾回收
-                    del tasks
-                    del alphas_data_result
-                    del alpha_dal
-                    gc.collect()
-
                 else:
-                    mid_time: datetime = cur_time + (truncated_end_time - cur_time) / 2
-                    truncated_end_time = mid_time
+                    truncated_end_time = cur_time + (truncated_end_time - cur_time) / 2
                     await self.log.ainfo(
                         "数据量超过限制，缩小日期范围",
                         start_time=start_time,
@@ -399,6 +319,14 @@ class AlphaSyncService:
                         truncated_end_time=truncated_end_time,
                         emoji="⚠️",
                     )
+        except asyncio.CancelledError:
+            await self.log.awarning(
+                "任务被取消，中止处理日期范围",
+                start_time=start_time,
+                end_time=end_time,
+                emoji="⚠️",
+            )
+            raise
         except Exception as e:
             await self.log.aerror(
                 "处理日期范围内的因子数据时发生错误",
@@ -409,8 +337,241 @@ class AlphaSyncService:
                 emoji="❌",
             )
             raise RuntimeError(f"处理日期范围内的因子数据时发生错误: {e}") from e
+        finally:
+            await self.log.ainfo(
+                "退出 process_alphas_for_time_range 函数",
+                start_time=start_time,
+                end_time=end_time,
+                emoji="✅",
+            )
 
-        return fetched_alphas, inserted_alphas, updated_alphas
+        return fetched_alphas
+
+    def _build_query_params(
+        self, cur_time: datetime, truncated_end_time: datetime, status: Optional[Status]
+    ) -> SelfAlphaListQueryParams:
+        """构建查询参数"""
+        try:
+            return SelfAlphaListQueryParams(
+                limit=1,
+                date_created_gt=cur_time.isoformat(),
+                date_created_lt=truncated_end_time.isoformat(),
+                status_eq=status.value if status else None,
+            )
+        except Exception as e:
+            self.log.error(
+                "构建查询参数时发生错误",
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                error=str(e),
+                exc_info=True,
+                emoji="❌",
+            )
+            raise
+
+    async def _fetch_alphas_data(
+        self, client: WorldQuantClient, query_params: SelfAlphaListQueryParams
+    ) -> SelfAlphaListView:
+        """从 API 获取因子数据"""
+        try:
+            alphas_data_result, _ = await client.alpha_get_self_list(query=query_params)
+            return alphas_data_result
+        except asyncio.CancelledError:
+            await self.log.awarning(
+                "任务被取消，中止获取因子数据",
+                query_params=query_params.__dict__,
+                emoji="⚠️",
+            )
+            raise
+        except Exception as e:
+            await self.log.aerror(
+                "从 API 获取因子数据时发生错误",
+                query_params=query_params.__dict__,
+                error=str(e),
+                exc_info=True,
+                emoji="❌",
+            )
+            raise
+
+    async def _process_alphas_in_range(
+        self,
+        client: WorldQuantClient,
+        cur_time: datetime,
+        truncated_end_time: datetime,
+        alphas_data_result: SelfAlphaListView,
+        status: Optional[Status],
+        parallel: int,
+        dry_run: bool,
+        fetched_alphas: int,
+    ) -> None:
+        """处理指定范围内的因子数据"""
+        try:
+            await self.log.ainfo(
+                "获取日期范围数据",
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                count=alphas_data_result.count,
+                emoji="📅",
+            )
+            tasks = self._create_processing_tasks(
+                client=client,
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                alphas_data_result=alphas_data_result,
+                parallel=parallel,
+                status=status,
+            )
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for result in results:
+                if self.exit_event.is_set():
+                    await self.log.awarning(
+                        "检测到退出事件，中止处理任务",
+                        cur_time=cur_time,
+                        truncated_end_time=truncated_end_time,
+                        emoji="⚠️",
+                    )
+                    break
+
+                if isinstance(result, Exception):
+                    await self.log.awarning(
+                        "处理任务中发生错误",
+                        error=str(result),
+                        cur_time=cur_time,
+                        truncated_end_time=truncated_end_time,
+                        emoji="❌",
+                    )
+                    raise result
+
+                if isinstance(result, tuple):
+                    uncommitted_alphas, fetched = result
+                    fetched_alphas += fetched
+                    if dry_run:
+                        await self.log.ainfo(
+                            "干运行模式，跳过数据写入",
+                            cur_time=cur_time,
+                            truncated_end_time=truncated_end_time,
+                            count=len(uncommitted_alphas),
+                            emoji="🛠️",
+                        )
+                    else:
+                        await self._write_alphas_to_db(uncommitted_alphas)
+                else:
+                    await self.log.awarning(
+                        "处理任务返回了意外的结果类型",
+                        result_type=type(result),
+                        emoji="⚠️",
+                    )
+                    raise RuntimeError("处理任务返回了意外的结果类型，无法继续处理。")
+        except asyncio.CancelledError:
+            await self.log.awarning(
+                "任务被取消，中止处理范围内的因子数据",
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                emoji="⚠️",
+            )
+            raise
+        except Exception as e:
+            await self.log.aerror(
+                "处理范围内的因子数据时发生错误",
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                error=str(e),
+                exc_info=True,
+                emoji="❌",
+            )
+            raise
+        finally:
+            await self.log.ainfo(
+                "退出 _process_alphas_in_range 函数",
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                emoji="✅",
+            )
+
+    def _create_processing_tasks(
+        self,
+        client: WorldQuantClient,
+        cur_time: datetime,
+        truncated_end_time: datetime,
+        alphas_data_result: SelfAlphaListView,
+        parallel: int,
+        status: Optional[Status] = None,
+    ) -> List[asyncio.Task[Tuple[List[Alpha], int]]]:
+        """创建处理任务"""
+        try:
+            tasks: List[asyncio.Task[Tuple[List[Alpha], int]]] = []
+            page_size = 100
+            total_pages = (alphas_data_result.count + page_size - 1) // page_size
+            pages_per_task = (total_pages + parallel - 1) // parallel
+
+            for i in range(parallel):
+                start_page = i * pages_per_task + 1
+                end_page = min((i + 1) * pages_per_task, total_pages)
+                if start_page > end_page:
+                    break
+
+                task: asyncio.Task[Tuple[List[Alpha], int]] = asyncio.create_task(
+                    self.process_alphas_pages(
+                        client=client,
+                        start_time=cur_time,
+                        end_time=truncated_end_time,
+                        status=status,
+                        start_page=start_page,
+                        end_page=end_page,
+                        page_size=page_size,
+                    )
+                )
+                tasks.append(task)
+            return tasks
+        except Exception as e:
+            self.log.error(
+                "创建处理任务时发生错误",
+                cur_time=cur_time,
+                truncated_end_time=truncated_end_time,
+                error=str(e),
+                exc_info=True,
+                emoji="❌",
+            )
+            raise
+
+    async def _write_alphas_to_db(self, uncommitted_alphas: List[Alpha]) -> None:
+        """将因子数据写入数据库"""
+        try:
+            async with self._db_lock:
+                async with get_db_session(Database.ALPHAS) as session:
+                    alpha_dal = AlphaDAL(session)
+                    await alpha_dal.bulk_upsert_by_unique_key(
+                        uncommitted_alphas, unique_key="alpha_id"
+                    )
+                    await alpha_dal.session.commit()
+                    await self.log.ainfo(
+                        "因子数据写入完成",
+                        count=len(uncommitted_alphas),
+                        emoji="✅",
+                    )
+        except asyncio.CancelledError:
+            await self.log.awarning(
+                "任务被取消，中止写入因子数据",
+                count=len(uncommitted_alphas),
+                emoji="⚠️",
+            )
+            raise
+        except Exception as e:
+            await self.log.aerror(
+                "写入因子数据时发生错误",
+                count=len(uncommitted_alphas),
+                error=str(e),
+                exc_info=True,
+                emoji="❌",
+            )
+            raise
+        finally:
+            await self.log.ainfo(
+                "退出 _write_alphas_to_db 函数",
+                count=len(uncommitted_alphas),
+                emoji="✅",
+            )
 
     async def process_alphas_pages(
         self,
@@ -432,7 +593,8 @@ class AlphaSyncService:
                     await self.log.awarning(
                         "检测到退出事件，中止处理多页数据", emoji="⚠️"
                     )
-                    raise RuntimeError("退出事件触发，停止处理多页数据。")
+                    break
+
                 query_params: SelfAlphaListQueryParams = SelfAlphaListQueryParams(
                     limit=page_size,
                     offset=(page - 1) * page_size,
@@ -462,6 +624,14 @@ class AlphaSyncService:
                     alphas_data_result.results,
                 )
                 uncommited_alphas.extend(alphas)
+        except asyncio.CancelledError:
+            await self.log.awarning(
+                "任务被取消，中止处理多页数据",
+                start_time=start_time,
+                end_time=end_time,
+                emoji="⚠️",
+            )
+            raise
         except Exception as e:
             await self.log.aerror(
                 "处理多页数据时发生错误",
@@ -472,6 +642,13 @@ class AlphaSyncService:
                 emoji="❌",
             )
             raise RuntimeError(f"处理多页数据时发生错误: {e}") from e
+        finally:
+            await self.log.ainfo(
+                "退出 process_alphas_pages 函数",
+                start_time=start_time,
+                end_time=end_time,
+                emoji="✅",
+            )
 
         return uncommited_alphas, fetched_alphas
 
@@ -530,6 +707,8 @@ class AlphaSyncService:
 
         await self.log.ainfo("开始同步因子", emoji="🚀")
 
+        begin_time: datetime = datetime.now()
+        total_fetched_alphas: int = 0
         async with wq_client:
             try:
                 for i in range((end_time - start_time).days):
@@ -553,27 +732,36 @@ class AlphaSyncService:
                         )
                         break
 
-                    fetched_alphas, inserted_alphas, updated_alphas = (
-                        await self.process_alphas_for_time_range(
-                            client=wq_client,
-                            start_time=cur_start_time,
-                            end_time=cur_end_time,
-                            status=status,
-                            parallel=parallel,
-                            dry_run=dry_run,
-                            max_count_per_loop=max_count_per_loop,
-                        )
+                    fetched_alphas = await self.process_alphas_for_time_range(
+                        client=wq_client,
+                        start_time=cur_start_time,
+                        end_time=cur_end_time,
+                        status=status,
+                        parallel=parallel,
+                        dry_run=dry_run,
+                        max_count_per_loop=max_count_per_loop,
                     )
+
+                    total_fetched_alphas += fetched_alphas
+
                     await self.log.ainfo(
                         "处理时间范围完成",
                         start_time=cur_start_time,
                         end_time=cur_end_time,
                         fetched=fetched_alphas,
-                        inserted=inserted_alphas,
-                        updated=updated_alphas,
                         module=__name__,
                         emoji="✅",
                     )
+
+                elapsed_time: timedelta = datetime.now() - begin_time
+                await self.log.ainfo(
+                    "所有因子同步完成",
+                    total_fetched=total_fetched_alphas,
+                    elapsed_time=elapsed_time,
+                    tps=f"{total_fetched_alphas / elapsed_time.total_seconds():.2f}",
+                    module=__name__,
+                    emoji="✅",
+                )
 
             except ValueError as ve:
                 await self.log.aerror(

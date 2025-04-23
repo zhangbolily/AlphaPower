@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 import sys
-import threading
 from logging.handlers import RotatingFileHandler
 from typing import Any, List, Mapping, MutableMapping
 
@@ -41,12 +40,8 @@ def add_coroutine_id(
         if task:
             # 如果是协程，添加协程ID
             event_dict["coroutine_id"] = id(task)
-        else:
-            # 如果不是协程，添加线程ID
-            event_dict["thread_id"] = threading.get_ident()
     except RuntimeError:
-        # 如果不在事件循环中运行，添加线程ID
-        event_dict["thread_id"] = threading.get_ident()
+        event_dict["coroutine_id"] = None
 
     return event_dict
 
@@ -78,11 +73,14 @@ def get_logger(
         structlog.stdlib.add_log_level,  # 添加日志级别
         structlog.stdlib.add_log_level_number,  # 添加日志级别数字
         structlog.stdlib.PositionalArgumentsFormatter(),  # 格式化位置参数
-        structlog.processors.TimeStamper(fmt="iso"),  # 添加 ISO 格式时间戳
+        structlog.processors.TimeStamper(
+            fmt="iso", utc=False, key="datetime"
+        ),  # 添加 ISO 格式时间戳
         structlog.processors.StackInfoRenderer(),  # 添加堆栈信息
         structlog.processors.format_exc_info,  # 格式化异常信息
         structlog.processors.CallsiteParameterAdder(  # 添加调用点信息
             parameters={
+                structlog.processors.CallsiteParameter.THREAD,
                 structlog.processors.CallsiteParameter.FUNC_NAME,
                 structlog.processors.CallsiteParameter.MODULE,
                 structlog.processors.CallsiteParameter.LINENO,
@@ -120,11 +118,11 @@ def get_logger(
         # 使用标准的 ProcessorFormatter
         processor=structlog.processors.KeyValueRenderer(
             key_order=[
-                "timestamp",
+                "datetime",
                 "level",
                 "level_number",
                 "logger",
-                "thread_id",
+                "thread",
                 "coroutine_id",
                 "module",
                 "func_name",

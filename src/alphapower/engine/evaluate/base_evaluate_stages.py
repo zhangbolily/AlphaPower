@@ -12,6 +12,7 @@ from alphapower.constants import (
     CONSULTANT_MAX_SELF_CORRELATION,
     CheckRecordType,
     CorrelationType,
+    Database,
     RefreshPolicy,
     SubmissionCheckResult,
     SubmissionCheckType,
@@ -22,6 +23,7 @@ from alphapower.dal.evaluate import (
 )
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import Alpha, CheckRecord, EvaluateRecord
+from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 from .correlation_calculator import CorrelationCalculator
@@ -106,8 +108,8 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
             return False
 
         for check in alpha.in_sample.checks:
-            pass_result_set: Set[SubmissionCheckResult] = self._check_pass_result_map.get(
-                SubmissionCheckType(check.name), set()
+            pass_result_set: Set[SubmissionCheckResult] = (
+                self._check_pass_result_map.get(SubmissionCheckType(check.name), set())
             )
 
             if (
@@ -189,6 +191,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
         self,
         next_stage: Optional[AbstractEvaluateStage],
         correlation_calculator: CorrelationCalculator,
+        threshold: float = CONSULTANT_MAX_SELF_CORRELATION,
     ) -> None:
         """
         初始化本地相关性评估阶段。
@@ -199,6 +202,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
         """
         super().__init__(next_stage)
         self.correlation_calculator: CorrelationCalculator = correlation_calculator
+        self._threshold: float = threshold
 
     async def _evaluate_stage(
         self,
@@ -242,13 +246,14 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             record.self_correlation = max(
                 record.self_correlation if record.self_correlation else -1.0, max_corr
             )
-            if max_corr > CONSULTANT_MAX_SELF_CORRELATION:
+            if max_corr > self._threshold:
                 await log.awarning(
                     "自相关性检查未通过，最大相关性超过阈值",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
                     max_corr=max_corr,
                     min_corr=min_corr,
+                    threshold=self._threshold,
                 )
                 return False
 
@@ -350,13 +355,16 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         )
 
         try:
-            exist_check_record: Optional[CheckRecord] = (
-                await self.check_record_dal.find_one_by(
-                    alpha_id=alpha.alpha_id,
-                    record_type=record_type,
-                    order_by=CheckRecord.created_at.desc(),
+            # FIXME: 数据库连接池测试
+            async with get_db_session(Database.EVALUATE) as session:
+                self.check_record_dal.session = session
+                exist_check_record: Optional[CheckRecord] = (
+                    await self.check_record_dal.find_one_by(
+                        alpha_id=alpha.alpha_id,
+                        record_type=record_type,
+                        order_by=CheckRecord.created_at.desc(),
+                    )
                 )
-            )
             await log.adebug(
                 f"查询现有{check_type_name}检查记录结果",
                 emoji="💾" if exist_check_record else "❓",
@@ -509,15 +517,17 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             ),
                             content=api_result.model_dump(mode="python"),
                         )
-                        await self.check_record_dal.create(check_record)
-                        # FIXME: 这里因为没有 commit 导致没有及时持久化数据
-                        await self.check_record_dal.session.commit()
-                        await log.adebug(
-                            "相关性数据已保存到数据库",
-                            emoji="💾",
-                            alpha_id=alpha.alpha_id,
-                            record_type=check_record.record_type,
-                        )
+                        # FIXME: 数据库连接池测试
+                        async with get_db_session(Database.EVALUATE) as session:
+                            self.check_record_dal.session = session
+                            await self.check_record_dal.create(check_record)
+                            await session.commit()
+                            await log.adebug(
+                                "相关性数据已保存到数据库",
+                                emoji="💾",
+                                alpha_id=alpha.alpha_id,
+                                record_type=check_record.record_type,
+                            )
                         return api_result
                     else:
                         await log.awarning(
@@ -677,13 +687,28 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
             Optional[BeforeAndAfterPerformanceView]: 业绩对比数据。
         """
         # 根据策略决定是否刷新数据
-        action = await self._determine_check_action(
-            policy=policy,
-            exist_check_record=await self.check_record_dal.find_one_by(
+        # FIXME: 数据库连接池测试
+        async with get_db_session(Database.EVALUATE) as session:
+            self.check_record_dal.session = session
+            # 查找现有的检查记录
+            exist_check_record: Optional[CheckRecord] = (
+                await self.check_record_dal.find_one_by(
+                    alpha_id=alpha.alpha_id,
+                    record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+                    order_by=CheckRecord.created_at.desc(),
+                )
+            )
+            await log.adebug(
+                f"查询现有{check_type_name}检查记录结果",
+                emoji="💾" if exist_check_record else "❓",
                 alpha_id=alpha.alpha_id,
                 record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
-                order_by=CheckRecord.created_at.desc(),
-            ),
+                record_found=bool(exist_check_record),
+            )
+
+        action = await self._determine_check_action(
+            policy=policy,
+            exist_check_record=exist_check_record,
             alpha_id=alpha.alpha_id,
             check_type_name=check_type_name,
         )
@@ -691,11 +716,14 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         if action == AbstractEvaluateStage.CheckAction.REFRESH:
             return await self._refresh_alpha_pool_performance_diff(alpha)
         elif action == AbstractEvaluateStage.CheckAction.USE_EXISTING:
-            record = await self.check_record_dal.find_one_by(
-                alpha_id=alpha.alpha_id,
-                record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
-                order_by=CheckRecord.created_at.desc(),
-            )
+            # FIXME: 数据库连接池测试
+            async with get_db_session(Database.EVALUATE) as session:
+                self.check_record_dal.session = session
+                record = await self.check_record_dal.find_one_by(
+                    alpha_id=alpha.alpha_id,
+                    record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+                    order_by=CheckRecord.created_at.desc(),
+                )
             if record:
                 return BeforeAndAfterPerformanceView(**record.content)
         elif action in {
@@ -735,15 +763,17 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                         )
                     )
                     if finished and result:
-                        await self.check_record_dal.create(
-                            CheckRecord(
-                                alpha_id=alpha.alpha_id,
-                                record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
-                                content=result.model_dump(mode="json"),
+                        # FIXME: 数据库连接池测试
+                        async with get_db_session(Database.EVALUATE) as session:
+                            self.check_record_dal.session = session
+                            await self.check_record_dal.create(
+                                CheckRecord(
+                                    alpha_id=alpha.alpha_id,
+                                    record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
+                                    content=result.model_dump(mode="json"),
+                                )
                             )
-                        )
-                        # FIXME: 这里因为没有 commit 导致没有及时持久化数据
-                        await self.check_record_dal.session.commit()
+                            await session.commit()
                         return result
                     elif retry_after and retry_after > 0:
                         await log.adebug(
@@ -850,13 +880,16 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
 
         try:
             # 查找现有的检查记录
-            exist_check_record: Optional[CheckRecord] = (
-                await self.check_record_dal.find_one_by(
-                    alpha_id=alpha.alpha_id,
-                    record_type=record_type,
-                    order_by=CheckRecord.created_at.desc(),
+            # FIXME: 数据库连接池测试
+            async with get_db_session(Database.EVALUATE) as session:
+                self.check_record_dal.session = session
+                exist_check_record: Optional[CheckRecord] = (
+                    await self.check_record_dal.find_one_by(
+                        alpha_id=alpha.alpha_id,
+                        record_type=record_type,
+                        order_by=CheckRecord.created_at.desc(),
+                    )
                 )
-            )
             await log.adebug(
                 f"查询现有{check_type_name}检查记录结果",
                 emoji="💾" if exist_check_record else "❓",
@@ -978,15 +1011,17 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                         )
                     )
                     if finished and result:
-                        await self.check_record_dal.create(
-                            CheckRecord(
-                                alpha_id=alpha.alpha_id,
-                                record_type=CheckRecordType.SUBMISSION,
-                                content=result.model_dump(),
+                        # FIXME: 数据库连接池测试
+                        async with get_db_session(Database.EVALUATE) as session:
+                            self.check_record_dal.session = session
+                            await self.check_record_dal.create(
+                                CheckRecord(
+                                    alpha_id=alpha.alpha_id,
+                                    record_type=CheckRecordType.SUBMISSION,
+                                    content=result.model_dump(),
+                                )
                             )
-                        )
-                        # FIXME: 这里因为没有 commit 导致没有及时持久化数据
-                        await self.check_record_dal.session.commit()
+                            await session.commit()
                         return result
                     elif retry_after and retry_after > 0:
                         await log.adebug(

@@ -68,9 +68,7 @@ class BaseDAL(Generic[T]):
         self.session: AsyncSession = session
 
         # 使用 setup_logging 获取 structlog 的 logger
-        self.log: BoundLogger = get_logger(
-            f"alphapower.dal.{self.__class__.__name__}"
-        )
+        self.log: BoundLogger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
         self.log.info(
             "初始化DAL实例",
             entity_type=self.entity_type.__name__,
@@ -204,7 +202,6 @@ class BaseDAL(Generic[T]):
             新创建的实体对象。
         """
         self.session.add(entity)
-        await self.session.flush()
         return entity
 
     async def bulk_create(self, entities: List[T]) -> List[T]:
@@ -496,7 +493,6 @@ class BaseDAL(Generic[T]):
         """
 
         await self.session.merge(entity)
-        await self.session.flush()
         return entity
 
     async def update_all(self, entities: List[T]) -> List[T]:

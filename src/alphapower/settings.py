@@ -38,22 +38,22 @@ class AppConfig(BaseSettings):
 
     databases: Dict[Database, DatabaseConfig] = {
         Database.ALPHAS: DatabaseConfig(
-            dsn=AnyUrl(url="sqlite+aiosqlite:///db/alphas.db"),
+            dsn=AnyUrl(url="sqlite+aiosqlite:///file:db/alphas.db?uri=true"),
             description="Alpha 数据库",
             alias=Database.ALPHAS.value,
         ),
         Database.DATA: DatabaseConfig(
-            dsn=AnyUrl(url="sqlite+aiosqlite:///db/data.db"),
+            dsn=AnyUrl(url="sqlite+aiosqlite:///file:db/data.db?uri=true"),
             description="数据集数据库",
             alias=Database.DATA.value,
         ),
         Database.SIMULATION: DatabaseConfig(
-            dsn=AnyUrl(url="sqlite+aiosqlite:///db/simulation.db"),
+            dsn=AnyUrl(url="sqlite+aiosqlite:///file:db/simulation.db?uri=true"),
             description="模拟回测任务数据库",
             alias=Database.SIMULATION.value,
         ),
         Database.EVALUATE: DatabaseConfig(
-            dsn=AnyUrl(url="sqlite+aiosqlite:///db/evaluate.db"),
+            dsn=AnyUrl(url="sqlite+aiosqlite:///file:db/evaluate.db?uri=true"),
             description="检查数据库",
             alias=Database.EVALUATE.value,
         ),

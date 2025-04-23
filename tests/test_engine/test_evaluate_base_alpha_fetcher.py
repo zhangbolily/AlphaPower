@@ -66,7 +66,7 @@ class TestBaseAlphaFetcher:
             base_fetcher: BaseAlphaFetcher 的测试实例。
         """
         assert isinstance(base_fetcher.alpha_dal, MagicMock)
-        assert isinstance(base_fetcher.sample_dal, MagicMock)
+        assert isinstance(base_fetcher.aggregate_data_dal, MagicMock)
         assert isinstance(base_fetcher.setting_dal, MagicMock)
         assert base_fetcher._fetched_count == 0
 

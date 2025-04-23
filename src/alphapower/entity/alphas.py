@@ -246,7 +246,7 @@ class AggregateData(Base):
         if self._checks is None:
             return []
 
-        if self._checks_view_cache is not None:
+        if hasattr(self, "_checks_view_cache") and self._checks_view_cache is not None:
             return self._checks_view_cache
         checks: List[SubmissionCheckView] = (
             SubmissionCheckViewListAdapter.validate_python(self._checks)
@@ -440,42 +440,45 @@ class Alpha(Base):
                 )
             )
 
+        self._regular_view_cache: Optional[ExpressionView] = None
+        self._combo_view_cache: Optional[ExpressionView] = None
+        self._selection_view_cache: Optional[ExpressionView] = None
+        self._pyramids_view_cache: Optional[List[PyramidRefView]] = None
+        self._classifications_view_cache: Optional[List[ClassificationRefView]] = None
+        self._competitions_view_cache: Optional[List[CompetitionRefView]] = None
+
         if regular is not None:
             self._regular = cast(Any, regular.model_dump(mode="json"))
-            self._regular_view_cache: Optional[ExpressionView] = regular
+            self._regular_view_cache = regular
 
         if combo is not None:
             self._combo = cast(Any, combo.model_dump(mode="json"))
-            self._combo_view_cache: Optional[ExpressionView] = combo
+            self._combo_view_cache = combo
 
         if selection is not None:
             self._selection = cast(Any, selection.model_dump(mode="json"))
-            self._selection_view_cache: Optional[ExpressionView] = selection
+            self._selection_view_cache = selection
 
         if pyramids is not None:
             self._pyramids = PyramidRefViewListAdapter.dump_python(
                 pyramids,
                 mode="json",
             )
-            self._pyramids_view_cache: Optional[List[PyramidRefView]] = pyramids
+            self._pyramids_view_cache = pyramids
 
         if classifications is not None:
             self._classifications = ClassificationRefViewListAdapter.dump_python(
                 classifications,
                 mode="json",
             )
-            self._classifications_view_cache: Optional[List[ClassificationRefView]] = (
-                classifications
-            )
+            self._classifications_view_cache = classifications
 
         if competitions is not None:
             self._competitions = CompetitionRefViewListAdapter.dump_python(
                 competitions,
                 mode="json",
             )
-            self._competitions_view_cache: Optional[List[CompetitionRefView]] = (
-                competitions
-            )
+            self._competitions_view_cache = competitions
 
     @hybrid_property
     def regular(self) -> Optional[ExpressionView]:
@@ -483,7 +486,10 @@ class Alpha(Base):
         if self._regular is None:
             return None
 
-        if self._regular_view_cache is not None:
+        if (
+            hasattr(self, "_regular_view_cache")
+            and self._regular_view_cache is not None
+        ):
             return self._regular_view_cache
         regular: ExpressionView = ExpressionView.model_validate(self._regular)
         if regular is None:
@@ -507,7 +513,7 @@ class Alpha(Base):
         if self._combo is None:
             return None
 
-        if self._combo_view_cache is not None:
+        if hasattr(self, "_combo_view_cache") and self._combo_view_cache is not None:
             return self._combo_view_cache
         combo: ExpressionView = ExpressionView.model_validate(self._combo)
         if combo is None:
@@ -530,7 +536,10 @@ class Alpha(Base):
         if self._selection is None:
             return None
 
-        if self._selection_view_cache is not None:
+        if (
+            hasattr(self, "_selection_view_cache")
+            and self._selection_view_cache is not None
+        ):
             return self._selection_view_cache
         selection: ExpressionView = ExpressionView.model_validate(self._selection)
         if selection is None:
@@ -556,7 +565,10 @@ class Alpha(Base):
         if self._pyramids is None:
             return []
 
-        if self._pyramids_view_cache is not None:
+        if (
+            hasattr(self, "_pyramids_view_cache")
+            and self._pyramids_view_cache is not None
+        ):
             return self._pyramids_view_cache
         pyramids: List[PyramidRefView] = PyramidRefViewListAdapter.validate_python(
             self._pyramids
@@ -587,7 +599,10 @@ class Alpha(Base):
         if self._classifications is None:
             return []
 
-        if self._classifications_view_cache is not None:
+        if (
+            hasattr(self, "_classifications_view_cache")
+            and self._classifications_view_cache is not None
+        ):
             return self._classifications_view_cache
         classifications: List[ClassificationRefView] = (
             ClassificationRefViewListAdapter.validate_python(self._classifications)
@@ -618,7 +633,10 @@ class Alpha(Base):
         if self._competitions is None:
             return []
 
-        if self._competitions_view_cache is not None:
+        if (
+            hasattr(self, "_competitions_view_cache")
+            and self._competitions_view_cache is not None
+        ):
             return self._competitions_view_cache
         competitions: List[CompetitionRefView] = (
             CompetitionRefViewListAdapter.validate_python(self._competitions)

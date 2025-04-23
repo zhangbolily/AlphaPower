@@ -16,8 +16,8 @@ from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
 from alphapower.constants import AlphaType, Delay, Region, Stage
-from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL, SettingDAL
-from alphapower.entity import AggregateData, Alpha, Setting
+from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
+from alphapower.entity import AggregateData, Alpha
 from alphapower.internal.logging import get_logger
 
 from .alpha_fetcher_abc import AbstractAlphaFetcher
@@ -36,8 +36,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
     def __init__(
         self,
         alpha_dal: AlphaDAL,
-        sample_dal: AggregateDataDAL,
-        setting_dal: SettingDAL,
+        aggregate_data_dal: AggregateDataDAL,
         **kwargs: Any,
     ):
         """初始化 BaseAlphaFetcher。
@@ -47,7 +46,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
             sample_dal: Sample 数据访问层对象。
             setting_dal: Setting 数据访问层对象。
         """
-        super().__init__(alpha_dal, sample_dal, setting_dal)
+        super().__init__(alpha_dal, aggregate_data_dal)
         self._fetched_count: int = 0  # 追踪已获取的 Alpha 数量
 
         self.start_time: Optional[datetime] = None
@@ -85,10 +84,8 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         # 定义连接条件别名，提高可读性
         query: Select = (
             select(Alpha)
-            .join(Alpha.settings)  # 连接到 Alpha 的设置
             .join(Alpha.in_sample)  # 连接到 Alpha 的样本内数据
             .options(
-                selectinload(Alpha.settings),  # 预加载设置
                 selectinload(Alpha.in_sample),  # 预加载样本内数据
             )
         )
@@ -98,15 +95,17 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         criteria: List[ColumnExpressionArgument] = [
             Alpha.stage == Stage.IS,
             # Sample 相关条件 (通用)
-            AggregateData.turnover > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
-            AggregateData.turnover < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
+            AggregateData.turnover
+            > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
+            AggregateData.turnover
+            < (constants.CONSULTANT_TURNOVER_MAX_PERCENT / 100.0),
             # 区域和延迟相关的条件 (使用 case 语句)
             case(
                 (
-                    Setting.region != Region.CHN,  # 非中国区域
+                    Alpha.region != Region.CHN,  # 非中国区域
                     case(
                         (
-                            Setting.delay == Delay.ZERO,  # 延迟为 0
+                            Alpha.delay == Delay.ZERO,  # 延迟为 0
                             and_(
                                 AggregateData.sharpe
                                 > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_0,
@@ -115,7 +114,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                             ),
                         ),
                         (
-                            Setting.delay == Delay.ONE,  # 延迟为 1
+                            Alpha.delay == Delay.ONE,  # 延迟为 1
                             and_(
                                 AggregateData.sharpe
                                 > constants.CONSULTANT_SHARPE_THRESHOLD_DELAY_1,
@@ -129,7 +128,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 # 中国区域 (else 分支)
                 else_=case(
                     (
-                        Setting.delay == Delay.ZERO,  # 延迟为 0
+                        Alpha.delay == Delay.ZERO,  # 延迟为 0
                         and_(
                             AggregateData.sharpe
                             > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_0,
@@ -143,7 +142,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                         ),
                     ),
                     (
-                        Setting.delay == Delay.ONE,  # 延迟为 1
+                        Alpha.delay == Delay.ONE,  # 延迟为 1
                         and_(
                             AggregateData.sharpe
                             > constants.CONSULTANT_CHN_SHARPE_THRESHOLD_DELAY_1,
@@ -340,4 +339,5 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 error=e,
                 exc_info=True,
             )
+            raise  # 重新抛出异常
             raise  # 重新抛出异常

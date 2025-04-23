@@ -23,7 +23,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Tuple, Type
 
-from sqlalchemy import text
+from sqlalchemy import QueuePool, StaticPool, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -40,7 +40,9 @@ from .logging import get_logger
 logger = get_logger(__name__)
 
 db_engines: Dict[Database, AsyncEngine] = {}
+db_readonly_engines: Dict[Database, AsyncEngine] = {}
 async_session_factories: Dict[Database, async_sessionmaker[AsyncSession]] = {}
+async_readonly_session_factories: Dict[Database, async_sessionmaker[AsyncSession]] = {}
 
 # 添加锁来保护全局字典的访问
 _db_lock: asyncio.Lock = asyncio.Lock()
@@ -87,11 +89,12 @@ async def register_db(
         # 创建数据库引擎，配置连接参数
         connect_args: Dict[str, Any] = {}
         execution_options: Dict[str, Any] = {}
+        poolclass: type = QueuePool
 
         if "sqlite" in config.dsn.scheme:
             connect_args["check_same_thread"] = False
-            connect_args["timeout"] = 30.0
             execution_options["isolation_level"] = "SERIALIZABLE"
+            poolclass = StaticPool
             await logger.adebug(
                 "配置 SQLite 特定连接参数",
                 db=db.value,
@@ -104,14 +107,27 @@ async def register_db(
             db_engine: AsyncEngine = create_async_engine(
                 config.dsn.encoded_string(),
                 echo=settings.sql_echo,
+                echo_pool=settings.sql_echo,
                 connect_args=connect_args,
                 execution_options=execution_options,
+                poolclass=poolclass,
             )
+
+            db_readonly_engine: AsyncEngine = create_async_engine(
+                config.dsn.encoded_string() + "&mode=ro",
+                echo=settings.sql_echo,
+                echo_pool=settings.sql_echo,
+                connect_args=connect_args,
+                execution_options=execution_options,
+                poolclass=poolclass,
+            )
+
             await logger.adebug(
-                "异步引擎已创建",
+                "创建异步引擎成功",
                 db=db.value,
-                engine_repr=repr(db_engine),  # 使用 repr 获取引擎信息
-                emoji="🛠️",
+                engine_repr=repr(db_engine),
+                readonly_engine_repr=repr(db_readonly_engine),
+                emoji="✅",
             )
         except Exception as e:
             await logger.aerror(
@@ -134,6 +150,17 @@ async def register_db(
             expire_on_commit=False,
         )
         async_session_factories[db] = session_factory
+
+        # 注册只读引擎和会话工厂到全局字典
+        db_readonly_engines[db] = db_readonly_engine
+        readonly_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            bind=db_readonly_engine,
+            class_=AsyncSession,
+            autoflush=False,
+            autocommit=False,
+            expire_on_commit=False,
+        )
+        async_readonly_session_factories[db] = readonly_session_factory
         await logger.adebug(
             "引擎和会话工厂已注册",
             db=db.value,
@@ -150,6 +177,15 @@ async def register_db(
                     await conn.execute(text("PRAGMA synchronous=NORMAL;"))
                     await logger.ainfo(
                         "数据库已配置为 WAL 模式",
+                        db=db.value,
+                        emoji="💡",
+                    )
+
+                async with db_readonly_engine.begin() as conn:
+                    await conn.execute(text("PRAGMA journal_mode=WAL;"))
+                    await conn.execute(text("PRAGMA synchronous=NORMAL;"))
+                    await logger.ainfo(
+                        "只读数据库已配置为 WAL 模式",
                         db=db.value,
                         emoji="💡",
                     )
@@ -235,7 +271,9 @@ def sync_register_db(
 
 
 @asynccontextmanager
-async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session(
+    db: Database, readonly: bool = False
+) -> AsyncGenerator[AsyncSession, None]:
     """
     获取指定数据库的异步会话。
 
@@ -260,33 +298,38 @@ async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
         ```
     """
     db_name: str = db.value
-    await logger.adebug("进入 get_db_session 函数", db=db_name, emoji="🚪")
+    await logger.adebug(
+        "进入 get_db_session 函数",
+        db=db_name,
+        emoji="🚪",
+    )
 
     session_factory: async_sessionmaker[AsyncSession] | None = None
-    async with _db_lock:
-        if db not in async_session_factories:
-            # 错误日志应在抛出异常前记录
-            await logger.aerror(
-                "数据库未注册，无法获取会话",
-                db=db_name,
-                available_dbs=[
-                    d.value for d in async_session_factories.keys()
-                ],  # 显示中文枚举值
-                emoji="❌",
-            )
-            raise KeyError(
-                f"数据库 '{db_name}' 未注册，无法获取会话。请先调用 register_db 进行注册。"
-            )
-        # 获取会话工厂的本地引用
-        session_factory = async_session_factories[db]
-        await logger.adebug(
-            "已获取会话工厂",
+    if db not in async_session_factories:
+        # 错误日志应在抛出异常前记录
+        await logger.aerror(
+            "数据库未注册，无法获取会话",
             db=db_name,
-            factory_repr=repr(session_factory),
-            emoji="🔧",
+            available_dbs=[d.value for d in async_session_factories],  # 显示中文枚举值
+            emoji="❌",
         )
+        raise KeyError(
+            f"数据库 '{db_name}' 未注册，无法获取会话。请先调用 register_db 进行注册。"
+        )
+    # 获取会话工厂的本地引用
+    session_factory = (
+        async_session_factories[db]
+        if not readonly
+        else async_readonly_session_factories[db]
+    )
+    await logger.adebug(
+        "已获取会话工厂",
+        db=db_name,
+        factory_repr=repr(session_factory),
+        readonly=readonly,
+        emoji="🔧",
+    )
 
-    # 在锁外创建会话
     if session_factory is None:
         # 理论上不应发生，但作为防御性编程添加检查
         await logger.aerror("获取锁后会话工厂仍为 None", db=db_name, emoji="🤯")
@@ -298,19 +341,12 @@ async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
         "已创建新的数据库会话",
         db=db_name,
         session_id=session_id,
+        pool_status=async_session.bind.pool.status(),
         emoji="✨",
     )
 
     try:
         yield async_session
-        # 提交事务
-        await async_session.commit()
-        await logger.adebug(
-            "数据库会话提交成功",
-            db=db_name,
-            session_id=session_id,
-            emoji="✅",
-        )
     except Exception as e:
         # 发生异常时回滚事务
         await async_session.rollback()
@@ -333,7 +369,7 @@ async def get_db_session(db: Database) -> AsyncGenerator[AsyncSession, None]:
             session_id=session_id,
             emoji="🔒",
         )
-        await logger.adebug("退出 get_db_session 函数", db=db_name, emoji="🚪")
+    await logger.adebug("退出 get_db_session 函数", db=db_name, emoji="🚪")
 
 
 async def release_all_db_engines() -> None:
@@ -348,7 +384,7 @@ async def release_all_db_engines() -> None:
     async with _db_lock:
         # 复制列表以在锁外操作
         engines_to_dispose = list(db_engines.items())
-        db_names_to_clear = [d.value for d in db_engines.keys()]  # 显示中文枚举值
+        db_names_to_clear = [d.value for d in db_engines]  # 显示中文枚举值
         await logger.adebug(
             "已获取锁，准备清理引擎和工厂",
             engines_count=len(engines_to_dispose),
@@ -357,6 +393,8 @@ async def release_all_db_engines() -> None:
         )
         db_engines.clear()
         async_session_factories.clear()
+        db_readonly_engines.clear()
+        async_readonly_session_factories.clear()
         await logger.adebug(
             "已清理内部引擎和工厂字典",
             cleared_dbs=db_names_to_clear,
@@ -399,6 +437,12 @@ async def release_all_db_engines() -> None:
                 db=db_name,
                 emoji="✅",
             )
+
+    if all_successful:
+        await logger.ainfo("所有数据库引擎已成功释放", emoji="🎉")
+    else:
+        await logger.awarning("部分数据库引擎未能正确释放", emoji="⚠️")
+    await logger.ainfo("完成释放所有数据库引擎", emoji="🏁")
 
     if all_successful:
         await logger.ainfo("所有数据库引擎已成功释放", emoji="🎉")
