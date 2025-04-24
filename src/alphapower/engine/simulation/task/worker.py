@@ -291,6 +291,7 @@ class Worker(AbstractWorker):
                     await self._client.alpha_update_properties(
                         alpha_id=task.alpha_id,
                         properties=AlphaPropertiesPayload(
+                            name=task.alpha_id,
                             tags=task.tags,
                         ),
                     )

@@ -16,8 +16,8 @@ from typing import Optional
 import asyncclick as click  # 替换为 asyncclick
 
 from alphapower.constants import MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY, Status
+from alphapower.dal.session_manager import session_manager
 from alphapower.internal.logging import get_logger
-from alphapower.internal.storage import close_resources
 from alphapower.internal.utils import safe_async_run
 from alphapower.services.sync_alphas import AlphaSyncService
 from alphapower.services.sync_datafields import sync_datafields
@@ -46,7 +46,7 @@ async def handle_exit_signal(signum: int, frame: Optional[types.FrameType]) -> N
         Exception: 如果资源清理过程中发生错误。
     """
     await logger.ainfo(f"接收到信号 {signum}，帧架信息: {frame}", emoji="🚦")
-    await close_resources()
+    await session_manager.dispose_all()
     await logger.ainfo("资源清理完成，程序即将退出。", emoji="✅")
 
 

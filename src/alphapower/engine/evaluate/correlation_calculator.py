@@ -26,9 +26,7 @@ class CorrelationCalculator:
     def __init__(
         self,
         client: WorldQuantClient,
-        alpha_stream: AsyncGenerator[
-            Alpha, None
-        ],  # 建议将 alpha_generator 改为 alpha_stream，更符合流式数据的语义
+        alpha_stream: Optional[AsyncGenerator[Alpha, None]],
         alpha_dal: AlphaDAL,
         record_set_dal: RecordSetDAL,
         correlation_dal: CorrelationDAL,
@@ -44,7 +42,9 @@ class CorrelationCalculator:
         :param correlation_dal: Correlation 数据访问层实例
         """
         self.client: WorldQuantClient = client
-        self.alpha_stream: AsyncGenerator[Alpha, None] = alpha_stream  # 修改变量名
+        self.alpha_stream: Optional[AsyncGenerator[Alpha, None]] = (
+            alpha_stream  # 修改变量名
+        )
         self.alpha_dal: AlphaDAL = alpha_dal
         self.record_set_dal: RecordSetDAL = record_set_dal
         self.correlation_dal: CorrelationDAL = correlation_dal
