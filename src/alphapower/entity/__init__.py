@@ -13,7 +13,7 @@ __all__ = [
     "AlphaBase",
     "Category",
     "CheckRecord",
-    "ChecksBase",
+    "EvaluateBase",
     "Competition",
     "Correlation",
     "DataBase",
@@ -32,11 +32,11 @@ __all__ = [
 ]
 
 # 数据库常量和会话管理工具
-from typing import Any, List, Tuple
+from typing import Dict, Final, Type
 
-from alphapower.constants import ENV_DEV, ENV_TEST, Database
-from alphapower.internal.db_session import sync_register_db
-from alphapower.settings import settings
+from sqlalchemy.orm import DeclarativeBase
+
+from alphapower.constants import Database
 
 # Alpha 策略相关实体
 from .alphas import (
@@ -59,7 +59,7 @@ from .data import (
     StatsData,
     dataset_research_papers,
 )
-from .evaluate import Base as ChecksBase
+from .evaluate import Base as EvaluateBase
 from .evaluate import CheckRecord, Correlation, EvaluateRecord, RecordSet
 
 # 模拟相关实体
@@ -69,25 +69,9 @@ from .simulation import (
     SimulationTaskStatus,
 )
 
-
-def register_all_entities() -> None:
-    """
-    将所有实体注册到对应的数据库
-
-    此函数集中管理所有实体的注册逻辑，便于维护和扩展
-    """
-    entity_mappings: List[Tuple[Any, Database]] = [
-        (AlphaBase, Database.ALPHAS),
-        (DataBase, Database.DATA),
-        (SimulationBase, Database.SIMULATION),
-        (ChecksBase, Database.EVALUATE),
-    ]
-
-    force_recreate_db: bool = settings.environment in [ENV_DEV, ENV_TEST]
-
-    for base, db in entity_mappings:
-        sync_register_db(base, db, settings.databases[db], force_recreate_db)
-
-
-# 在模块导入时自动注册所有实体
-register_all_entities()
+DATABASE_BASE_CLASS_MAP: Final[Dict[Database, Type[DeclarativeBase]]] = {
+    Database.ALPHAS: AlphaBase,
+    Database.DATA: DataBase,
+    Database.SIMULATION: SimulationBase,
+    Database.EVALUATE: EvaluateBase,
+}

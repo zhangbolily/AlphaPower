@@ -30,9 +30,7 @@ from alphapower.internal.logging import get_logger
 
 
 class HasEntity(Protocol):
-    """
-    定义一个协议 (Protocol)，约束泛型类型 T 必须包含 id 属性。
-    """
+    """约束泛型类型 T 必须包含 id 属性。"""
 
     id: MappedColumn[int]
 
@@ -44,75 +42,44 @@ T = TypeVar("T", bound=HasEntity)
 class BaseDAL(Generic[T]):
     """
     基础数据访问层类，提供通用的 CRUD 操作。
-
-    泛型参数 T 表示特定的实体类型，使得该类可以处理不同类型的实体。
-
-    Attributes:
-        entity_type: 实体类的类型，用于构建查询语句。
-        session: SQLAlchemy 异步会话对象，用于与数据库交互。
-        logger: structlog 日志记录器，用于记录 DAL 操作。
     """
 
-    # 实体类型，子类可以重写此类属性
     entity_class: Type[T] = None  # type: ignore
 
-    def __init__(self, entity_type: Type[T], session: AsyncSession) -> None:
-        """
-        初始化 BaseDAL 实例。
-
-        Args:
-            entity_type: 实体类的类型。
-            session: SQLAlchemy 异步会话对象。
-        """
+    def __init__(self, entity_type: Type[T], session: Optional[AsyncSession]) -> None:
         self.entity_type: Type[T] = entity_type
-        self.session: AsyncSession = session
-
-        # 使用 setup_logging 获取 structlog 的 logger
+        self.session: Optional[AsyncSession] = session
         self.log: BoundLogger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
         self.log.info(
-            "初始化DAL实例",
-            entity_type=self.entity_type.__name__,
-            emoji="✅",
+            "初始化DAL实例", entity_type=self.entity_type.__name__, emoji="✅"
         )
+
+    def _actual_session(self, session: Optional[AsyncSession]) -> AsyncSession:
+        actual_session: AsyncSession
+        if session is not None:
+            actual_session = session
+        elif self.session is not None:
+            actual_session = self.session
+        else:
+            self.log.error("会话对象缺失", emoji="❌")
+            raise ValueError("会话对象缺失")
+        if not isinstance(actual_session, AsyncSession):
+            self.log.error(
+                "会话对象类型错误",
+                session_type=type(actual_session).__name__,
+                emoji="❌",
+            )
+            raise ValueError("会话对象必须是AsyncSession实例")
+        return actual_session
 
     @classmethod
     def create_dal(
-        cls: Type["BaseDAL[T]"],
-        session: AsyncSession,  # session 变为必需参数
+        cls: Type["BaseDAL[T]"], session: Optional[AsyncSession]
     ) -> "BaseDAL[T]":
-        """
-        创建 DAL 实例的工厂方法。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-
-        Returns:
-            新的 DAL 实例。
-
-        Raises:
-            ValueError: 当参数不足或会话对象缺失时。
-        """
-        # 使用 setup_logging 获取 structlog 的 logger
         logger = get_logger(f"alphapower.dal.{cls.__name__}")
-        logger.debug(
-            "调用DAL工厂方法",
-            dal_class=cls.__name__,
-            emoji="🏭",
-        )
-
-        # 检查会话对象
-        if not isinstance(session, AsyncSession):
-            logger.critical(
-                "会话对象缺失或类型错误",
-                session_type=type(session).__name__,
-                emoji="❌",
-            )
-            raise ValueError("会话对象必须提供且必须是AsyncSession实例")
-
-        # 确定实体类型
-        actual_entity_type: Optional[Type[T]] = None  # 添加类型注解
+        logger.debug("调用DAL工厂方法", dal_class=cls.__name__, emoji="🏭")
+        actual_entity_type: Optional[Type[T]] = None
         if cls.entity_class is not None:
-            # 如果子类定义了实体类型，则使用它
             logger.debug(
                 "使用子类定义的实体类型",
                 entity_type=cls.entity_class.__name__,
@@ -120,33 +87,22 @@ class BaseDAL(Generic[T]):
             )
             actual_entity_type = cls.entity_class
         elif cls != BaseDAL:
-            # 对于子类，但没有指定实体类型的情况，报错提示
-            logger.error(
-                "未定义实体类型",
-                dal_class=cls.__name__,
-                emoji="❌",
-            )
+            logger.error("未定义实体类型", dal_class=cls.__name__, emoji="❌")
             raise ValueError(f"子类 {cls.__name__} 必须提供实体类型或定义entity_class")
         else:
-            # 对于基类，必须提供实体类型
-            # 基类不应该直接调用 create_dal 来创建实例
-            logger.error(
-                "BaseDAL 不能直接创建实例，请使用子类或提供 entity_type 给构造函数",
-                emoji="❌",
-            )
+            logger.error("BaseDAL 不能直接创建实例，请使用子类", emoji="❌")
             raise TypeError("BaseDAL 不能直接创建实例，请使用子类")
-
-        # 创建实例并返回
         logger.info(
             "创建DAL实例成功",
             dal_class=cls.__name__,
             entity_type=actual_entity_type.__name__,
             emoji="✅",
         )
-        # 传递 entity_type 给构造函数
         return cls(entity_type=actual_entity_type, session=session)
 
-    async def create_entity(self, **kwargs: Any) -> T:
+    async def create_entity(
+        self, session: Optional[AsyncSession] = None, **kwargs: Any
+    ) -> T:
         """
         创建一个新的实体记录。
 
@@ -166,9 +122,11 @@ class BaseDAL(Generic[T]):
             emoji="📦",
         )
         try:
+            actual_session: AsyncSession = self._actual_session(session)
+
             entity: T = self.entity_type(**kwargs)
-            self.session.add(entity)
-            await self.session.flush()
+            actual_session.add(entity)
+            await actual_session.flush()
             self.log.info(
                 "成功创建实体",
                 entity_id=getattr(entity, "id", "unknown"),
@@ -191,79 +149,98 @@ class BaseDAL(Generic[T]):
             )
             raise
 
-    async def create(self, entity: T) -> T:
+    async def create(self, entity: T, session: Optional[AsyncSession] = None) -> T:
         """
         创建单个实体对象。
 
         Args:
             entity: 实体对象。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             新创建的实体对象。
         """
-        self.session.add(entity)
+        actual_session: AsyncSession = self._actual_session(session)
+        actual_session.add(entity)
         return entity
 
-    async def bulk_create(self, entities: List[T]) -> List[T]:
+    async def bulk_create(
+        self, entities: List[T], session: Optional[AsyncSession] = None
+    ) -> List[T]:
         """
         批量创建实体对象。
 
         Args:
             entities: 实体对象列表。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             新创建的实体对象列表。
         """
-        self.session.add_all(entities)
-        await self.session.flush()
+        actual_session: AsyncSession = self._actual_session(session)
+        actual_session.add_all(entities)
+        await actual_session.flush()
         return entities
 
-    async def upsert(self, entity: T) -> T:
+    async def upsert(self, entity: T, session: Optional[AsyncSession] = None) -> T:
         """
         插入或更新实体对象。
 
         Args:
             entity: 实体对象。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             插入或更新后的实体对象。
         """
-        existing_entity = await self.get_by_id(entity.id)
+        actual_session: AsyncSession = self._actual_session(session)
+        existing_entity = await self.get_by_id(entity.id, session=actual_session)
         if existing_entity:
-            await self.session.merge(entity)
-            await self.session.flush()
+            await actual_session.merge(entity)
+            await actual_session.flush()
             return existing_entity
-        return await self.create(entity)
+        return await self.create(entity, session=actual_session)
 
-    async def upsert_by_unique_key(self, entity: T, unique_key: str) -> T:
+    async def upsert_by_unique_key(
+        self, entity: T, unique_key: str, session: Optional[AsyncSession] = None
+    ) -> T:
         """
         根据唯一键插入或更新实体对象。
 
         Args:
             entity: 实体对象。
             unique_key: 唯一键的名称。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             插入或更新后的实体对象。
         """
+        actual_session: AsyncSession = self._actual_session(session)
+
         existing_entity = await self.find_one_by(
             **{unique_key: getattr(entity, unique_key)}
         )
         if existing_entity:
             entity.id = existing_entity.id
-            await self.session.merge(entity)
-            await self.session.flush()
+            await actual_session.merge(entity)
+            await actual_session.flush()
             return existing_entity
         return await self.create(entity)
 
-    async def bulk_upsert(self, entities: List[T]) -> List[T]:
+    async def bulk_upsert(
+        self, entities: List[T], session: Optional[AsyncSession] = None
+    ) -> List[T]:
         """
         批量插入或更新实体对象。
+
         Args:
             entities: 实体对象列表。
+            session: 可选的会话对象，若提供则优先使用。
+
         Returns:
             插入或更新后的实体对象列表。
         """
+        actual_session: AsyncSession = self._actual_session(session)
         if not entities:
             return []
 
@@ -279,14 +256,14 @@ class BaseDAL(Generic[T]):
                 new_entities.append(entity)
             else:
                 entity.id = existing_entities_map[entity.id].id
-                await self.session.merge(entity)
+                await actual_session.merge(entity)
 
-        self.session.add_all(new_entities)
-        await self.session.flush()
+        actual_session.add_all(new_entities)
+        await actual_session.flush()
         return entities
 
     async def bulk_upsert_by_unique_key(
-        self, entities: List[T], unique_key: str
+        self, entities: List[T], unique_key: str, session: Optional[AsyncSession] = None
     ) -> List[T]:
         """
         批量插入或更新实体对象，根据唯一键。
@@ -294,10 +271,12 @@ class BaseDAL(Generic[T]):
         Args:
             entities: 实体对象列表。
             unique_key: 唯一键的名称。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             插入或更新后的实体对象列表。
         """
+        actual_session: AsyncSession = self._actual_session(session)
         if not entities:
             return []
 
@@ -314,10 +293,10 @@ class BaseDAL(Generic[T]):
                 new_entities.append(entity)
             else:
                 entity.id = existing_entities_map[unique_value].id
-                await self.session.merge(entity)
+                await actual_session.merge(entity)
 
-        self.session.add_all(new_entities)
-        await self.session.flush()
+        actual_session.add_all(new_entities)
+        await actual_session.flush()
         return entities
 
     async def get_by_id(
@@ -338,7 +317,7 @@ class BaseDAL(Generic[T]):
             entity_id=entity_id,
             emoji="🔍",
         )
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         entity = await actual_session.get(self.entity_type, entity_id)
         if entity:
             self.log.info(
@@ -364,7 +343,7 @@ class BaseDAL(Generic[T]):
         Returns:
             所有实体的列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         result = await actual_session.execute(select(self.entity_type))
         return list(result.scalars().all())
 
@@ -385,7 +364,7 @@ class BaseDAL(Generic[T]):
         Returns:
             符合条件的实体列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(self.entity_type)
         criteria: List[ColumnExpressionArgument] = []
         if in_:
@@ -419,7 +398,6 @@ class BaseDAL(Generic[T]):
         self,
         session: Optional[AsyncSession] = None,
         order_by: Optional[Union[str, ColumnExpressionArgument]] = None,
-        *args: Any,
         **kwargs: Any,
     ) -> Optional[T]:
         """
@@ -432,7 +410,7 @@ class BaseDAL(Generic[T]):
         Returns:
             符合条件的第一个实体，如果未找到则返回 None。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(self.entity_type)
         for key, value in kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
@@ -461,7 +439,7 @@ class BaseDAL(Generic[T]):
             update_fields=kwargs,
             emoji="✏️",
         )
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         entity: Optional[T] = await self.get_by_id(entity_id, session=actual_session)
         if entity:
             for key, value in kwargs.items():
@@ -481,33 +459,38 @@ class BaseDAL(Generic[T]):
         )
         return None
 
-    async def update(self, entity: T) -> T:
+    async def update(self, entity: T, session: Optional[AsyncSession] = None) -> T:
         """
         更新单个实体对象。
 
         Args:
             entity: 实体对象。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             更新后的实体对象。
         """
-
-        await self.session.merge(entity)
+        actual_session: AsyncSession = self._actual_session(session)
+        await actual_session.merge(entity)
         return entity
 
-    async def update_all(self, entities: List[T]) -> List[T]:
+    async def update_all(
+        self, entities: List[T], session: Optional[AsyncSession] = None
+    ) -> List[T]:
         """
         批量更新实体对象。
 
         Args:
             entities: 实体对象列表。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             更新后的实体对象列表。
         """
+        actual_session: AsyncSession = self._actual_session(session)
         for entity in entities:
-            await self.session.merge(entity)
-        await self.session.flush()
+            await actual_session.merge(entity)
+        await actual_session.flush()
         return entities
 
     async def update_by_filter(
@@ -527,7 +510,7 @@ class BaseDAL(Generic[T]):
         Returns:
             更新的记录数量。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Update = update(self.entity_type)
         for key, value in filter_kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
@@ -553,7 +536,7 @@ class BaseDAL(Generic[T]):
             entity_id=entity_id,
             emoji="🗑️",
         )
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         entity: Optional[T] = await self.get_by_id(entity_id, session=actual_session)
         if entity:
             await actual_session.delete(entity)
@@ -571,33 +554,39 @@ class BaseDAL(Generic[T]):
         )
         return False
 
-    async def delete(self, entity: T) -> bool:
+    async def delete(self, entity: T, session: Optional[AsyncSession] = None) -> bool:
         """
         删除单个实体对象。
 
         Args:
             entity: 实体对象。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             如果成功删除返回 True。
         """
-        await self.session.delete(entity)
-        await self.session.flush()
+        actual_session: AsyncSession = self._actual_session(session)
+        await actual_session.delete(entity)
+        await actual_session.flush()
         return True
 
-    async def delete_all(self, entities: List[T]) -> int:
+    async def delete_all(
+        self, entities: List[T], session: Optional[AsyncSession] = None
+    ) -> int:
         """
         批量删除实体对象。
 
         Args:
             entities: 实体对象列表。
+            session: 可选的会话对象，若提供则优先使用。
 
         Returns:
             删除的记录数量。
         """
+        actual_session: AsyncSession = self._actual_session(session)
         for e in entities:
-            await self.session.delete(e)
-        await self.session.flush()
+            await actual_session.delete(e)
+        await actual_session.flush()
         return len(entities)
 
     async def delete_by_filter(
@@ -618,7 +607,7 @@ class BaseDAL(Generic[T]):
             filter_conditions=kwargs,
             emoji="🗑️",
         )
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Delete = delete(self.entity_type)
         for key, value in kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
@@ -663,7 +652,7 @@ class BaseDAL(Generic[T]):
             notin_conditions=notin_,
             emoji="📊",
         )
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(self.entity_type)
         for key, value in kwargs.items():
             query = query.where(getattr(self.entity_type, key) == value)
@@ -707,21 +696,25 @@ class BaseDAL(Generic[T]):
         Returns:
             查询结果列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
 
-    async def execute_stream_query(self, query: Select) -> AsyncGenerator[T, None]:
+    async def execute_stream_query(
+        self, query: Select, session: Optional[AsyncSession] = None
+    ) -> AsyncGenerator[T, None]:
         """
         执行自定义查询，返回异步生成器。
 
         Args:
             query: SQLAlchemy Select 查询对象。
+            session: 可选的会话对象，若提供则优先使用。
 
         Yields:
             查询结果列表。
         """
-        result = await self.session.stream_scalars(query)
+        actual_session: AsyncSession = self._actual_session(session)
+        result = await actual_session.stream_scalars(query)
         async for entity in result:
             yield entity
 
@@ -732,20 +725,10 @@ D = TypeVar("D", bound=BaseDAL)
 
 # 创建一个通用的DAL工厂方法基类
 class DALFactory:
-    """DAL 工厂类，提供创建各种 DAL 实例的标准方法。"""
+    """DAL 工厂类，提供创建各种 DAL 实例的方法。"""
 
     @staticmethod
-    def create_dal(dal_class: Type[D], session: AsyncSession) -> D:
-        """
-        创建特定类型的 DAL 实例。
-
-        Args:
-            dal_class: DAL 类型。
-            session: SQLAlchemy 异步会话对象。
-
-        Returns:
-            新创建的 DAL 实例，类型与传入的 dal_class 一致。
-        """
+    def create_dal(dal_class: Type[D], session: Optional[AsyncSession] = None) -> D:
         logger = get_logger(f"alphapower.dal.{dal_class.__name__}")
         logger.debug(
             "创建 DAL 实例",
@@ -753,97 +736,42 @@ class DALFactory:
             session_type=type(session).__name__,
             emoji="🏭",
         )
-
-        if not isinstance(session, AsyncSession):
-            logger.critical(
-                "会话对象缺失或类型错误",
-                session_type=type(session).__name__,
-                emoji="❌",
-            )
-            raise ValueError("会话对象必须提供且必须是AsyncSession实例")
-
-        dal_instance: D = dal_class.create_dal(session=session)  # 修正调用方式
-        logger.info(
-            "DAL 实例创建成功",
-            dal_class=dal_class.__name__,
-            emoji="✅",
-        )
+        dal_instance: D = dal_class.create_dal(session=session)  # type: ignore[assignment]
+        logger.info("DAL 实例创建成功", dal_class=dal_class.__name__, emoji="✅")
         return dal_instance
 
 
 # 简化子类的 create 方法实现，使用统一模板
 class EntityDAL(BaseDAL[T]):
-    """特定实体 DAL 基类，为所有实体特定 DAL 提供统一的创建方法。"""
+    """特定实体 DAL 基类。"""
 
-    # 实体类型，子类需要重写此类属性
     entity_class: Type[T] = None  # type: ignore
 
-    def __init__(self, session: AsyncSession) -> None:
-        """
-        初始化 EntityDAL 实例。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-        """
+    def __init__(self, session: Optional[AsyncSession] = None) -> None:
         if self.entity_class is None:
-            # 在构造函数中检查 entity_class
             logger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
             logger.error(
-                "未定义实体类型",
-                dal_class=self.__class__.__name__,
-                emoji="❌",
+                "未定义实体类型", dal_class=self.__class__.__name__, emoji="❌"
             )
             raise ValueError(f"子类 {self.__class__.__name__} 必须定义 entity_class")
         super().__init__(self.entity_class, session)
-        # self.logger 在 super().__init__ 中初始化，这里可以直接使用
         self.log.info(
-            "初始化实体 DAL 实例",
-            entity_class=self.entity_class.__name__,
-            emoji="✅",
+            "初始化实体 DAL 实例", entity_class=self.entity_class.__name__, emoji="✅"
         )
 
     @classmethod
     def create_dal(
-        cls: Type["EntityDAL[T]"],
-        session: AsyncSession,  # session 变为必需参数
+        cls: Type["EntityDAL[T]"], session: Optional[AsyncSession] = None
     ) -> "EntityDAL[T]":
-        """
-        创建实体 DAL 实例的统一工厂方法。
-
-        Args:
-            session: SQLAlchemy 异步会话对象。
-
-        Returns:
-            特定类型的 DAL 实例。
-        """
         logger = get_logger(f"alphapower.dal.{cls.__name__}")
-        logger.debug(
-            "调用实体 DAL 工厂方法",
-            dal_class=cls.__name__,
-            emoji="🏭",
-        )
-
-        if not isinstance(session, AsyncSession):
-            logger.error(
-                "会话对象缺失或类型错误",
-                session_type=type(session).__name__,
-                emoji="❌",
-            )
-            raise ValueError("会话对象必须提供且必须是AsyncSession实例")
-
+        logger.debug("调用实体 DAL 工厂方法", dal_class=cls.__name__, emoji="🏭")
         if cls.entity_class is None:
-            logger.error(
-                "未定义实体类型",
-                dal_class=cls.__name__,
-                emoji="❌",
-            )
+            logger.error("未定义实体类型", dal_class=cls.__name__, emoji="❌")
             raise ValueError(f"子类 {cls.__name__} 必须定义 entity_class")
-
         logger.info(
             "实体 DAL 实例创建成功",
             dal_class=cls.__name__,
             entity_class=cls.entity_class.__name__,
             emoji="✅",
         )
-        # 直接使用 cls 创建实例
         return cls(session=session)

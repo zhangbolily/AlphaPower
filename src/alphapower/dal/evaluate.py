@@ -1,6 +1,7 @@
 from typing import List, Optional, Type
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import CheckRecordType
 from alphapower.dal.base import EntityDAL
@@ -16,7 +17,9 @@ class CorrelationDAL(EntityDAL[Correlation]):
 
     entity_class: Type[Correlation] = Correlation
 
-    async def bulk_upsert(self, entities: List[Correlation]) -> List[Correlation]:
+    async def bulk_upsert(
+        self, entities: List[Correlation], session: Optional[AsyncSession] = None
+    ) -> List[Correlation]:
         """
         批量插入或更新实体对象。
 
@@ -30,6 +33,7 @@ class CorrelationDAL(EntityDAL[Correlation]):
         if not entities:
             return []
 
+        actural_session: AsyncSession = self._actual_session(session)
         merged_entities: List[Correlation] = []
         for entity in entities:
             exist_entity: Optional[Correlation] = await self.find_one_by(
@@ -39,19 +43,20 @@ class CorrelationDAL(EntityDAL[Correlation]):
             )
             if exist_entity:
                 # 正确处理 merge 的返回值
-                merged_entity: Correlation = await self.session.merge(entity)
+                merged_entity: Correlation = await actural_session.merge(entity)
                 merged_entities.append(merged_entity)
             else:
-                self.session.add(entity)
+                actural_session.add(entity)
                 merged_entities.append(entity)  # 添加新创建的实体
-        # await self.session.commit() # 不应在此处提交，由调用者管理事务
-        await self.session.flush()  # 刷新以获取 ID 等信息
+        # await session.commit() # 不应在此处提交，由调用者管理事务
+        await actural_session.flush()  # 刷新以获取 ID 等信息
         return merged_entities
 
     async def get_latest_max_corr(
         self,
         alpha_id: str,
         calc_type: CheckRecordType,
+        session: Optional[AsyncSession] = None,
     ) -> Optional[Correlation]:
         """
         获取指定 Alpha 对的最新相关性记录。
@@ -68,6 +73,7 @@ class CorrelationDAL(EntityDAL[Correlation]):
             emoji="🔍",
         )
 
+        actural_session: AsyncSession = self._actual_session(session)
         query = (
             select(self.entity_class)
             .where(
@@ -83,7 +89,7 @@ class CorrelationDAL(EntityDAL[Correlation]):
             )
             .order_by(self.entity_class.created_at.desc())
         )
-        result = await self.session.execute(query.limit(1))
+        result = await actural_session.execute(query.limit(1))
         latest_record: Optional[Correlation] = result.scalars().first()
 
         await self.log.adebug(

@@ -15,8 +15,9 @@ from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, selec
 from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
-from alphapower.constants import AlphaType, Delay, Region, Stage
+from alphapower.constants import AlphaType, Database, Delay, Region, Stage
 from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import AggregateData, Alpha
 from alphapower.internal.logging import get_logger
 
@@ -227,15 +228,18 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         )
 
         try:
-            async for alpha in self.alpha_dal.execute_stream_query(query):
-                self._fetched_count += 1
-                await logger.adebug(
-                    "🔍 获取到 Alpha",
-                    emoji="🔍",
-                    alpha_id=alpha.id,
-                    current_fetched_count=self._fetched_count,
-                )
-                yield alpha
+            async with session_manager.get_session(Database.ALPHAS) as session:
+                async for alpha in self.alpha_dal.execute_stream_query(
+                    query, session=session
+                ):
+                    self._fetched_count += 1
+                    await logger.adebug(
+                        "🔍 获取到 Alpha",
+                        emoji="🔍",
+                        alpha_id=alpha.id,
+                        current_fetched_count=self._fetched_count,
+                    )
+                    yield alpha
             await logger.ainfo(
                 "✅ => fetch_alphas 执行完成",
                 emoji="✅",
@@ -274,8 +278,9 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         await logger.adebug("构建的计数查询", query=str(count_query))
 
         try:
-            result = await self.alpha_dal.session.execute(count_query)
-            count = cast(int, result.scalar())
+            async with session_manager.get_session(Database.ALPHAS) as session:
+                result = await session.execute(count_query)
+                count = cast(int, result.scalar())
             await logger.ainfo("✅ Alpha 总数计算完成", emoji="✅", total_count=count)
             return count
         except Exception as e:

@@ -77,7 +77,7 @@ class DatasetDAL(EntityDAL[Dataset]):
         Returns:
             符合条件的数据集列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(Dataset).where(Dataset.value_score >= min_value)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
@@ -97,7 +97,7 @@ class DatasetDAL(EntityDAL[Dataset]):
         Returns:
             符合条件的数据集列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = (
             select(Dataset)
             .join(Dataset.categories)
@@ -121,7 +121,7 @@ class DatasetDAL(EntityDAL[Dataset]):
         Returns:
             符合条件的数据集列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(Dataset).where(Dataset.field_count >= min_count)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
@@ -165,7 +165,7 @@ class CategoryDAL(EntityDAL[Category]):
         Returns:
             所有顶级分类列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(Category).where(Category.parent_id.is_(None))
         result = await actual_session.execute(query)
         return list(result.scalars().all())
@@ -259,7 +259,7 @@ class DataFieldDAL(EntityDAL[DataField]):
         Returns:
             符合条件的字段列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(DataField).where(DataField.coverage >= min_coverage)
         result = await actual_session.execute(query)
         return list(result.scalars().all())

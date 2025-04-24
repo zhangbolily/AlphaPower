@@ -3,18 +3,14 @@ DAL 注册表模块
 用于管理和获取各种 DAL 实例，简化DAL实例的创建和访问过程。
 """
 
-from typing import Dict, Type
+from typing import Dict, Optional, Type
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.dal.alphas import (
     AggregateDataDAL,
     AlphaDAL,
-    ClassificationDAL,
     CompetitionDAL,
-    RegularDAL,
-    SampleCheckDAL,
-    SettingDAL,
 )
 from alphapower.dal.base import BaseDAL
 from alphapower.dal.data import (
@@ -25,19 +21,26 @@ from alphapower.dal.data import (
     ResearchPaperDAL,
     StatsDataDAL,
 )
+from alphapower.dal.evaluate import (
+    CheckRecordDAL,
+    CorrelationDAL,
+    EvaluateRecordDAL,
+    RecordSetDAL,
+)
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import (
     AggregateData,
     Alpha,
     Category,
-    Classification,
+    CheckRecord,
     Competition,
+    Correlation,
     DataField,
     Dataset,
-    Expression,
+    EvaluateRecord,
     Pyramid,
+    RecordSet,
     ResearchPaper,
-    Setting,
     SimulationTask,
     StatsData,
 )
@@ -57,23 +60,25 @@ class DALRegistry:
     # 实体类型到DAL类的映射
     _dals: Dict[Type, Type[BaseDAL]] = {
         Alpha: AlphaDAL,
-        Setting: SettingDAL,
-        Expression: RegularDAL,
-        Classification: ClassificationDAL,
-        Competition: CompetitionDAL,
         AggregateData: AggregateDataDAL,
-        Check: SampleCheckDAL,
-        Dataset: DatasetDAL,
         Category: CategoryDAL,
+        CheckRecord: CheckRecordDAL,
+        Competition: CompetitionDAL,
+        Correlation: CorrelationDAL,
         DataField: DataFieldDAL,
-        StatsData: StatsDataDAL,
-        ResearchPaper: ResearchPaperDAL,
+        Dataset: DatasetDAL,
+        EvaluateRecord: EvaluateRecordDAL,
         Pyramid: PyramidDAL,
+        RecordSet: RecordSetDAL,
+        ResearchPaper: ResearchPaperDAL,
         SimulationTask: SimulationTaskDAL,
+        StatsData: StatsDataDAL,
     }
 
     @classmethod
-    def get_dal(cls, entity_type: Type, session: AsyncSession) -> BaseDAL:
+    def get_dal(
+        cls, entity_type: Type, session: Optional[AsyncSession] = None
+    ) -> BaseDAL:
         """
         获取特定实体类型的 DAL 实例。
 

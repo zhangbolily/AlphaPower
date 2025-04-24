@@ -119,7 +119,7 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             合并后的 Alpha 实体。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         existing_entity = await self.find_by_alpha_id(
             entity.alpha_id, session=actual_session
         )
@@ -130,7 +130,9 @@ class AlphaDAL(EntityDAL[Alpha]):
             actual_session.add(entity)
         return entity
 
-    async def bulk_upsert(self, entities: List[Alpha]) -> List[Alpha]:
+    async def bulk_upsert(
+        self, entities: List[Alpha], session: Optional[AsyncSession] = None
+    ) -> List[Alpha]:
         """
         批量合并 Alpha 实体。
 
@@ -142,10 +144,13 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             合并后的 Alpha 实体列表。
         """
-        return [await self.upsert(entity) for entity in entities]
+        return [await self.upsert(entity, session=session) for entity in entities]
 
     async def bulk_upsert_by_unique_key(
-        self, entities: List[Alpha], unique_key: str
+        self,
+        entities: List[Alpha],
+        unique_key: str,
+        session: Optional[AsyncSession] = None,
     ) -> List[Alpha]:
         """
         批量合并 Alpha 实体。
@@ -159,16 +164,18 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             合并后的 Alpha 实体列表。
         """
+        actual_session: AsyncSession = self._actual_session(session)
+
         for entity in entities:
             unique_value = getattr(entity, unique_key)
             existing_entity = await self.find_one_by(
-                session=self.session, **{unique_key: unique_value}
+                session=session, **{unique_key: unique_value}
             )
             if existing_entity:
                 await self._update_entity_references(existing_entity, entity)
-                await self.session.merge(entity)
+                await actual_session.merge(entity)
             else:
-                self.session.add(entity)
+                actual_session.add(entity)
         return entities
 
     async def _update_entity_references(
@@ -246,7 +253,7 @@ class AggregateDataDAL(EntityDAL[AggregateData]):
         Returns:
             符合条件的样本列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(AggregateData).where(AggregateData.sharpe >= min_sharpe)
         result = await actual_session.execute(query)
         return list(result.scalars().all())

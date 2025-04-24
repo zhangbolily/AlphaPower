@@ -116,7 +116,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             符合条件的任务列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(SimulationTask).where(
             SimulationTask.priority >= min_priority
         )
@@ -156,7 +156,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             符合条件的任务列表。
         """
-        actual_session: AsyncSession = session or self.session
+        actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(SimulationTask).where(
             SimulationTask.created_at.between(start_date, end_date)
         )
@@ -189,7 +189,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Raises:
             ValueError: 如果没有提供任何过滤条件。
         """
-        actual_session = session or self.session
+        actual_session = self._actual_session(session)
         filters = []
         if status is not None:
             filters.append(SimulationTask.status == status)
@@ -247,7 +247,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Raises:
             ValueError: 如果没有提供任何过滤条件。
         """
-        actual_session = session or self.session
+        actual_session = self._actual_session(session)
         filters = []
         if status is not None:
             filters.append(SimulationTask.status == status)

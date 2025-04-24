@@ -21,10 +21,10 @@ from alphapower.dal.alphas import (
     AlphaDAL,
 )
 from alphapower.dal.base import DALFactory
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import (
     Alpha,
 )
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 from alphapower.view.alpha import (
     AlphaView,
@@ -141,7 +141,7 @@ class AlphaSyncService:
         )
 
         try:
-            async with get_db_session(Database.ALPHAS) as session:
+            async with session_manager.get_session(Database.ALPHAS) as session:
                 alpha_dal: AlphaDAL = DALFactory.create_dal(AlphaDAL, session)
                 last_alpha: Optional[Alpha] = await alpha_dal.find_one_by(
                     order_by=Alpha.date_created.desc(),
@@ -539,12 +539,16 @@ class AlphaSyncService:
         """将因子数据写入数据库"""
         try:
             async with self._db_lock:
-                async with get_db_session(Database.ALPHAS) as session:
+                async with (
+                    session_manager.get_session(Database.ALPHAS) as session,
+                    session.begin(),
+                ):
                     alpha_dal = AlphaDAL(session)
                     await alpha_dal.bulk_upsert_by_unique_key(
-                        uncommitted_alphas, unique_key="alpha_id"
+                        session=session,
+                        entities=uncommitted_alphas,
+                        unique_key="alpha_id",
                     )
-                    await alpha_dal.session.commit()
                     await self.log.ainfo(
                         "因子数据写入完成",
                         count=len(uncommitted_alphas),

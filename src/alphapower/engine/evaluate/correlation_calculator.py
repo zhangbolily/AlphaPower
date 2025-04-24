@@ -15,8 +15,8 @@ from alphapower.constants import (
 )
 from alphapower.dal.alphas import AlphaDAL
 from alphapower.dal.evaluate import CorrelationDAL, RecordSetDAL
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Alpha, RecordSet
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 log: BoundLogger = get_logger(__name__)
@@ -150,7 +150,9 @@ class CorrelationCalculator:
             self._region_to_alpha_map.setdefault(region, []).append(alpha.alpha_id)
 
             # FIXME: 数据库连接池测试
-            async with get_db_session(Database.EVALUATE, readonly=True) as session:
+            async with session_manager.get_session(
+                Database.EVALUATE, readonly=True
+            ) as session:
                 self.record_set_dal.session = session
                 record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
                     alpha_id=alpha.alpha_id,
@@ -236,7 +238,10 @@ class CorrelationCalculator:
             )
 
             # FIXME: 数据库连接池测试
-            async with get_db_session(Database.EVALUATE) as session:
+            async with (
+                session_manager.get_session(Database.EVALUATE) as session,
+                session.begin(),
+            ):
                 self.record_set_dal.session = session
                 existing_record_set: Optional[RecordSet] = (
                     await self.record_set_dal.find_one_by(
@@ -252,7 +257,6 @@ class CorrelationCalculator:
                     await self.record_set_dal.update(
                         record_set_pnl,
                     )
-                await session.commit()
 
             pnl_series_df: Optional[pd.DataFrame] = pnl_table_view.to_dataframe()
             if pnl_series_df is None:
@@ -299,7 +303,9 @@ class CorrelationCalculator:
 
     async def _retrieve_pnl_from_local(self, alpha_id: str) -> Optional[pd.DataFrame]:
         # FIXME: 数据库连接池测试
-        async with get_db_session(Database.EVALUATE, readonly=True) as session:
+        async with session_manager.get_session(
+            Database.EVALUATE, readonly=True
+        ) as session:
             self.record_set_dal.session = session
             # 从数据库中获取 pnl 数据
             pnl_record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
@@ -549,69 +555,67 @@ class CorrelationCalculator:
 
 if __name__ == "__main__":
     from alphapower.client import wq_client
-    from alphapower.constants import Database
-    from alphapower.internal.db_session import get_db_session
+    from alphapower.dal.base import DALFactory
 
     async def main() -> None:
         async with wq_client as client:
-            async with get_db_session(Database.ALPHAS) as alpha_session:
-                async with get_db_session(Database.EVALUATE) as evaluate_session:
-                    alpha_dal = AlphaDAL(session=alpha_session)
-                    record_set_dal = RecordSetDAL(session=evaluate_session)
-                    correlation_dal = CorrelationDAL(session=evaluate_session)
+            alpha_dal: AlphaDAL = DALFactory.create_dal(dal_class=AlphaDAL)
+            record_set_dal: RecordSetDAL = DALFactory.create_dal(
+                dal_class=RecordSetDAL,
+            )
+            correlation_dal: CorrelationDAL = DALFactory.create_dal(
+                dal_class=CorrelationDAL,
+            )
 
-                    async def alpha_generator() -> AsyncGenerator[Alpha, None]:
-                        for alpha in await alpha_dal.find_by_stage(
-                            stage=Stage.OS,
-                        ):
-                            for classification in alpha.classifications:
-                                if (
-                                    classification.id
-                                    == "POWER_POOL:POWER_POOL_ELIGIBLE"
-                                ):
-                                    await log.ainfo(
-                                        event="Alpha 策略符合 Power Pool 条件",
-                                        alpha_id=alpha.alpha_id,
-                                        classifications=alpha.classifications,
-                                        emoji="✅",
-                                    )
-                                    yield alpha
-
+            async def alpha_generator() -> AsyncGenerator[Alpha, None]:
+                for alpha in await alpha_dal.find_by_stage(
+                    stage=Stage.OS,
+                ):
+                    for classification in alpha.classifications:
+                        if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
                             await log.ainfo(
-                                event="Alpha 策略不符合 Power Pool 条件",
+                                event="Alpha 策略符合 Power Pool 条件",
                                 alpha_id=alpha.alpha_id,
                                 classifications=alpha.classifications,
-                                emoji="❌",
+                                emoji="✅",
                             )
+                            yield alpha
 
-                    calculator = CorrelationCalculator(
-                        client=client,
-                        alpha_stream=alpha_generator(),
-                        alpha_dal=alpha_dal,
-                        record_set_dal=record_set_dal,
-                        correlation_dal=correlation_dal,
-                    )
-                    await calculator.initialize()
-
-                    alpha: Optional[Alpha] = await alpha_dal.find_one_by(
-                        alpha_id="d1n2w6w",
-                    )
-
-                    if alpha is None:
-                        await log.aerror(
-                            event="Alpha 策略不存在",
-                            alpha_id="alpha_id_example",
-                            emoji="❌",
-                        )
-                        return
-                    corr: Dict[str, float] = await calculator.calculate_correlation(
-                        alpha=alpha,
-                    )
                     await log.ainfo(
-                        event="计算完成",
+                        event="Alpha 策略不符合 Power Pool 条件",
                         alpha_id=alpha.alpha_id,
-                        corr=corr,
-                        emoji="✅",
+                        classifications=alpha.classifications,
+                        emoji="❌",
                     )
+
+            calculator = CorrelationCalculator(
+                client=client,
+                alpha_stream=alpha_generator(),
+                alpha_dal=alpha_dal,
+                record_set_dal=record_set_dal,
+                correlation_dal=correlation_dal,
+            )
+            await calculator.initialize()
+
+            alpha: Optional[Alpha] = await alpha_dal.find_one_by(
+                alpha_id="d1n2w6w",
+            )
+
+            if alpha is None:
+                await log.aerror(
+                    event="Alpha 策略不存在",
+                    alpha_id="alpha_id_example",
+                    emoji="❌",
+                )
+                return
+            corr: Dict[str, float] = await calculator.calculate_correlation(
+                alpha=alpha,
+            )
+            await log.ainfo(
+                event="计算完成",
+                alpha_id=alpha.alpha_id,
+                corr=corr,
+                emoji="✅",
+            )
 
     asyncio.run(main())

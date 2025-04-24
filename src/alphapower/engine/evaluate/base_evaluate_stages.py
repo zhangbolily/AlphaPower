@@ -21,9 +21,9 @@ from alphapower.dal.evaluate import (
     CheckRecordDAL,
     CorrelationDAL,
 )
+from alphapower.dal.session_manager import session_manager
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import Alpha, CheckRecord, EvaluateRecord
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 from .correlation_calculator import CorrelationCalculator
@@ -356,7 +356,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
 
         try:
             # FIXME: 数据库连接池测试
-            async with get_db_session(Database.EVALUATE) as session:
+            async with session_manager.get_session(Database.EVALUATE) as session:
                 self.check_record_dal.session = session
                 exist_check_record: Optional[CheckRecord] = (
                     await self.check_record_dal.find_one_by(
@@ -518,10 +518,12 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             content=api_result.model_dump(mode="python"),
                         )
                         # FIXME: 数据库连接池测试
-                        async with get_db_session(Database.EVALUATE) as session:
+                        async with (
+                            session_manager.get_session(Database.EVALUATE) as session,
+                            session.begin(),
+                        ):
                             self.check_record_dal.session = session
                             await self.check_record_dal.create(check_record)
-                            await session.commit()
                             await log.adebug(
                                 "相关性数据已保存到数据库",
                                 emoji="💾",
@@ -688,7 +690,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         """
         # 根据策略决定是否刷新数据
         # FIXME: 数据库连接池测试
-        async with get_db_session(Database.EVALUATE) as session:
+        async with session_manager.get_session(Database.EVALUATE) as session:
             self.check_record_dal.session = session
             # 查找现有的检查记录
             exist_check_record: Optional[CheckRecord] = (
@@ -717,7 +719,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
             return await self._refresh_alpha_pool_performance_diff(alpha)
         elif action == AbstractEvaluateStage.CheckAction.USE_EXISTING:
             # FIXME: 数据库连接池测试
-            async with get_db_session(Database.EVALUATE) as session:
+            async with session_manager.get_session(Database.EVALUATE) as session:
                 self.check_record_dal.session = session
                 record = await self.check_record_dal.find_one_by(
                     alpha_id=alpha.alpha_id,
@@ -764,7 +766,10 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                     )
                     if finished and result:
                         # FIXME: 数据库连接池测试
-                        async with get_db_session(Database.EVALUATE) as session:
+                        async with (
+                            session_manager.get_session(Database.EVALUATE) as session,
+                            session.begin(),
+                        ):
                             self.check_record_dal.session = session
                             await self.check_record_dal.create(
                                 CheckRecord(
@@ -773,7 +778,6 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                                     content=result.model_dump(mode="json"),
                                 )
                             )
-                            await session.commit()
                         return result
                     elif retry_after and retry_after > 0:
                         await log.adebug(
@@ -881,7 +885,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
         try:
             # 查找现有的检查记录
             # FIXME: 数据库连接池测试
-            async with get_db_session(Database.EVALUATE) as session:
+            async with session_manager.get_session(Database.EVALUATE) as session:
                 self.check_record_dal.session = session
                 exist_check_record: Optional[CheckRecord] = (
                     await self.check_record_dal.find_one_by(
@@ -1012,7 +1016,10 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                     )
                     if finished and result:
                         # FIXME: 数据库连接池测试
-                        async with get_db_session(Database.EVALUATE) as session:
+                        async with (
+                            session_manager.get_session(Database.EVALUATE) as session,
+                            session.begin(),
+                        ):
                             self.check_record_dal.session = session
                             await self.check_record_dal.create(
                                 CheckRecord(
@@ -1021,7 +1028,6 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                                     content=result.model_dump(),
                                 )
                             )
-                            await session.commit()
                         return result
                     elif retry_after and retry_after > 0:
                         await log.adebug(

@@ -40,7 +40,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, Mapper, mapped_column
 
 from alphapower.constants import (
     AlphaType,
@@ -139,7 +139,7 @@ class SimulationTask(Base):
     __tablename__ = "simulation_tasks"
 
     # 标识符字段
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # 枚举类型字段
     type: Mapped[AlphaType] = mapped_column(Enum(AlphaType), nullable=False)

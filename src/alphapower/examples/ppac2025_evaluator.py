@@ -12,11 +12,15 @@ from alphapower.constants import (
     Region,
     Stage,
 )
+from alphapower.dal.base import DALFactory
+from alphapower.dal.session_manager import session_manager
 from alphapower.engine.evaluate.base_evaluate_stages import PerformanceDiffEvaluateStage
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
-from alphapower.entity import Alpha, EvaluateRecord
-from alphapower.internal.db_session import get_db_session
+from alphapower.entity import (
+    Alpha,
+    EvaluateRecord,
+)
 from alphapower.internal.logging import get_logger
 
 # 获取日志记录器 (logger)
@@ -69,10 +73,11 @@ class PPAC2025Evaluator(BaseEvaluator):
         """
         try:
             # FIXME: 测试连接池管理
-            async with get_db_session(Database.EVALUATE) as session:
-                self.evaluate_record_dal.session = session
-                await self.evaluate_record_dal.create(record)
-                await session.commit()
+            async with (
+                session_manager.get_session(Database.EVALUATE) as session,
+                session.begin(),
+            ):
+                await self.evaluate_record_dal.create(session=session, entity=record)
             await log.ainfo(
                 event="因子评估记录创建成功",
                 record_id=record.id,
@@ -99,10 +104,13 @@ class PPAC2025Evaluator(BaseEvaluator):
             kwargs (Any): 额外参数。
         """
         # FIXME: 测试连接池管理
-        async with get_db_session(Database.EVALUATE) as session:
-            self.evaluate_record_dal.session = session
-            await self.evaluate_record_dal.delete_by_filter(alpha_id=alpha.alpha_id)
-            await session.commit()
+        async with (
+            session_manager.get_session(Database.EVALUATE) as session,
+            session.begin(),
+        ):
+            await self.evaluate_record_dal.delete_by_filter(
+                session=session, alpha_id=alpha.alpha_id
+            )
 
         await log.ainfo(
             event="因子评估失败，评估记录已删除",
@@ -229,20 +237,28 @@ if __name__ == "__main__":
         """
         测试 PPAC2025Evaluator 的功能。
         """
-        async with get_db_session(Database.ALPHAS) as alpha_session:
-            async with get_db_session(Database.EVALUATE) as evaluate_session:
-                async with wq_client as client:
-                    alpha_dal = AlphaDAL(alpha_session)
-                    aggregate_data_dal = AggregateDataDAL(alpha_session)
+        alpha_dal: AlphaDAL = DALFactory.create_dal(dal_class=AlphaDAL)
+        aggregate_data_dal: AggregateDataDAL = DALFactory.create_dal(
+            dal_class=AggregateDataDAL,
+        )
+        correlation_dal: CorrelationDAL = DALFactory.create_dal(
+            dal_class=CorrelationDAL
+        )
+        check_record_dal: CheckRecordDAL = DALFactory.create_dal(
+            dal_class=CheckRecordDAL
+        )
+        record_set_dal: RecordSetDAL = DALFactory.create_dal(
+            dal_class=RecordSetDAL,
+        )
+        evaluate_record_dal: EvaluateRecordDAL = DALFactory.create_dal(
+            dal_class=EvaluateRecordDAL,
+        )
 
-                    correlation_dal = CorrelationDAL(evaluate_session)
-                    check_record_dal = CheckRecordDAL(evaluate_session)
-                    record_set_dal = RecordSetDAL(evaluate_session)
-                    evaluate_record_dal = EvaluateRecordDAL(evaluate_session)
-
-                    os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
-                        stage=Stage.OS,
-                    )
+        async with session_manager.get_session(Database.ALPHAS) as session:
+            os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
+                session=session,
+                stage=Stage.OS,
+            )
 
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
             for alpha in os_alphas:
@@ -263,73 +279,78 @@ if __name__ == "__main__":
                     emoji="❌",
                 )
 
-        correlation_calculator = CorrelationCalculator(
-            client=client,
-            alpha_stream=alpha_generator(),
-            alpha_dal=alpha_dal,
-            record_set_dal=record_set_dal,
-            correlation_dal=correlation_dal,
-        )
-        await correlation_calculator.initialize()
-
-        fetcher = BaseAlphaFetcher(
-            alpha_dal=alpha_dal,
-            aggregate_data_dal=aggregate_data_dal,
-            start_time=datetime(2025, 3, 28),
-            end_time=datetime(2025, 4, 23, 23, 59, 59),
-        )
-
-        check_pass_result_map: Dict[SubmissionCheckType, Set[SubmissionCheckResult]] = {
-            SubmissionCheckType.MATCHES_COMPETITION: {
-                SubmissionCheckResult.PASS,
-                SubmissionCheckResult.PENDING,
-            },
-            SubmissionCheckType.CONCENTRATED_WEIGHT: {
-                SubmissionCheckResult.PASS,
-                SubmissionCheckResult.PENDING,
-            },
-        }
-
-        in_sample_stage: AbstractEvaluateStage = InSampleChecksEvaluateStage(
-            next_stage=None,
-            check_pass_result_map=check_pass_result_map,
-        )
-
-        local_correlation_stage: AbstractEvaluateStage = CorrelationLocalEvaluateStage(
-            next_stage=None,
-            correlation_calculator=correlation_calculator,
-            threshold=0.5,
-        )
-        platform_self_correlation_stage: AbstractEvaluateStage = (
-            CorrelationPlatformEvaluateStage(
-                next_stage=None,
-                correlation_type=CorrelationType.SELF,
-                check_record_dal=check_record_dal,
+        async with wq_client as client:
+            correlation_calculator = CorrelationCalculator(
+                client=client,
+                alpha_stream=alpha_generator(),
+                alpha_dal=alpha_dal,
+                record_set_dal=record_set_dal,
                 correlation_dal=correlation_dal,
+            )
+            await correlation_calculator.initialize()
+
+            fetcher = BaseAlphaFetcher(
+                alpha_dal=alpha_dal,
+                aggregate_data_dal=aggregate_data_dal,
+                start_time=datetime(2025, 2, 21),
+                end_time=datetime(2025, 4, 24, 23, 59, 59),
+            )
+
+            check_pass_result_map: Dict[
+                SubmissionCheckType, Set[SubmissionCheckResult]
+            ] = {
+                SubmissionCheckType.MATCHES_COMPETITION: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.CONCENTRATED_WEIGHT: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.PENDING,
+                },
+            }
+
+            in_sample_stage: AbstractEvaluateStage = InSampleChecksEvaluateStage(
+                next_stage=None,
+                check_pass_result_map=check_pass_result_map,
+            )
+
+            local_correlation_stage: AbstractEvaluateStage = (
+                CorrelationLocalEvaluateStage(
+                    next_stage=None,
+                    correlation_calculator=correlation_calculator,
+                    threshold=0.5,
+                )
+            )
+            platform_self_correlation_stage: AbstractEvaluateStage = (
+                CorrelationPlatformEvaluateStage(
+                    next_stage=None,
+                    correlation_type=CorrelationType.SELF,
+                    check_record_dal=check_record_dal,
+                    correlation_dal=correlation_dal,
+                    client=client,
+                )
+            )
+            perf_diff_stage: AbstractEvaluateStage = PPAC2025PerfDiffEvaluateStage(
+                next_stage=None,
+                check_record_dal=check_record_dal,
                 client=client,
             )
-        )
-        perf_diff_stage: AbstractEvaluateStage = PPAC2025PerfDiffEvaluateStage(
-            next_stage=None,
-            check_record_dal=check_record_dal,
-            client=client,
-        )
 
-        in_sample_stage.next_stage = local_correlation_stage
-        local_correlation_stage.next_stage = (
-            perf_diff_stage  # TODO: 自相关性计算直接用本地的数据，否则太慢了
-        )
-        platform_self_correlation_stage.next_stage = perf_diff_stage
+            in_sample_stage.next_stage = local_correlation_stage
+            local_correlation_stage.next_stage = (
+                perf_diff_stage  # TODO: 自相关性计算直接用本地的数据，否则太慢了
+            )
+            platform_self_correlation_stage.next_stage = perf_diff_stage
 
-        evaluator = PPAC2025Evaluator(
-            fetcher=fetcher,
-            evaluate_stage_chain=in_sample_stage,
-            evaluate_record_dal=evaluate_record_dal,
-        )
+            evaluator = PPAC2025Evaluator(
+                fetcher=fetcher,
+                evaluate_stage_chain=in_sample_stage,
+                evaluate_record_dal=evaluate_record_dal,
+            )
 
-        async for alpha in evaluator.evaluate_many(
-            policy=RefreshPolicy.FORCE_REFRESH, concurrency=30
-        ):
-            print(alpha)
+            async for alpha in evaluator.evaluate_many(
+                policy=RefreshPolicy.FORCE_REFRESH, concurrency=30
+            ):
+                print(alpha)
 
     asyncio.run(test())
