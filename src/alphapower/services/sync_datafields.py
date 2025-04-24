@@ -23,9 +23,9 @@ from alphapower.client import (
     WorldQuantClient,
     wq_client,
 )
-from alphapower.constants import DB_DATA
+from alphapower.constants import Database
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Category, DataField, Dataset
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger  # 修复导入
 
 from .utils import get_or_create_entity
@@ -222,7 +222,7 @@ async def sync_datafields(
     """
 
     async with wq_client:
-        async with get_db_session(DB_DATA) as session:
+        async with session_manager.get_session(Database.DATA) as session, session.begin():
             try:
                 datasets: List[Dataset] = []
 
@@ -286,5 +286,7 @@ async def sync_datafields(
                 console_logger.error("同步数据字段时数据库出错: %s", e)
                 await session.rollback()  # 回滚事务
             finally:
+                if progress_bar:
+                    progress_bar.close()  # 确保异常时关闭进度条
                 if progress_bar:
                     progress_bar.close()  # 确保异常时关闭进度条

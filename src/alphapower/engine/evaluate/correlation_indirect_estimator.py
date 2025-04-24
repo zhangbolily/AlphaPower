@@ -141,136 +141,129 @@ class CorrelationIndirectEstimator:
 
 if __name__ == "__main__":
     # 运行测试
-    from typing import Dict
-
     from alphapower.client import wq_client
-    from alphapower.dal.alphas import AlphaDAL
     from alphapower.dal.evaluate import (
-        CorrelationDAL,
         RecordSetDAL,
     )
-    from alphapower.engine.evaluate.correlation_calculator import (
-        CorrelationCalculator,
-    )
-    from alphapower.internal.db_session import get_db_session
+    from alphapower.dal.session_manager import session_manager
 
     async def test() -> None:
         """
         测试 PPAC2025Evaluator 的功能。
         """
-        async with get_db_session(Database.ALPHAS) as alpha_session:
-            async with get_db_session(Database.EVALUATE) as evaluate_session:
-                async with wq_client as client:
-                    alpha_dal = AlphaDAL(alpha_session)
+        async with wq_client as client:
+            alpha_dal = AlphaDAL()
+            correlation_dal = CorrelationDAL()
+            record_set_dal = RecordSetDAL()
 
-                    correlation_dal = CorrelationDAL(evaluate_session)
-                    record_set_dal = RecordSetDAL(evaluate_session)
-
-                    async def alpha_generator() -> AsyncGenerator[Alpha]:
-                        for alpha in await alpha_dal.find_by_stage(
-                            stage=Stage.OS,
-                        ):
-                            for classification in alpha.classifications:
-                                if (
-                                    classification.id
-                                    == "POWER_POOL:POWER_POOL_ELIGIBLE"
-                                ):
-                                    await log.ainfo(
-                                        event="Alpha 策略符合 Power Pool 条件",
-                                        alpha_id=alpha.alpha_id,
-                                        classifications=alpha.classifications,
-                                        emoji="✅",
-                                    )
-                                    yield alpha
-
-                            await log.ainfo(
-                                event="Alpha 策略不符合 Power Pool 条件",
-                                alpha_id=alpha.alpha_id,
-                                classifications=alpha.classifications,
-                                emoji="❌",
-                            )
-
-                    alpha_id: str = "7LQXXJZ"
-                    alpha_a: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
-                        alpha_id=alpha_id,
-                    )
-
-                    if not alpha_a:
-                        await log.ainfo(
-                            event="Alpha 策略不存在",
-                            alpha_id=alpha_id,
-                            emoji="❌",
-                        )
-                        return
-
-                    correlation_calculator = CorrelationCalculator(
-                        client=client,
-                        alpha_stream=alpha_generator(),
-                        alpha_dal=alpha_dal,
-                        record_set_dal=record_set_dal,
-                        correlation_dal=correlation_dal,
-                    )
-
-                    correlation_estimator = CorrelationIndirectEstimator(
-                        alpha_dal=alpha_dal,
-                        correlation_dal=correlation_dal,
-                        prod_alpha_stream=alpha_generator(),
-                        corr_calculator=correlation_calculator,
-                    )
-
-                    alpha_a_corrs: Dict[str, float] = (
-                        await correlation_calculator.calculate_correlation(alpha_a)
-                    )
-                    for alpha_id_b, rho_ab in alpha_a_corrs.items():
-                        await log.ainfo(
-                            event="Alpha 与其他 Alpha 的相关性",
-                            alpha_id_a=alpha_a.alpha_id,
-                            alpha_id_b=alpha_id_b,
-                            correlation=rho_ab,
-                            emoji="🔄",
-                        )
-
-                        alpha_b: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
-                            alpha_id=alpha_id_b,
-                        )
-                        if not alpha_b:
-                            await log.ainfo(
-                                event="Alpha 策略不存在",
-                                alpha_id=alpha_id_b,
-                                emoji="❌",
-                            )
-                            continue
-
-                        alpha_b_corrs: Dict[str, float] = (
-                            await correlation_calculator.calculate_correlation(
-                                alpha_b,
-                            )
-                        )
-                        for alpha_id_c, rho_bc in alpha_b_corrs.items():
-                            await log.ainfo(
-                                event="Alpha 与其他 Alpha 的相关性",
-                                alpha_id_a=alpha_b.alpha_id,
-                                alpha_id_b=alpha_id_c,
-                                correlation=rho_bc,
-                                emoji="🔄",
-                            )
-
-                            real_p_ac: float = alpha_a_corrs.get(alpha_id_c, 0.0)
-                            estimated_p_ac: float = (
-                                correlation_estimator._calculate_upper_bound(
-                                    rho_ab=rho_ab,
-                                    rho_bc=rho_bc,
+            async def alpha_generator() -> AsyncGenerator[Alpha]:
+                async with session_manager.get_session(Database.ALPHAS) as session:
+                    for alpha in await alpha_dal.find_by_stage(
+                        session=session,
+                        stage=Stage.OS,
+                    ):
+                        for classification in alpha.classifications:
+                            if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
+                                await log.ainfo(
+                                    event="Alpha 策略符合 Power Pool 条件",
+                                    alpha_id=alpha.alpha_id,
+                                    classifications=alpha.classifications,
+                                    emoji="✅",
                                 )
-                            )
+                                yield alpha
+                            else:
+                                await log.ainfo(
+                                    event="Alpha 策略不符合 Power Pool 条件",
+                                    alpha_id=alpha.alpha_id,
+                                    classifications=alpha.classifications,
+                                    emoji="❌",
+                                )
 
-                            await log.ainfo(
-                                event="Alpha 相关性估算",
-                                alpha_id_a=alpha_a.alpha_id,
-                                alpha_id_b=alpha_id_c,
-                                real_p_ac=real_p_ac,
-                                estimated_p_ac=estimated_p_ac,
-                                emoji="🔄",
-                            )
+            alpha_id: str = "7LQXXJZ"
+            async with session_manager.get_session(Database.ALPHAS) as session:
+                alpha_a: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
+                    session=session,
+                    alpha_id=alpha_id,
+                )
+
+            if not alpha_a:
+                await log.ainfo(
+                    event="Alpha 策略不存在",
+                    alpha_id=alpha_id,
+                    emoji="❌",
+                )
+                return
+
+            correlation_calculator = CorrelationCalculator(
+                client=client,
+                alpha_stream=alpha_generator(),
+                alpha_dal=alpha_dal,
+                record_set_dal=record_set_dal,
+                correlation_dal=correlation_dal,
+            )
+
+            correlation_estimator = CorrelationIndirectEstimator(
+                alpha_dal=alpha_dal,
+                correlation_dal=correlation_dal,
+                prod_alpha_stream=alpha_generator(),
+                corr_calculator=correlation_calculator,
+            )
+
+            alpha_a_corrs: Dict[str, float] = (
+                await correlation_calculator.calculate_correlation(alpha_a)
+            )
+            for alpha_id_b, rho_ab in alpha_a_corrs.items():
+                await log.ainfo(
+                    event="Alpha 与其他 Alpha 的相关性",
+                    alpha_id_a=alpha_a.alpha_id,
+                    alpha_id_b=alpha_id_b,
+                    correlation=rho_ab,
+                    emoji="🔄",
+                )
+
+                async with session_manager.get_session(Database.ALPHAS) as session:
+                    alpha_b: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
+                        alpha_id=alpha_id_b,
+                        session=session,
+                    )
+                if not alpha_b:
+                    await log.ainfo(
+                        event="Alpha 策略不存在",
+                        alpha_id=alpha_id_b,
+                        emoji="❌",
+                    )
+                    continue
+
+                alpha_b_corrs: Dict[str, float] = (
+                    await correlation_calculator.calculate_correlation(
+                        alpha_b,
+                    )
+                )
+                for alpha_id_c, rho_bc in alpha_b_corrs.items():
+                    await log.ainfo(
+                        event="Alpha 与其他 Alpha 的相关性",
+                        alpha_id_a=alpha_b.alpha_id,
+                        alpha_id_b=alpha_id_c,
+                        correlation=rho_bc,
+                        emoji="🔄",
+                    )
+
+                    real_p_ac: float = alpha_a_corrs.get(alpha_id_c, 0.0)
+                    estimated_p_ac: float = (
+                        correlation_estimator._calculate_upper_bound(
+                            rho_ab=rho_ab,
+                            rho_bc=rho_bc,
+                        )
+                    )
+
+                    await log.ainfo(
+                        event="Alpha 相关性估算",
+                        alpha_id_a=alpha_a.alpha_id,
+                        alpha_id_b=alpha_id_c,
+                        real_p_ac=real_p_ac,
+                        estimated_p_ac=estimated_p_ac,
+                        emoji="🔄",
+                    )
 
     # 运行异步测试函数
     import asyncio

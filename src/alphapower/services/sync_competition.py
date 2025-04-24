@@ -33,8 +33,8 @@ from alphapower.client import CompetitionListView, CompetitionView, wq_client
 from alphapower.constants import Database
 from alphapower.dal.alphas import CompetitionDAL
 from alphapower.dal.base import DALFactory
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Competition
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 logger: BoundLogger = get_logger(__name__)
@@ -127,10 +127,16 @@ async def process_competitions(
         competitions (List[Competition]): 竞赛实体列表。
     """
     try:
-        for competition in competitions:
-            # DEBUG 日志记录创建竞赛实体
-            await logger.adebug("创建竞赛实体", competition=competition)
-            await competition_dal.upsert_by_unique_key(competition, "competition_id")
+        async with (
+            session_manager.get_session(Database.ALPHAS) as session,
+            session.begin(),
+        ):
+            for competition in competitions:
+                # DEBUG 日志记录创建竞赛实体
+                await logger.adebug("创建竞赛实体", competition=competition)
+                await competition_dal.upsert_by_unique_key(
+                    entity=competition, unique_key="competition_id", session=session
+                )
         # DEBUG 日志记录批量创建成功
         await logger.adebug("批量创建竞赛数据成功", count=len(competitions))
     except Exception as e:
@@ -148,7 +154,7 @@ async def competition_data_expire_check() -> bool:
     Returns:
         bool: 如果数据过期返回 True，否则返回 False。
     """
-    async with get_db_session(Database.ALPHAS) as session:
+    async with session_manager.get_session(Database.ALPHAS) as session:
         competition_dal: CompetitionDAL = DALFactory.create_dal(
             CompetitionDAL, session=session
         )
@@ -177,26 +183,23 @@ async def sync_competition() -> None:
     page_size: int = 100
     page: int = 1
 
-    async with get_db_session(Database.ALPHAS) as session:
-        competition_dal: CompetitionDAL = DALFactory.create_dal(
-            CompetitionDAL, session=session
-        )
+    competition_dal: CompetitionDAL = DALFactory.create_dal(CompetitionDAL)
 
-        async with wq_client:
-            while True:
-                result: CompetitionListView = await fetch_competitions(page, page_size)
-                competitions: List[Competition] = [
-                    await create_competition(view) for view in result.results
-                ]
+    async with wq_client:
+        while True:
+            result: CompetitionListView = await fetch_competitions(page, page_size)
+            competitions: List[Competition] = [
+                await create_competition(view) for view in result.results
+            ]
 
-                await process_competitions(competition_dal, competitions)
+            await process_competitions(competition_dal, competitions)
 
-                if not result.next:
-                    # INFO 日志记录同步完成
-                    await logger.ainfo("竞赛数据同步完成", emoji="✅")
-                    break
+            if not result.next:
+                # INFO 日志记录同步完成
+                await logger.ainfo("竞赛数据同步完成", emoji="✅")
+                break
 
-                page += 1
+            page += 1
 
     # INFO 日志记录方法退出
     await logger.ainfo("同步竞赛数据方法退出", emoji="🏁")

@@ -12,9 +12,9 @@ from typing import List, Optional, Set
 from structlog.stdlib import BoundLogger
 
 from alphapower.constants import Database
+from alphapower.dal.session_manager import session_manager
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 from .provider_abc import AbstractTaskProvider
@@ -75,7 +75,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         sampled_tasks: List[SimulationTask] = []
 
         # TODO: 这里跳采样的逻辑还是有点复杂，可能需要进一步优化
-        async with get_db_session(Database.SIMULATION) as session:
+        async with session_manager.get_session(Database.SIMULATION) as session:
             sampled_task_ids: List[int] = []
             while len(sampled_task_ids) < count:
                 dal: SimulationTaskDAL = SimulationTaskDAL(session=session)

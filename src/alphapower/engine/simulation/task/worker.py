@@ -32,9 +32,9 @@ from alphapower.constants import (
     Database,
     UserRole,
 )
+from alphapower.dal.session_manager import session_manager
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 
 from .scheduler_abc import AbstractScheduler
@@ -198,12 +198,14 @@ class Worker(AbstractWorker):
                     progress_id=progress_id,
                 )
 
-                async with get_db_session(Database.SIMULATION) as session:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
                     dal: SimulationTaskDAL = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.CANCELLED
                     await dal.update_all(tasks)
-                    await session.commit()
                     await logger.ainfo(
                         event="数据库中任务状态更新为已取消",
                         emoji="💾",
@@ -261,10 +263,12 @@ class Worker(AbstractWorker):
         if task.status == SimulationTaskStatus.COMPLETE:
             task.alpha_id = result.alpha
 
-        async with get_db_session(Database.SIMULATION) as session:
+        async with (
+            session_manager.get_session(Database.SIMULATION) as session,
+            session.begin(),
+        ):
             dal: SimulationTaskDAL = SimulationTaskDAL(session)
             await dal.update(task)
-            await session.commit()
             await logger.ainfo(
                 event="数据库中任务状态更新成功",
                 emoji="💾",
@@ -478,10 +482,12 @@ class Worker(AbstractWorker):
                     # 可以考虑更新任务状态为失败
                     task.status = SimulationTaskStatus.ERROR
                     task.completed_at = datetime.now()
-                    async with get_db_session(Database.SIMULATION) as session:
+                    async with (
+                        session_manager.get_session(Database.SIMULATION) as session,
+                        session.begin(),
+                    ):
                         dal: SimulationTaskDAL = SimulationTaskDAL(session)
                         await dal.update(task)
-                        await session.commit()
                     return
 
                 await logger.ainfo(
@@ -497,10 +503,12 @@ class Worker(AbstractWorker):
                 task.parent_progress_id = (
                     progress_id  # 单任务也用 parent_progress_id 存储
                 )
-                async with get_db_session(Database.SIMULATION) as session:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
                     dal = SimulationTaskDAL(session)
                     await dal.update(task)
-                    await session.commit()
                     await logger.ainfo(
                         event="数据库中任务状态更新为运行中",
                         emoji="💾",
@@ -613,10 +621,12 @@ class Worker(AbstractWorker):
                 # 可以在这里将任务标记为错误状态
                 task.status = SimulationTaskStatus.ERROR
                 task.completed_at = datetime.now()
-                async with get_db_session(Database.SIMULATION) as session:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
                     dal = SimulationTaskDAL(session)
                     await dal.update(task)
-                    await session.commit()
             finally:
                 await logger.ainfo(
                     event="单个模拟任务处理结束",
@@ -705,10 +715,12 @@ class Worker(AbstractWorker):
                         # 标记任务为错误状态
                         task.status = SimulationTaskStatus.ERROR
                         task.completed_at = datetime.now()
-                        async with get_db_session(Database.SIMULATION) as session:
+                        async with (
+                            session_manager.get_session(Database.SIMULATION) as session,
+                            session.begin(),
+                        ):
                             dal: SimulationTaskDAL = SimulationTaskDAL(session)
                             await dal.update(task)
-                            await session.commit()
                         return
 
                     await logger.ainfo(
@@ -730,10 +742,12 @@ class Worker(AbstractWorker):
                     # 标记任务为错误状态
                     task.status = SimulationTaskStatus.ERROR
                     task.completed_at = datetime.now()
-                    async with get_db_session(Database.SIMULATION) as session:
+                    async with (
+                        session_manager.get_session(Database.SIMULATION) as session,
+                        session.begin(),
+                    ):
                         dal = SimulationTaskDAL(session)
                         await dal.update(task)
-                        await session.commit()
                 finally:
                     await logger.adebug(
                         event="单个子任务处理结束",
@@ -875,13 +889,15 @@ class Worker(AbstractWorker):
                         progress_id=progress_id,
                     )
                     # 标记任务失败
-                    async with get_db_session(Database.SIMULATION) as session:
+                    async with (
+                        session_manager.get_session(Database.SIMULATION) as session,
+                        session.begin(),
+                    ):
                         dal: SimulationTaskDAL = SimulationTaskDAL(session)
                         for task in tasks:
                             task.status = SimulationTaskStatus.ERROR
                             task.completed_at = datetime.now()
                         await dal.update_all(tasks)
-                        await session.commit()
                     return
 
                 await logger.ainfo(
@@ -893,13 +909,15 @@ class Worker(AbstractWorker):
                 )
 
                 # 更新任务状态为运行中，并保存父进度 ID
-                async with get_db_session(Database.SIMULATION) as session:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
                     dal = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.RUNNING
                         task.parent_progress_id = progress_id
                     await dal.update_all(tasks)
-                    await session.commit()
                     await logger.ainfo(
                         event="数据库中多个任务状态更新为运行中",
                         emoji="💾",
@@ -957,13 +975,17 @@ class Worker(AbstractWorker):
                                 received_value=progress_or_result,
                             )
                             # 标记任务失败
-                            async with get_db_session(Database.SIMULATION) as session:
+                            async with (
+                                session_manager.get_session(
+                                    Database.SIMULATION
+                                ) as session,
+                                session.begin(),
+                            ):
                                 dal = SimulationTaskDAL(session)
                                 for task in tasks:
                                     task.status = SimulationTaskStatus.ERROR
                                     task.completed_at = datetime.now()
                                 await dal.update_all(tasks)
-                                await session.commit()
                         break  # 任务完成，退出循环
 
                     elif isinstance(progress_or_result, SimulationProgressView):
@@ -1013,13 +1035,15 @@ class Worker(AbstractWorker):
                     progress_id=progress_id,
                 )
                 # 标记任务失败
-                async with get_db_session(Database.SIMULATION) as session:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
                     dal = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.ERROR
                         task.completed_at = datetime.now()
                     await dal.update_all(tasks)
-                    await session.commit()
             finally:
                 final_statuses = {t.id: t.status.value for t in tasks}
                 await logger.ainfo(
@@ -1102,14 +1126,16 @@ class Worker(AbstractWorker):
 
             # 更新任务状态为已调度
             try:
-                async with get_db_session(Database.SIMULATION) as session:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
                     dal: SimulationTaskDAL = SimulationTaskDAL(session)
                     now = datetime.now()
                     for task in tasks:
                         task.scheduled_at = now
                         task.status = SimulationTaskStatus.SCHEDULED
                     await dal.update_all(tasks)
-                    await session.commit()
                 await logger.ainfo(
                     event="数据库中任务状态更新为已调度",
                     emoji="💾",

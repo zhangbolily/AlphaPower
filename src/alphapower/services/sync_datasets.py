@@ -19,9 +19,9 @@ from alphapower.client import (
     WorldQuantClient,
     wq_client,
 )
-from alphapower.constants import DB_DATA
+from alphapower.constants import Database
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
-from alphapower.internal.db_session import get_db_session
 from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import log_time_elapsed  # 引入公共方法
 
@@ -278,7 +278,10 @@ async def sync_datasets(
     lock: Lock = Lock()  # 创建异步互斥锁
 
     async with wq_client:
-        async with get_db_session(DB_DATA) as session:
+        async with (
+            session_manager.get_session(Database.DATA) as session,
+            session.begin(),
+        ):
             try:
                 console_logger.info("=== 数据集同步任务开始 ===")
                 console_logger.info(
