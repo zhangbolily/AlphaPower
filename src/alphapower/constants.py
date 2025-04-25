@@ -67,6 +67,7 @@ ENV_TEST: Final[str] = "test"  # 测试环境标识符
 
 ALPHA_ID_LENGTH: Final[int] = 7  # Alpha ID的长度
 MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY: Final[int] = 10000  # 单个Alpha列表查询的最大数量
+CORRELATION_CALCULATION_YEARS: Final[int] = 4  # 相关性计算的年份范围
 
 
 class Database(Enum):

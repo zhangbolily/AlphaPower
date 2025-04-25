@@ -8,6 +8,7 @@ from structlog.stdlib import BoundLogger
 
 from alphapower.client import TableView, WorldQuantClient
 from alphapower.constants import (
+    CORRELATION_CALCULATION_YEARS,
     Database,
     RecordSetType,
     Region,
@@ -338,7 +339,10 @@ class CorrelationCalculator:
         return pnl_series_df
 
     async def _get_pnl_dataframe(
-        self, alpha_id: str, force_refresh: bool = False
+        self,
+        alpha_id: str,
+        force_refresh: bool = False,
+        inner: bool = False,
     ) -> pd.DataFrame:
         # 调试日志记录函数入参
         pnl_df: Optional[pd.DataFrame]
@@ -351,24 +355,26 @@ class CorrelationCalculator:
                     emoji="❌",
                 )
                 raise ValueError("Alpha in_sample 为 None")
-            return pnl_df
-
-        pnl_df = await self._retrieve_pnl_from_local(alpha_id)
-        if pnl_df is None:
-            pnl_df = await self._retrieve_pnl_from_platform(alpha_id)
+        else:
+            pnl_df = await self._retrieve_pnl_from_local(alpha_id)
             if pnl_df is None:
-                await self.log.aerror(
-                    event="Alpha in_sample 为 None, 无法计算自相关性, 请检查 Alpha 的配置",
-                    alpha_id=alpha_id,
-                    emoji="❌",
-                )
-                raise ValueError("Alpha in_sample 为 None")
+                pnl_df = await self._retrieve_pnl_from_platform(alpha_id)
+                if pnl_df is None:
+                    await self.log.aerror(
+                        event="Alpha in_sample 为 None, 无法计算自相关性, 请检查 Alpha 的配置",
+                        alpha_id=alpha_id,
+                        emoji="❌",
+                    )
+                    raise ValueError("Alpha in_sample 为 None")
 
         pnl_df = await self._validate_pnl_dataframe(
             pnl_df,
             alpha_id,
         )
-        pnl_diff_df = await self._prepare_pnl_dataframe(pnl_df)
+        pnl_diff_df: pd.DataFrame = await self._prepare_pnl_dataframe(
+            pnl_df, inner=inner
+        )
+        pnl_diff_df = pnl_diff_df.rename(columns={"pnl": alpha_id})
 
         # 调试日志记录返回值
         await self.log.adebug(
@@ -379,7 +385,11 @@ class CorrelationCalculator:
 
         return pnl_diff_df
 
-    async def _prepare_pnl_dataframe(self, pnl_df: pd.DataFrame) -> pd.DataFrame:
+    async def _prepare_pnl_dataframe(
+        self,
+        pnl_df: pd.DataFrame,
+        inner: bool = False,
+    ) -> pd.DataFrame:
         """
         处理 pnl 数据框，包括日期转换、过滤、设置索引和填充缺失值。
 
@@ -396,12 +406,18 @@ class CorrelationCalculator:
             )
             raise ValueError("日期转换失败") from e
 
-        four_years_ago = pnl_df["date"].max() - pd.DateOffset(years=4)
-        pnl_df = pnl_df[pnl_df["date"] >= four_years_ago]
         pnl_df = pnl_df.set_index("date").ffill()
         pnl_df = pnl_df[["pnl"]].ffill()
 
+        if not inner:
+            # 不是 inner 相关性，pnl 取固定的回溯周期计算
+            four_years_ago = pnl_df.index.max() - pd.DateOffset(
+                years=CORRELATION_CALCULATION_YEARS
+            )
+            pnl_df = pnl_df[pnl_df.index > four_years_ago]
+
         pnl_diff_df: pd.DataFrame = (pnl_df - pnl_df.shift(1)).ffill()
+        pnl_diff_df = pnl_diff_df.sort_index(ascending=True)
 
         await self.log.adebug(
             event="成功处理 pnl 数据框",
@@ -416,6 +432,7 @@ class CorrelationCalculator:
         target: pd.DataFrame,
         others: Dict[Alpha, pd.DataFrame],
         log: BoundLogger,
+        inner: bool = False,
     ) -> Dict[Alpha, float]:
         correlation_map: Dict[Alpha, float] = {}
 
@@ -436,7 +453,25 @@ class CorrelationCalculator:
                 )
                 raise ValueError("Alpha 策略的 pnl 数据为 None, 无法计算自相关性")
 
-            correlation: float = target.corrwith(other_pnl_df, axis=0).iloc[0]
+            correlation: float = 0.0
+            if inner:
+                # 计算内相关性
+                other_pnl_df = other_pnl_df[other_pnl_df.index.isin(target.index)]
+                inner_target: pd.DataFrame = target[
+                    target.index.isin(other_pnl_df.index)
+                ]
+                if other_pnl_df.empty or inner_target.empty:
+                    log.warning(
+                        event="内相关性计算时，其他 Alpha 策略的 pnl 数据为空",
+                        alpha_id=other_alpha.alpha_id,
+                        emoji="⚠️",
+                    )
+                    continue
+
+                correlation = inner_target.corrwith(other_pnl_df, axis=0).iloc[0]
+            else:
+                correlation = target.corrwith(other_pnl_df, axis=0).iloc[0]
+
             if pd.isna(correlation):
                 log.warning(
                     event="相关性计算结果为 NaN",
@@ -455,7 +490,12 @@ class CorrelationCalculator:
 
         return correlation_map
 
-    async def calculate_correlation(self, alpha: Alpha) -> Dict[Alpha, float]:
+    async def calculate_correlation(
+        self,
+        alpha: Alpha,
+        force_refresh: bool = False,
+        inner: bool = False,
+    ) -> Dict[Alpha, float]:
         """
         计算自相关性。
 
@@ -501,7 +541,8 @@ class CorrelationCalculator:
 
         target_pnl_diff_df: pd.DataFrame = await self._get_pnl_dataframe(
             alpha_id=alpha.alpha_id,
-            force_refresh=False,
+            force_refresh=force_refresh,
+            inner=inner,
         )
 
         shared_others_pnl_diff_dict: Dict[Alpha, pd.DataFrame] = {}
@@ -512,7 +553,8 @@ class CorrelationCalculator:
 
             other_pnl_series_df: pd.DataFrame = await self._get_pnl_dataframe(
                 alpha_id=alpha.alpha_id,
-                force_refresh=False,
+                force_refresh=force_refresh,
+                inner=inner,
             )
 
             shared_others_pnl_diff_dict[alpha] = other_pnl_series_df
@@ -530,7 +572,8 @@ class CorrelationCalculator:
             shared_corr_val = self._do_calculation(
                 target=target_pnl_diff_df,
                 others=shared_y_pnl_data,
-                log=self.log,
+                log=log,
+                inner=inner,
             )
 
             log.info(
@@ -572,6 +615,7 @@ class CorrelationCalculator:
                 target=target_pnl_diff_df,
                 others=shared_others_pnl_diff_dict,
                 log=self.log,
+                inner=inner,
             )
 
         end_time: datetime = datetime.now()

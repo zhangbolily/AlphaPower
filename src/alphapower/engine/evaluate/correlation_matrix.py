@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import List
 
 import pandas as pd
 from structlog.stdlib import BoundLogger
@@ -47,22 +47,21 @@ class CorrelationMatrix(CorrelationCalculator):
     async def generate(
         self,
         alpha_list: List[Alpha],
+        force_refresh: bool = False,
+        inner: bool = False,
     ) -> pd.DataFrame:
         alpha_df_list: List[pd.DataFrame] = []
         corr_matrix: pd.DataFrame = pd.DataFrame()
-        alpha_id_map: Dict[str, Alpha] = {}
 
         for alpha_x in alpha_list:
             try:
                 pnl_diff_df: pd.DataFrame = await self._get_pnl_dataframe(
                     alpha_id=alpha_x.alpha_id,
-                    force_refresh=False,
+                    force_refresh=force_refresh,
+                    inner=inner,
                 )
 
-                alpha_df_list.append(
-                    pnl_diff_df.rename(columns={"pnl": alpha_x.alpha_id})
-                )
-                alpha_id_map[alpha_x.alpha_id] = alpha_x
+                alpha_df_list.append(pnl_diff_df)
             except Exception as e:
                 await self.log.aerror(
                     "Error in generating correlation matrix",
@@ -113,16 +112,21 @@ if __name__ == "__main__":
             )
 
             alpha_list: List[Alpha] = []
+            ppac_alpha_list: List[Alpha] = []
 
             async with session_manager.get_session(Database.ALPHAS) as session:
-                for alpha in await alpha_dal.find_by_status(
+                alpha_list = await alpha_dal.find_by_status(
                     session=session, status=Status.ACTIVE
-                ):
-                    for classification in alpha.classifications:
-                        if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
-                            alpha_list.append(alpha)
+                )
 
-            result: pd.DataFrame = await correlation_matrix.generate(alpha_list)
+            for alpha in alpha_list:
+                for classification in alpha.classifications:
+                    if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
+                        ppac_alpha_list.append(alpha)
+
+            result: pd.DataFrame = await correlation_matrix.generate(
+                alpha_list=ppac_alpha_list, inner=True
+            )
             print(result)
 
     asyncio.run(test())
