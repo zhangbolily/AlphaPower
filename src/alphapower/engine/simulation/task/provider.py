@@ -19,8 +19,6 @@ from alphapower.internal.logging import get_logger
 
 from .provider_abc import AbstractTaskProvider
 
-logger: BoundLogger = get_logger(__name__)
-
 
 class DatabaseTaskProvider(AbstractTaskProvider):
     """
@@ -43,7 +41,8 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         self.committing_scheduled_task_ids: Set[int] = set()
         self._lock = asyncio.Lock()
         self._sample_rate = sample_rate  # 新增采样率参数
-        logger.info(
+        self.log: BoundLogger = get_logger(self.__class__.__name__)
+        self.log.info(
             event="初始化任务提供者",
             sample_rate=sample_rate,
             message="DatabaseTaskProvider 初始化完成",
@@ -65,7 +64,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         返回：
         - List[SimulationTask]: 获取到的任务列表。
         """
-        await logger.adebug(
+        await self.log.adebug(
             event="开始获取任务",
             count=count,
             priority=priority,
@@ -78,6 +77,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         async with session_manager.get_session(Database.SIMULATION) as session:
             sampled_task_ids: List[int] = []
             while len(sampled_task_ids) < count:
+                rem: int = count - len(sampled_task_ids)
                 dal: SimulationTaskDAL = SimulationTaskDAL(session=session)
                 task_ids: List[int] = await dal.find_task_ids_by_filters(
                     status=SimulationTaskStatus.PENDING,
@@ -86,7 +86,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                         "id": list(self.committing_scheduled_task_ids)
                         + sampled_task_ids,
                     },
-                    limit=count * self._sample_rate,
+                    limit=rem * self._sample_rate,
                     offset=self.cursor,
                 )
 
@@ -103,7 +103,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                     self.cursor = 0
                     if pending_task_count > 0:
                         # 如果还有待处理的任务，继续循环
-                        await logger.adebug(
+                        await self.log.adebug(
                             event="一轮跳采样未能获取到足够的任务，跳采样从头开始",
                             required_task_count=count,
                             sampled_task_count=len(sampled_task_ids),
@@ -111,7 +111,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                             emoji="🔄",
                         )
                         continue
-                    await logger.awarning(
+                    await self.log.awarning(
                         event="无更多任务",
                         message="数据库中没有更多待处理任务",
                         required_task_count=count,
@@ -133,7 +133,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                 limit=count,
             )
 
-            await logger.ainfo(
+            await self.log.ainfo(
                 event="获取任务完成",
                 sampled_task_id_count=len(sampled_task_ids),
                 sampled_task_count=len(sampled_tasks),
@@ -151,7 +151,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         参数：
         - task_ids (List[int]): 已调度任务的 ID 列表。
         """
-        await logger.adebug(
+        await self.log.adebug(
             event="确认调度任务开始",
             task_ids=task_ids,
             message="acknowledge_scheduled_tasks 方法被调用",
@@ -160,7 +160,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         async with self._lock:
             # 提交成功后，从待确认列表中移除
             self.committing_scheduled_task_ids.difference_update(task_ids)
-        await logger.ainfo(
+        await self.log.ainfo(
             event="确认调度任务完成",
             task_ids=task_ids,
             message="成功确认调度的任务",
