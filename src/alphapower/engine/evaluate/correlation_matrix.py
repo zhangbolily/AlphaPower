@@ -44,49 +44,25 @@ class CorrelationMatrix(CorrelationCalculator):
 
         self.log: BoundLogger = get_logger(module_name=self.__class__.__name__)
 
-    async def _print_correlation_matrix(
-        self, alpha_corr_matrix: Dict[Alpha, Dict[Alpha, float]]
-    ) -> None:
-        """
-        格式化打印相关性矩阵。
-
-        Args:
-            alpha_corr_matrix (Dict[Alpha, Dict[Alpha, float]]): 相关性矩阵。
-        """
-        alpha_ids = [alpha.alpha_id for alpha in alpha_corr_matrix.keys()]
-        header = "Alpha ID".ljust(15) + "\t".join(alpha_ids)
-        print(header)
-        print("-" * len(header))
-
-        for alpha_x, correlations in alpha_corr_matrix.items():
-            row = alpha_x.alpha_id.ljust(15)
-            for alpha_y in alpha_corr_matrix.keys():
-                correlation = correlations.get(alpha_y, 0.0)
-                row += f"\t{correlation:.2f}"
-            print(row)
-
     async def generate(
         self,
         alpha_list: List[Alpha],
-    ) -> Dict[Alpha, Dict[Alpha, float]]:
-        alpha_df_map: Dict[Alpha, pd.DataFrame] = {}
-        alpha_corr_matrix: Dict[Alpha, Dict[Alpha, float]] = {}
+    ) -> pd.DataFrame:
+        alpha_df_list: List[pd.DataFrame] = []
+        corr_matrix: pd.DataFrame = pd.DataFrame()
+        alpha_id_map: Dict[str, Alpha] = {}
 
         for alpha_x in alpha_list:
             try:
-                pnl_series_df: pd.DataFrame = await self._get_pnl_dataframe(
+                pnl_diff_df: pd.DataFrame = await self._get_pnl_dataframe(
                     alpha_id=alpha_x.alpha_id,
                     force_refresh=False,
                 )
-                pnl_series_df = await self._validate_pnl_dataframe(
-                    pnl_df=pnl_series_df, alpha_id=alpha_x.alpha_id
-                )
-                pnl_series_df = await self._prepare_pnl_dataframe(pnl_df=pnl_series_df)
-                pnl_diff_series_df: pd.DataFrame = (
-                    pnl_series_df - pnl_series_df.ffill().shift(1)
-                )
 
-                alpha_df_map[alpha_x] = pnl_diff_series_df
+                alpha_df_list.append(
+                    pnl_diff_df.rename(columns={"pnl": alpha_x.alpha_id})
+                )
+                alpha_id_map[alpha_x.alpha_id] = alpha_x
             except Exception as e:
                 await self.log.aerror(
                     "Error in generating correlation matrix",
@@ -99,55 +75,22 @@ class CorrelationMatrix(CorrelationCalculator):
                     alpha_id=alpha_x.alpha_id,
                 )
 
-        for alpha_x, pnl_diff_series_x in alpha_df_map.items():
-            if alpha_x not in alpha_corr_matrix:
-                alpha_corr_matrix[alpha_x] = {}
+        if not alpha_df_list:
+            await self.log.ainfo("No alpha data available for correlation matrix.")
+            return corr_matrix
 
-            for alpha_y, pnl_diff_series_y in alpha_df_map.items():
-                if alpha_y not in alpha_corr_matrix:
-                    alpha_corr_matrix[alpha_y] = {}
+        # Merge all dataframes on 'date' column
+        merged_df: pd.DataFrame = pd.concat(alpha_df_list, axis=1)
+        merged_df = merged_df.loc[:, ~merged_df.columns.duplicated()]
+        merged_df = merged_df.dropna()
 
-                if alpha_x == alpha_y:
-                    await self.log.adebug(
-                        "Skipping self-correlation",
-                        alpha_id=alpha_x.alpha_id,
-                    )
-                    alpha_corr_matrix[alpha_x][alpha_y] = 1.0
+        # Calculate the correlation matrix
+        corr_matrix = merged_df.corr()
+        # 列名排序
+        corr_matrix = corr_matrix.reindex(sorted(corr_matrix.columns), axis=1)
+        corr_matrix = corr_matrix.reindex(sorted(corr_matrix.index), axis=0)
 
-                if alpha_y in alpha_corr_matrix.get(alpha_x, {}):
-                    await self.log.adebug(
-                        "Already calculated correlation",
-                        alpha_id_x=alpha_x.alpha_id,
-                        alpha_id_y=alpha_y.alpha_id,
-                    )
-                    continue
-
-                try:
-                    correlation: float = pnl_diff_series_x.corrwith(
-                        pnl_diff_series_y, axis=0
-                    ).iloc[0]
-
-                    if pd.isna(correlation):
-                        await self.log.aerror(
-                            "Correlation is NaN",
-                            alpha_id_x=alpha_x.alpha_id,
-                            alpha_id_y=alpha_y.alpha_id,
-                        )
-                        raise ValueError(
-                            f"Correlation is NaN for alphas {alpha_x.alpha_id} and {alpha_y.alpha_id}"
-                        )
-
-                    alpha_corr_matrix[alpha_x][alpha_y] = correlation
-                    alpha_corr_matrix[alpha_y][alpha_x] = correlation
-                except Exception as e:
-                    await self.log.aerror(
-                        "Error in calculating correlation",
-                        alpha_id=alpha_x.alpha_id,
-                        error=str(e),
-                    )
-
-        await self._print_correlation_matrix(alpha_corr_matrix)
-        return alpha_corr_matrix
+        return corr_matrix
 
 
 if __name__ == "__main__":
@@ -179,9 +122,7 @@ if __name__ == "__main__":
                         if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
                             alpha_list.append(alpha)
 
-            result: Dict[Alpha, Dict[Alpha, float]] = await correlation_matrix.generate(
-                alpha_list
-            )
+            result: pd.DataFrame = await correlation_matrix.generate(alpha_list)
             print(result)
 
     asyncio.run(test())

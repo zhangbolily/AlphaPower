@@ -225,7 +225,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             bool: 如果检查通过返回 True，否则返回 False。
         """
         try:
-            pairwise_correlation: Dict[str, float] = (
+            pairwise_correlation: Dict[Alpha, float] = (
                 await self.correlation_calculator.calculate_correlation(
                     alpha=alpha,
                 )
