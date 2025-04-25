@@ -137,8 +137,7 @@ async def create_simulation_task(
         priority=priority,
         tags=tags,
     )
-    dal.session.add(task)
-    await dal.session.flush()
+    task = await dal.create(task)
     return task
 
 
@@ -168,8 +167,7 @@ async def create_simulation_tasks(
         )
         for i in range(len(regular))
     ]
-    dal.session.add_all(tasks)
-    await dal.session.flush()
+    tasks = await dal.bulk_create(tasks)
     return tasks
 
 
@@ -184,7 +182,7 @@ async def update_simulation_task_status(
     if task is None:
         raise ValueError(f"找不到ID为{task_id}的任务")
     task.status = status
-    await dal.session.flush()
+    task = await dal.update(task)
     return task
 
 
@@ -203,7 +201,7 @@ async def update_simulation_task_scheduled_info(
         raise ValueError(f"找不到ID为{task_id}的任务")
     task.scheduled_at = scheduled_at
     task.status = status
-    await dal.session.flush()
+    task = await dal.update(task)
     return task
 
 

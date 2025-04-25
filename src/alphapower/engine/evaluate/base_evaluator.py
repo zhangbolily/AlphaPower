@@ -139,8 +139,8 @@ class BaseEvaluator(AbstractEvaluator):
         )
         try:
             async with (
-                passed_alphas_stream.stream() as streamer
-            ):  # pylint: disable=E1101
+                passed_alphas_stream.stream() as streamer  # pylint: disable=E1101
+            ):
                 async for passed_alpha in streamer:
                     if passed_alpha:
                         yield passed_alpha

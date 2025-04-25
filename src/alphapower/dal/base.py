@@ -419,6 +419,50 @@ class BaseDAL(Generic[T]):
         result = await actual_session.execute(query.limit(1))
         return result.scalars().first()
 
+    async def find_ids_by(
+        self,
+        session: Optional[AsyncSession] = None,
+        **kwargs: Any,
+    ) -> Optional[int]:
+        """
+        按条件查找单个实体的 ID。
+
+        Args:
+            session: 可选的会话对象，若提供则优先使用。
+            **kwargs: 查询条件的键值对。
+
+        Returns:
+            符合条件的第一个实体的 ID，如果未找到则返回 None。
+        """
+        actual_session: AsyncSession = self._actual_session(session)
+        query: Select = select(self.entity_type.id)
+        for key, value in kwargs.items():
+            query = query.where(getattr(self.entity_type, key) == value)
+        result = await actual_session.execute(query.limit(1))
+        return result.scalars().first()
+
+    async def find_one_id_by(
+        self,
+        session: Optional[AsyncSession] = None,
+        **kwargs: Any,
+    ) -> Optional[int]:
+        """
+        按条件查找单个实体的 ID。
+
+        Args:
+            session: 可选的会话对象，若提供则优先使用。
+            **kwargs: 查询条件的键值对。
+
+        Returns:
+            符合条件的第一个实体的 ID，如果未找到则返回 None。
+        """
+        actual_session: AsyncSession = self._actual_session(session)
+        query: Select = select(self.entity_type.id)
+        for key, value in kwargs.items():
+            query = query.where(getattr(self.entity_type, key) == value)
+        result = await actual_session.execute(query.limit(1))
+        return result.scalars().first()
+
     async def update_by_id(
         self, entity_id: int, session: Optional[AsyncSession] = None, **kwargs: Any
     ) -> Optional[T]:
