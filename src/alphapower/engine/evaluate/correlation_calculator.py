@@ -374,7 +374,6 @@ class CorrelationCalculator:
         pnl_diff_df: pd.DataFrame = await self._prepare_pnl_dataframe(
             pnl_df, inner=inner
         )
-        pnl_diff_df = pnl_diff_df.rename(columns={"pnl": alpha_id})
 
         # 调试日志记录返回值
         await self.log.adebug(

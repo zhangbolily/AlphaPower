@@ -1,6 +1,8 @@
 from math import sqrt
 from typing import AsyncGenerator, Dict, List, Optional
 
+from structlog.stdlib import BoundLogger
+
 from alphapower.constants import CorrelationType, Database, Stage
 from alphapower.dal.alphas import AlphaDAL
 from alphapower.dal.evaluate import CorrelationDAL
@@ -10,15 +12,13 @@ from alphapower.engine.evaluate.correlation_calculator import (
 from alphapower.entity import Alpha, Correlation
 from alphapower.internal.logging import get_logger
 
-log = get_logger(__name__)
-
 
 class CorrelationIndirectEstimator:
     def __init__(
         self,
         alpha_dal: AlphaDAL,
         correlation_dal: CorrelationDAL,
-        prod_alpha_stream: AsyncGenerator[Alpha],
+        prod_alpha_stream: AsyncGenerator[Alpha, None],
         corr_calculator: CorrelationCalculator,
     ) -> None:
         """
@@ -34,6 +34,7 @@ class CorrelationIndirectEstimator:
         # 强制使用生产环境 Alpha 流计算相关性
         self.prod_alpha_stream = prod_alpha_stream
         self.corr_calculator.alpha_stream = prod_alpha_stream
+        self.log: BoundLogger = get_logger(self.__class__.__name__)
 
     async def get_prod_correlations(self) -> Dict[str, float]:
         """
@@ -41,7 +42,7 @@ class CorrelationIndirectEstimator:
 
         :return: Alpha ID 到其 PROD 属性的映射
         """
-        await log.ainfo(event="查询生产环境 Alpha 的 PROD 属性", emoji="🔍")
+        await self.log.ainfo(event="查询生产环境 Alpha 的 PROD 属性", emoji="🔍")
         prod_alpha_ids: List[str] = [
             alpha.alpha_id async for alpha in self.prod_alpha_stream
         ]
@@ -70,7 +71,7 @@ class CorrelationIndirectEstimator:
             prod_map[corr.alpha_id_b] = max(
                 prod_map.get(corr.alpha_id_b, 0.0), corr.correlation
             )
-        await log.ainfo(
+        await self.log.ainfo(
             event="完成生产环境 Alpha 的相关性查询", count=len(prod_map), emoji="✅"
         )
         return prod_map
@@ -82,7 +83,7 @@ class CorrelationIndirectEstimator:
         :param alpha: 要预测的 Alpha 实例
         :return: 预测的生产环境相关系数
         """
-        await log.ainfo(
+        await self.log.ainfo(
             event="开始预测 Alpha 的生产环境相关系数",
             alpha_id=alpha.alpha_id,
             emoji="🔄",
@@ -91,7 +92,7 @@ class CorrelationIndirectEstimator:
         # 获取生产环境中所有 Alpha 的 PROD 属性
         prod_map = await self.get_prod_correlations()
         if not prod_map:
-            await log.awarning(
+            await self.log.awarning(
                 event="生产环境中没有 Alpha 的相关性记录",
                 alpha_id=alpha.alpha_id,
                 emoji="⚠️",
@@ -99,26 +100,30 @@ class CorrelationIndirectEstimator:
             return None
 
         # 计算待估计 Alpha 与生产环境 Alpha 的相关性
-        pairwise_correlation = await self.corr_calculator.calculate_correlation(alpha)
-        if not pairwise_correlation:
-            await log.awarning(
+        alpha_corr_map = await self.corr_calculator.calculate_correlation(alpha)
+        if not alpha_corr_map:
+            await self.log.awarning(
                 event="未能计算 Alpha 与生产环境 Alpha 的相关性",
                 alpha_id=alpha.alpha_id,
                 emoji="⚠️",
             )
             return None
 
+        alpha_id_corr_map: Dict[str, float] = {
+            alpha.alpha_id: corr for alpha, corr in alpha_corr_map.items()
+        }
+
         # 使用严格上界公式估算目标 Alpha 的生产环境相关系数
         estimated_prod_corr = max(
             self._calculate_upper_bound(
-                pairwise_correlation.get(prod_alpha_id, 0.0),
+                alpha_id_corr_map.get(prod_alpha_id, 0.0),
                 prod_map[prod_alpha_id],
             )
             for prod_alpha_id in prod_map.keys()
-            if prod_alpha_id in pairwise_correlation
+            if prod_alpha_id in alpha_id_corr_map
         )
 
-        await log.ainfo(
+        await self.log.ainfo(
             event="完成 Alpha 的生产环境相关系数预测",
             alpha_id=alpha.alpha_id,
             estimated_prod_corr=estimated_prod_corr,
@@ -134,9 +139,29 @@ class CorrelationIndirectEstimator:
         :param rho_bc: 生产环境 Alpha 的 PROD 属性
         :return: 相关系数的上界
         """
-        # 上界公式：|rho_ac| <= sqrt((1 - rho_ab^2)(1 - rho_bc^2)) + |rho_ab * rho_bc|
-        upper_bound = sqrt((1 - rho_ab**2) * (1 - rho_bc**2)) + abs(rho_ab * rho_bc)
+        # 兜底系数绝对值略微大于 1 的问题
+        rho_ab = min(max(rho_ab, -1.0), 1.0)
+        rho_bc = min(max(rho_bc, -1.0), 1.0)
+
+        # 上界公式：rho_ac <= |rho_ab * rho_bc| + sqrt((1 - rho_ab^2)(1 - rho_bc^2))
+        upper_bound = abs(rho_ab * rho_bc) + sqrt((1 - rho_ab**2) * (1 - rho_bc**2))
         return upper_bound
+
+    def _calculate_lower_bound(self, rho_ab: float, rho_bc: float) -> float:
+        """
+        根据严格下界公式计算相关系数的下界。
+
+        :param rho_ab: Alpha 与生产环境 Alpha 的相关系数
+        :param rho_bc: 生产环境 Alpha 的 PROD 属性
+        :return: 相关系数的下界
+        """
+        # 兜底系数绝对值略微大于 1 的问题
+        rho_ab = min(max(rho_ab, -1.0), 1.0)
+        rho_bc = min(max(rho_bc, -1.0), 1.0)
+
+        # 下界公式：rho_ac >= |rho_ab * rho_bc| - sqrt((1 - rho_ab^2)(1 - rho_bc^2))
+        lower_bound = abs(rho_ab * rho_bc) - sqrt((1 - rho_ab**2) * (1 - rho_bc**2))
+        return lower_bound
 
 
 if __name__ == "__main__":
@@ -147,6 +172,10 @@ if __name__ == "__main__":
     )
     from alphapower.dal.session_manager import session_manager
 
+    log: BoundLogger = get_logger(
+        "alphapower.engine.evaluate.correlation_indirect_estimator.test"
+    )
+
     async def test() -> None:
         """
         测试 PPAC2025Evaluator 的功能。
@@ -156,7 +185,7 @@ if __name__ == "__main__":
             correlation_dal = CorrelationDAL()
             record_set_dal = RecordSetDAL()
 
-            async def alpha_generator() -> AsyncGenerator[Alpha]:
+            async def alpha_generator() -> AsyncGenerator[Alpha, None]:
                 async with session_manager.get_session(Database.ALPHAS) as session:
                     for alpha in await alpha_dal.find_by_stage(
                         session=session,
@@ -201,6 +230,7 @@ if __name__ == "__main__":
                 record_set_dal=record_set_dal,
                 correlation_dal=correlation_dal,
             )
+            await correlation_calculator.initialize()
 
             correlation_estimator = CorrelationIndirectEstimator(
                 alpha_dal=alpha_dal,
@@ -209,61 +239,88 @@ if __name__ == "__main__":
                 corr_calculator=correlation_calculator,
             )
 
-            alpha_a_corrs: Dict[str, float] = (
+            alpha_a_corrs: Dict[Alpha, float] = (
                 await correlation_calculator.calculate_correlation(alpha_a)
             )
-            for alpha_id_b, rho_ab in alpha_a_corrs.items():
-                await log.ainfo(
-                    event="Alpha 与其他 Alpha 的相关性",
-                    alpha_id_a=alpha_a.alpha_id,
-                    alpha_id_b=alpha_id_b,
-                    correlation=rho_ab,
-                    emoji="🔄",
-                )
 
-                async with session_manager.get_session(Database.ALPHAS) as session:
-                    alpha_b: Optional[Alpha] = await alpha_dal.find_by_alpha_id(
-                        alpha_id=alpha_id_b,
-                        session=session,
-                    )
-                if not alpha_b:
+            for alpha_b, rho_ab in alpha_a_corrs.items():
+                if rho_ab > 0.7:
                     await log.ainfo(
-                        event="Alpha 策略不存在",
-                        alpha_id=alpha_id_b,
-                        emoji="❌",
+                        event="Alpha 与其他 Alpha 的相关性",
+                        alpha_id_a=alpha_a.alpha_id,
+                        alpha_id_b=alpha_b.alpha_id,
+                        correlation=rho_ab,
+                        emoji="🔄",
                     )
                     continue
 
-                alpha_b_corrs: Dict[str, float] = (
+                alpha_b_corrs: Dict[Alpha, float] = (
                     await correlation_calculator.calculate_correlation(
                         alpha_b,
                     )
                 )
-                for alpha_id_c, rho_bc in alpha_b_corrs.items():
-                    await log.ainfo(
-                        event="Alpha 与其他 Alpha 的相关性",
-                        alpha_id_a=alpha_b.alpha_id,
-                        alpha_id_b=alpha_id_c,
-                        correlation=rho_bc,
-                        emoji="🔄",
-                    )
 
-                    real_p_ac: float = alpha_a_corrs.get(alpha_id_c, 0.0)
-                    estimated_p_ac: float = (
+                for alpha_c, rho_bc in alpha_b_corrs.items():
+                    if rho_bc > 0.7:
+                        await log.ainfo(
+                            event="Alpha 与其他 Alpha 的相关性",
+                            alpha_id_a=alpha_b.alpha_id,
+                            alpha_id_b=alpha_c.alpha_id,
+                            correlation=rho_bc,
+                            emoji="🔄",
+                        )
+                        continue
+
+                    real_p_ac: float = alpha_a_corrs.get(alpha_c, 0.0)
+                    estimated_p_ac_upper: float = (
                         correlation_estimator._calculate_upper_bound(
                             rho_ab=rho_ab,
                             rho_bc=rho_bc,
                         )
                     )
-
-                    await log.ainfo(
-                        event="Alpha 相关性估算",
-                        alpha_id_a=alpha_a.alpha_id,
-                        alpha_id_b=alpha_id_c,
-                        real_p_ac=real_p_ac,
-                        estimated_p_ac=estimated_p_ac,
-                        emoji="🔄",
+                    estimated_p_ac_lower: float = (
+                        correlation_estimator._calculate_lower_bound(
+                            rho_ab=rho_ab,
+                            rho_bc=rho_bc,
+                        )
                     )
+
+                    if real_p_ac > estimated_p_ac_upper:
+                        await log.awarning(
+                            event="Alpha 实际相关性超出上界",
+                            alpha_id_a=alpha_a.alpha_id,
+                            alpha_id_b=alpha_c.alpha_id,
+                            rho_ab=rho_ab,
+                            rho_bc=rho_bc,
+                            real_p_ac=real_p_ac,
+                            estimated_p_ac_upper=estimated_p_ac_upper,
+                            estimated_p_ac_lower=estimated_p_ac_lower,
+                            emoji="⚠️",
+                        )
+                    elif real_p_ac < estimated_p_ac_lower:
+                        await log.awarning(
+                            event="Alpha 实际相关性低于下界",
+                            alpha_id_a=alpha_a.alpha_id,
+                            alpha_id_b=alpha_c.alpha_id,
+                            rho_ab=rho_ab,
+                            rho_bc=rho_bc,
+                            real_p_ac=real_p_ac,
+                            estimated_p_ac_upper=estimated_p_ac_upper,
+                            estimated_p_ac_lower=estimated_p_ac_lower,
+                            emoji="✅",
+                        )
+                    else:
+                        await log.ainfo(
+                            event="Alpha 实际相关性在上界和下界之间",
+                            alpha_id_a=alpha_a.alpha_id,
+                            alpha_id_b=alpha_c.alpha_id,
+                            rho_ab=rho_ab,
+                            rho_bc=rho_bc,
+                            real_p_ac=real_p_ac,
+                            estimated_p_ac_upper=estimated_p_ac_upper,
+                            estimated_p_ac_lower=estimated_p_ac_lower,
+                            emoji="✅",
+                        )
 
     # 运行异步测试函数
     import asyncio

@@ -61,6 +61,7 @@ class CorrelationMatrix(CorrelationCalculator):
                     inner=inner,
                 )
 
+                pnl_diff_df = pnl_diff_df.rename(columns={"pnl": alpha_x.alpha_id})
                 alpha_df_list.append(pnl_diff_df)
             except Exception as e:
                 await self.log.aerror(

@@ -4,6 +4,7 @@
 """
 
 import os
+import pathlib
 from typing import Dict
 
 from pydantic import AnyUrl, Field
@@ -66,6 +67,11 @@ class AppConfig(BaseSettings):
     sql_echo: bool = True
     environment: str = Environment.PROD.value
     credential: CredentialConfig = CredentialConfig()
+    root_dir: pathlib.Path = Field(
+        default_factory=lambda: (
+            pathlib.Path().home().joinpath(".alphapower").absolute()
+        )
+    )
 
     model_config = SettingsConfigDict(
         env_file=f".env.{os.getenv('ENVIRONMENT', 'default')}",
@@ -76,3 +82,7 @@ class AppConfig(BaseSettings):
 
 # 加载配置
 settings = AppConfig()
+
+pathlib.Path(settings.root_dir).mkdir(parents=True, exist_ok=True)
+os.chdir(settings.root_dir)
+print(f"当前工作目录: {os.getcwd()}")
