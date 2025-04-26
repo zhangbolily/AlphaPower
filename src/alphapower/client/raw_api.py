@@ -15,6 +15,7 @@ from structlog.stdlib import BoundLogger
 
 from alphapower.constants import (
     BASE_URL,
+    ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS,
     ENDPOINT_ACTIVITIES_SIMULATION,
     ENDPOINT_ALPHA_PNL,
     ENDPOINT_ALPHA_SELF_CORRELATIONS,
@@ -32,6 +33,7 @@ from alphapower.constants import (
     CorrelationType,
 )
 from alphapower.internal.logging import get_logger
+from alphapower.view.activities import PyramidAlphasView
 from alphapower.view.alpha import (
     AlphaDetailView,
     SelfAlphaListView,
@@ -630,3 +632,24 @@ async def authentication(session: ClientSession) -> AuthenticationView:
     response = await session.post(url)
     response.raise_for_status()
     return AuthenticationView.model_validate_json(await response.text())
+
+
+async def user_fetch_pyramid_alphas(
+    session: ClientSession, params: Optional[Dict[str, Any]] = None
+) -> PyramidAlphasView:
+    """
+    获取用户的金字塔 alpha。
+
+    参数:
+        session (ClientSession): aiohttp 客户端会话。
+        params (Optional[Dict[str, Any]]): 请求的查询参数。
+
+    返回:
+        PyramidAlphasView: 解析后的金字塔 alpha 数据。
+    """
+    url = urljoin(BASE_URL, ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS)
+    response = await session.get(url, params=params)
+    response.raise_for_status()
+    return PyramidAlphasView.model_validate(
+        await response.json()
+    )

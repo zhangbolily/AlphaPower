@@ -260,6 +260,11 @@ class EvaluateRecord(Base):
         nullable=False,
         comment="样本内拟合度",  # 添加字段注释
     )
+    in_sample_margin: MappedColumn[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="样本内保证金",  # 添加字段注释
+    )
     self_correlation: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
@@ -274,6 +279,11 @@ class EvaluateRecord(Base):
         Float,
         nullable=True,
         comment="评分差异，部分场景下会有",  # 添加字段注释
+    )
+    matched_unformulated_pyramid: MappedColumn[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="匹配未形成金字塔，部分场景下会有",  # 添加字段注释
     )
     pyramid_multiplier: MappedColumn[float] = mapped_column(
         Float,

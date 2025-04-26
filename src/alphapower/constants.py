@@ -1,37 +1,9 @@
-"""AlphaPower包的常量定义。
-
-此模块定义了AlphaPower包中使用的各种常量，包括环境设置、数据库名称、
-API端点、用户角色、模拟设置和HTTP状态码映射。
-
-常量按照功能分组：
-- 环境常量：用于指定运行环境（生产、开发、测试）
-- 数据库常量：定义了系统使用的不同数据库名称
-- API常量：定义了与API交互所需的各种URL和端点
-- 用户角色常量：定义了系统中用户可能具有的权限级别
-- 枚举类型：定义了系统中使用的各种枚举类型，如地区、证券类型等
-- 映射关系：定义了不同枚举类型之间的关系和约束
-
-典型用法:
-  from alphapower.constants import Environment, BASE_URL, InstrumentType, Region
-
-  # 使用环境枚举
-  current_env = Environment.DEV
-
-  # 使用API端点构建请求URL
-  auth_url = f"{BASE_URL}/{ENDPOINT_AUTHENTICATION}"
-
-  # 检查特定组合是否有效
-  is_valid = is_region_supported_for_instrument_type(Region.CHINA, InstrumentType.EQUITY)
-
-  # 获取特定地区支持的证券类型
-  instrument_types = get_instrument_types_for_region(Region.GLOBAL)
-"""
-
 from __future__ import annotations  # 添加此行解决前向引用问题
 
 from enum import Enum
 from functools import lru_cache  # 添加缓存支持
 from typing import Callable, Dict, Final, List, Optional, Tuple
+from urllib.parse import urljoin
 
 # 类型别名定义，提高代码可读性
 # 注意：使用字符串作为类型注解，解决类型前向引用问题
@@ -44,15 +16,6 @@ NeutralizationMap = Dict["Region", List["Neutralization"]]
 
 
 class Environment(Enum):
-    """环境设置枚举。
-
-    定义了系统可能运行的不同环境类型。
-
-    Attributes:
-        PROD: 生产环境，用于实际部署的系统
-        DEV: 开发环境，用于开发和测试新功能
-        TEST: 测试环境，用于系统测试和集成测试
-    """
 
     PROD = "prod"  # 生产环境
     DEV = "dev"  # 开发环境
@@ -68,18 +31,10 @@ ENV_TEST: Final[str] = "test"  # 测试环境标识符
 ALPHA_ID_LENGTH: Final[int] = 7  # Alpha ID的长度
 MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY: Final[int] = 10000  # 单个Alpha列表查询的最大数量
 CORRELATION_CALCULATION_YEARS: Final[int] = 4  # 相关性计算的年份范围
+MIN_FORMULATED_PYRAMID_ALPHAS: Final[int] = 3  # 点亮金字塔Alpha的最小数量
 
 
 class Database(Enum):
-    """数据库名称枚举。
-
-    定义了系统中使用的不同数据库名称。
-
-    Attributes:
-        ALPHAS: Alpha因子数据库，存储算法因子数据
-        DATA: 市场数据库，存储市场相关数据
-        SIMULATION: 模拟回测数据库，存储模拟结果
-    """
 
     ALPHAS = "alphas"  # Alpha因子数据库
     DATA = "data"  # 市场数据库
@@ -128,7 +83,14 @@ ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[Optional[str], str], str]
 
 # 模拟端点
 ENDPOINT_SIMULATION: Final[str] = "simulations"
+
+# 用户活动端点
+ENDPOINT_ACTIVITIES: Final[str] = "/users/self/activities/"
 ENDPOINT_ACTIVITIES_SIMULATION: Final[str] = "users/self/activities/simulations"
+ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS: Final[str] = urljoin(
+    ENDPOINT_ACTIVITIES, "pyramid-alphas"
+)
+
 
 # 数据相关端点
 ENDPOINT_DATA_CATEGORIES: Final[str] = "data-categories"
@@ -145,14 +107,6 @@ PATH_SELF_PERFORMANCE_COMPARE: Final[str] = "/users/self/"
 
 
 class UserRole(Enum):
-    """用户角色枚举。
-
-    定义了系统中可能的用户角色。
-
-    Attributes:
-        CONSULTANT: 顾问角色，通常具有更高权限
-        USER: 普通用户角色，具有基本操作权限
-    """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CONSULTANT = "ROLE_CONSULTANT"  # 顾问角色
@@ -165,19 +119,6 @@ ROLE_USER: Final[str] = "USER"  # 用户角色标识符
 
 
 class Color(Enum):
-    """颜色枚举。
-
-    定义了系统中可能使用的颜色标记。
-
-    Attributes:
-        DEFAULT: 默认值，无意义
-        NONE: 无颜色
-        RED: 红色
-        GREEN: 绿色
-        BLUE: 蓝色
-        YELLOW: 黄色
-        PURPLE: 紫色
-    """
 
     DEFAULT = "DEFAULT"
     NONE = "NONE"
@@ -367,24 +308,6 @@ HTTP_CODE_MESSAGE_MAP: Final[Dict[int, str]] = {
 
 
 class Neutralization(Enum):
-    """中性化策略枚举。
-
-    定义了系统中可能使用的中性化策略。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        NONE: 不进行中性化
-        MARKET: 市场中性
-        INDUSTRY: 产业中性
-        SUBINDUSTRY: 子产业中性
-        SECTOR: 行业中性
-        COUNTRY: 国家/地区中性
-        STATISTICAL: 统计中性
-        CROWDING: 拥挤因子
-        FAST: 快速因子
-        SLOW: 慢速因子
-        SLOW_AND_FAST: 慢速+快速因子
-    """
 
     DEFAULT = "DEFAULT"
     NONE = "NONE"
@@ -426,15 +349,6 @@ NEUTRALIZATION_EXTENDED: Final[List[Neutralization]] = [
 
 
 class AlphaType(Enum):
-    """Alpha类型枚举。
-
-    定义了系统中可能的Alpha类型。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        REGULAR: 常规Alpha
-        SUPER: 超级Alpha
-    """
 
     DEFAULT = "DEFAULT"
     REGULAR = "REGULAR"
@@ -442,16 +356,6 @@ class AlphaType(Enum):
 
 
 class RegularLanguage(Enum):
-    """语言枚举。
-
-    定义了系统中可能使用的编程语言或表达式类型。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        PYTHON: Python语言
-        EXPRESSION: 表达式语言
-        FASTEXPR: 快速表达式语言
-    """
 
     DEFAULT = "DEFAULT"
     PYTHON = "PYTHON"
@@ -460,24 +364,6 @@ class RegularLanguage(Enum):
 
 
 class Region(Enum):
-    """地区枚举。
-
-    定义了系统中可能涉及的地理区域。
-    每个枚举值关联RegionInfo对象提供额外元数据。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        AMERICA: 美洲
-        ASIA: 亚洲
-        CHINA: 中国
-        EUROPE: 欧洲
-        GLOBAL: 全球
-        HONGKONG: 香港
-        JAPAN: 日本
-        KOREA: 韩国
-        TAIWAN: 台湾
-        USA: 美国
-    """
 
     DEFAULT = "DEFAULT"
     AMR = "AMR"
@@ -493,15 +379,6 @@ class Region(Enum):
 
 
 class InstrumentType(Enum):
-    """证券类型枚举。
-
-    定义了系统中可能涉及的证券类型。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        EQUITY: 股票
-        CRYPTO: 数字货币
-    """
 
     DEFAULT = "DEFAULT"
     EQUITY = "EQUITY"
@@ -509,33 +386,6 @@ class InstrumentType(Enum):
 
 
 class Universe(Enum):
-    """选股范围枚举。
-
-    定义了系统中可能使用的选股范围。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        ILLIQUID_MINVOL1M: 低流动性股票池
-        MINVOL1M: 低波动性股票池
-        TOP5: 前5只股票
-        TOP10: 前10只股票
-        TOP20: 前20只股票
-        TOP50: 前50只股票
-        TOP100: 前100只股票
-        TOP200: 前200只股票
-        TOP400: 前400只股票
-        TOP500: 前500只股票
-        TOP600: 前600只股票
-        TOP800: 前800只股票
-        TOP1000: 前1000只股票
-        TOP1200: 前1200只股票
-        TOP1600: 前1600只股票
-        TOP2000: 前2000只股票
-        TOP2000U: 前2000只中国股票
-        TOP2500: 前2500只股票
-        TOP3000: 前3000只股票
-        TOPSP500: 前500只股票(S&P500)
-    """
 
     DEFAULT = "DEFAULT"
     ILLIQUID_MINVOL1M = "ILLIQUID_MINVOL1M"  # 修正拼写错误，原为 "ILLQUID_MINVOL1M"
@@ -561,15 +411,6 @@ class Universe(Enum):
 
 
 class Switch(Enum):
-    """开关枚举。
-
-    定义了系统中可能使用的开关类型。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        ON: 开启
-        OFF: 关闭
-    """
 
     DEFAULT = "DEFAULT"
     ON = "ON"
@@ -577,15 +418,6 @@ class Switch(Enum):
 
 
 class Delay(Enum):
-    """延迟枚举。
-
-    定义了Alpha因子的延迟天数。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        ZERO: 0天延迟
-        ONE: 1天延迟
-    """
 
     DEFAULT = -1
     ZERO = 0
@@ -593,13 +425,6 @@ class Delay(Enum):
 
 
 class Decay(Enum):
-    """衰减枚举。
-    Int 类型，定义了Alpha因子的衰减天数。
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        MIN: 最小值
-        MAX: 最大值
-    """
 
     DEFAULT = -1
     MIN = 0
@@ -607,13 +432,6 @@ class Decay(Enum):
 
 
 class Truncation(Enum):
-    """截断枚举。
-    Float 类型，定义了Alpha因子的截断方式。
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        MIN: 最小值
-        MAX: 最大值
-    """
 
     DEFAULT = -1
     MIN = 0
@@ -621,19 +439,6 @@ class Truncation(Enum):
 
 
 class LookbackDays(Enum):
-    """回溯天数枚举。
-
-    定义了系统中可能使用的回溯天数。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        DAYS_25: 25天
-        DAYS_50: 50天
-        DAYS_128: 128天
-        DAYS_256: 256天
-        DAYS_384: 384天
-        DAYS_512: 512天
-    """
 
     DEFAULT = 0
     DAYS_25 = 25
@@ -645,30 +450,12 @@ class LookbackDays(Enum):
 
 
 class UnitHandling(Enum):
-    """单位处理枚举。
-
-    定义了系统中可能使用的单位处理方式。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        VERIFY: 验证
-    """
 
     DEFAULT = "DEFAULT"
     VERIFY = "VERIFY"
 
 
 class SelectionHandling(Enum):
-    """选择处理枚举。
-
-    定义了系统中可能使用的选择处理方式。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        POSITIVE: 正值
-        NON_ZERO: 非零
-        NON_NAN: 非NaN
-    """
 
     DEFAULT = "DEFAULT"
     POSITIVE = "POSITIVE"
@@ -677,21 +464,6 @@ class SelectionHandling(Enum):
 
 
 class Category(Enum):
-    """Alpha分类枚举。
-
-    定义了系统中可能使用的Alpha分类。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        PRICE_REVERSION: 价格回归
-        PRICE_MOMENTUM: 价格动量
-        VOLUME: 成交量
-        FUNDAMENTAL: 基本面
-        ANALYST: 分析师
-        PRICE_VOLUME: 价量关系
-        RELATION: 关联关系
-        SENTIMENT: 情绪
-    """
 
     DEFAULT = "DEFAULT"
     PRICE_REVERSION = "PRICE_REVERSION"
@@ -705,18 +477,6 @@ class Category(Enum):
 
 
 class Grade(Enum):
-    """评级枚举。
-
-    定义了系统中可能使用的评级。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        SPECTACULAR: 卓越
-        EXCELLENT: 优秀
-        GOOD: 良好
-        AVERAGE: 一般
-        INFERIOR: 需改进
-    """
 
     DEFAULT = "DEFAULT"
     SPECTACULAR = "SPECTACULAR"
@@ -727,16 +487,6 @@ class Grade(Enum):
 
 
 class Stage(Enum):
-    """阶段枚举。
-
-    定义了系统中可能使用的阶段。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        IS: 样本内
-        OS: 样本外
-        PROD: 生产环境
-    """
 
     DEFAULT = "DEFAULT"
     IS = "IS"  # 样本内
@@ -745,16 +495,6 @@ class Stage(Enum):
 
 
 class Status(Enum):
-    """状态枚举。
-
-    定义了系统中可能使用的状态。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        UNSUBMITTED: 未提交
-        ACTIVE: 活跃
-        DECOMMISSIONED: 退役
-    """
 
     DEFAULT = "DEFAULT"
     UNSUBMITTED = "UNSUBMITTED"
@@ -763,16 +503,6 @@ class Status(Enum):
 
 
 class DataFieldType(Enum):
-    """数据字段类型枚举。
-
-    定义了系统中可能使用的数据字段类型。
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        MATRIX: 矩阵类型
-        VECTOR: 向量类型
-        GROUP: 组类型
-        UNIVERSE: 股票池类型
-    """
 
     DEFAULT = "DEFAULT"
     MATRIX = "MATRIX"
@@ -782,15 +512,6 @@ class DataFieldType(Enum):
 
 
 class CheckRecordType(Enum):
-    """检查记录类型枚举。
-    定义了系统中可能使用的检查记录类型。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        CORRELATION: 相关性检查
-        BEFORE_AND_AFTER_PERFORMANCE: 提交前后性能对比检查
-        SUBMISSION: 提交检查
-    """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CORRELATION_SELF = "CORRELATION_SELF"  # 自相关性检查
@@ -802,43 +523,6 @@ class CheckRecordType(Enum):
 
 
 class SubmissionCheckType(Enum):
-    """检查类型枚举。
-    定义了系统中可能使用的检查类型。
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        CONCENTRATED_WEIGHT
-        D0_SUBMISSION
-        DATA_DIVERSITY
-        DRAWDOWN
-        HIGH_TURNOVER
-        IS_LADDER_SHARPE
-        IS_SHARPE
-        LONG_DURATION
-        LOW_2Y_SHARPE
-        LOW_AFTER_COST_ILLIQUID_UNIVERSE_SHARPE
-        LOW_FITNESS
-        LOW_RETURNS
-        LOW_ROBUST_UNIVERSE_RETURNS
-        LOW_ROBUST_UNIVERSE_SHARPE
-        LOW_SHARPE
-        LOW_SUB_UNIVERSE_SHARPE
-        LOW_TURNOVER
-        MATCHES_COMPETITION
-        MATCHES_PYRAMID
-        MATCHES_THEMES
-        MEMORY_USAGE
-        NEW_HIGH
-        POWER_POOL_CORRELATION
-        PROD_CORRELATION
-        RANK_SHARPE
-        REGULAR_SUBMISSION
-        SELF_CORRELATION
-        SHARPE
-        SUB_UNIVERSE_SHARPE
-        SUPER_SUBMISSION
-        SUPER_UNIVERSE_SHARPE
-        UNITS
-    """
 
     DEFAULT = "DEFAULT"
     CONCENTRATED_WEIGHT = "CONCENTRATED_WEIGHT"
@@ -891,15 +575,6 @@ class SubmissionCheckResult(Enum):
 
 
 class CorrelationType(Enum):
-    """相关性类型枚举。
-
-    定义了系统中可能使用的相关性类型。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        SELF: 自相关
-        PROD: 生产环境相关性
-    """
 
     DEFAULT = "DEFAULT"
     SELF = "self"  # 自相关
@@ -907,13 +582,6 @@ class CorrelationType(Enum):
 
 
 class CorrelationCalcType(Enum):
-    """相关性计算类型枚举。
-    定义了系统中可能使用的相关性计算类型。
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        LOCAL: 本地计算
-        PLATFORM: 平台计算
-    """
 
     DEFAULT = "DEFAULT"
     LOCAL = "LOCAL"
@@ -921,14 +589,6 @@ class CorrelationCalcType(Enum):
 
 
 class CompetitionStatus(Enum):
-    """竞赛状态枚举。
-    定义了系统中可能使用的竞赛状态。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        EXCLUDED: 排除
-        ACCEPTED: 接受
-    """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     EXCLUDED = "EXCLUDED"  # 排除
@@ -936,14 +596,6 @@ class CompetitionStatus(Enum):
 
 
 class CompetitionScoring(Enum):
-    """竞赛评分枚举。
-    定义了系统中可能使用的竞赛评分方式。
-
-    Attributes:
-        DEFAULT: 默认值，无实际意义
-        CHALLENGE: 挑战赛
-        PERFORMANCE: 性能赛
-    """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CHALLENGE = "CHALLENGE"  # 挑战赛
@@ -956,14 +608,6 @@ class CompetitionScoring(Enum):
 
 
 class RefreshPolicy(Enum):
-    """评估检查的刷新策略枚举。
-
-    Attributes:
-        USE_EXISTING: 如果存在有效的最新记录，则使用它；否则运行检查。
-        FORCE_REFRESH: 强制重新运行检查，忽略现有记录。
-        SKIP_IF_MISSING: 如果不存在记录，则跳过检查。
-        REFRESH_ASYNC_IF_MISSING: 如果不存在记录，则在后台异步运行检查，并立即返回 PENDING 状态。
-    """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     USE_EXISTING = "USE_EXISTING"
@@ -973,12 +617,6 @@ class RefreshPolicy(Enum):
 
 
 class CorrelationSource(Enum):
-    """相关性计算来源枚举。
-
-    Attributes:
-        API: 通过外部 WorldQuant API 计算。
-        LOCAL: 通过本地实现的逻辑计算。
-    """
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     API = "API"
@@ -1191,45 +829,20 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
 
 @lru_cache(maxsize=128)
 def get_regions_for_instrument_type(instrument_type: InstrumentType) -> List[Region]:
-    """获取指定证券类型支持的所有地区。
 
-    Args:
-        instrument_type: 要查询的证券类型
-
-    Returns:
-        支持该证券类型的地区列表
-    """
     return INSTRUMENT_TYPE_REGION_MAP.get(instrument_type, [])
 
 
 @lru_cache(maxsize=128)
 def get_instrument_types_for_region(region: Region) -> List[InstrumentType]:
-    """获取支持指定地区的所有证券类型。
 
-    Args:
-        region: 要查询的地区
-
-    Returns:
-        支持该地区的证券类型列表
-    """
     return REGION_INSTRUMENT_TYPE_MAP.get(region, [])
 
 
 def is_region_supported_for_instrument_type(
     region: Region, instrument_type: InstrumentType
 ) -> bool:
-    """检查指定地区是否支持指定证券类型。
 
-    Args:
-        region: 要检查的地区
-        instrument_type: 要检查的证券类型
-
-    Returns:
-        如果地区支持该证券类型则返回True，否则返回False
-
-    Raises:
-        ValueError: 当region是Region.DEFAULT或instrument_type是InstrumentType.DEFAULT时
-    """
     if region == Region.DEFAULT or instrument_type == InstrumentType.DEFAULT:
         raise ValueError("不能使用DEFAULT枚举值进行支持检查")
 
@@ -1240,15 +853,7 @@ def is_region_supported_for_instrument_type(
 def get_universe_for_instrument_region(
     instrument_type: InstrumentType, region: Region
 ) -> List[Universe]:
-    """获取指定证券类型和地区支持的所有Universe。
 
-    Args:
-        instrument_type: 要查询的证券类型
-        region: 要查询的地区
-
-    Returns:
-        支持的Universe列表
-    """
     return INSTRUMENT_TYPE_UNIVERSE_MAP.get(instrument_type, {}).get(region, [])
 
 
@@ -1256,18 +861,7 @@ def get_universe_for_instrument_region(
 def get_neutralization_for_instrument_region(
     instrument_type: InstrumentType, region: Region
 ) -> List[Neutralization]:
-    """获取指定证券类型和地区支持的所有中性化策略。
 
-    Args:
-        instrument_type: 要查询的证券类型
-        region: 要查询的地区
-
-    Returns:
-        支持的中性化策略列表
-
-    Raises:
-        ValueError: 当instrument_type或region是None或DEFAULT时
-    """
     if instrument_type is None or instrument_type == InstrumentType.DEFAULT:
         raise ValueError("instrument_type不能为None或DEFAULT")
 
@@ -1282,14 +876,7 @@ def get_neutralization_for_instrument_region(
 
 @lru_cache(maxsize=128)
 def get_delay_for_region(region: Region) -> List[Delay]:
-    """获取指定地区支持的所有延迟配置。
 
-    Args:
-        region: 要查询的地区
-
-    Returns:
-        支持的延迟配置列表
-    """
     return REGION_DELAY_MAP.get(region, [Delay.ONE])
 
 

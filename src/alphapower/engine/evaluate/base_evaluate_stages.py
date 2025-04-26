@@ -1,5 +1,8 @@
 import asyncio
+from datetime import date
 from typing import Any, Dict, Optional, Set
+
+from structlog.stdlib import BoundLogger
 
 from alphapower.client import (
     BeforeAndAfterPerformanceView,
@@ -10,10 +13,13 @@ from alphapower.client import (
 from alphapower.constants import (
     CONSULTANT_MAX_PROD_CORRELATION,
     CONSULTANT_MAX_SELF_CORRELATION,
+    MIN_FORMULATED_PYRAMID_ALPHAS,
     CheckRecordType,
     CorrelationType,
     Database,
+    Delay,
     RefreshPolicy,
+    Region,
     SubmissionCheckResult,
     SubmissionCheckType,
 )
@@ -25,38 +31,107 @@ from alphapower.dal.session_manager import session_manager
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import Alpha, CheckRecord, EvaluateRecord
 from alphapower.internal.logging import get_logger
+from alphapower.view.activities import PyramidAlphasQuery, PyramidAlphasView
 
 from .correlation_calculator import CorrelationCalculator
 
-log = get_logger(module_name=__name__)
-
 
 class InSampleChecksEvaluateStage(AbstractEvaluateStage):
-    """
-    评估管道中的一个阶段，用于对 Alpha 对象执行样本内检查。
-
-    属性:
-        check_pass_result_map (Dict[SampleCheckType, Set[SampleCheckResult]]):
-            检查类型与可接受检查结果集合的映射，子类可以重写此属性以定义不同的检查结果。
-
-    方法:
-        _evaluate_stage(self,
-            alpha: Alpha,
-            policy: RefreshPolicy,
-            record: EvaluateRecord,
-            **kwargs: Any,
-        ) -> bool:
-            异步评估给定 Alpha 对象的样本内检查。根据检查结果记录警告或信息日志。
-            如果所有检查通过，返回 True；否则返回 False。
-    """
 
     def __init__(
         self,
+        client: WorldQuantClient,
         next_stage: Optional[AbstractEvaluateStage],
         check_pass_result_map: Dict[SubmissionCheckType, Set[SubmissionCheckResult]],
     ) -> None:
         super().__init__(next_stage)
-        self._check_pass_result_map = check_pass_result_map
+        self.client: WorldQuantClient = client
+        self.check_pass_result_map = check_pass_result_map
+        self.initialized: bool = False
+        self.region_category_delay_map: Dict[str, int] = {}
+        self.log: BoundLogger = get_logger(
+            f"{__name__}.{self.__class__.__name__}",
+        )
+
+    async def _get_pyramid_alpha_key(
+        self,
+        region: Region,
+        delay: Delay,
+        category_id: str,
+    ) -> str:
+        return f"{region.value}_D{delay.value}_{category_id}".upper()
+
+    async def initialize(self) -> None:
+        """初始化 InSampleChecksEvaluateStage，加载金字塔因子数据"""
+        await self.log.adebug(
+            "开始初始化 InSampleChecksEvaluateStage",
+            emoji="🔄",
+            initialized=self.initialized,
+        )
+        if not self.initialized:
+            try:
+                async with self.client as client:
+                    # 获取当前季度的起止时间
+                    today = date.today()
+                    quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+                    quarter_end_month = quarter_start_month + 3
+                    start_date = date(today.year, quarter_start_month, 1)
+                    end_date = date(today.year, quarter_end_month, 1)
+
+                    # 构造 PyramidAlphasQuery 查询对象
+                    query: PyramidAlphasQuery = PyramidAlphasQuery(
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+                    pyramid_alphas: PyramidAlphasView = (
+                        await client.user_fetch_pyramid_alphas(query=query)
+                    )
+                if pyramid_alphas and pyramid_alphas.pyramids:
+                    for pyramid_alpha in pyramid_alphas.pyramids:
+                        key: str = await self._get_pyramid_alpha_key(
+                            region=pyramid_alpha.region,
+                            delay=pyramid_alpha.delay,
+                            category_id=pyramid_alpha.category.id,
+                        )
+                        self.region_category_delay_map[key] = pyramid_alpha.alpha_count
+
+                    self.initialized = True
+
+                    await self.log.ainfo(
+                        "InSampleChecksEvaluateStage 初始化成功",
+                        emoji="✅",
+                        initialized=self.initialized,
+                        region_category_delay_map=self.region_category_delay_map,
+                    )
+                else:
+                    await self.log.awarning(
+                        "未能初始化 InSampleChecksEvaluateStage，缺少金字塔因子数据",
+                        emoji="❌",
+                    )
+                    raise ValueError(
+                        "InSampleChecksEvaluateStage 初始化失败，缺少金字塔因子数据",
+                    )
+            except asyncio.TimeoutError as e:
+                await self.log.awarning(
+                    "初始化 InSampleChecksEvaluateStage 时发生超时异常",
+                    emoji="⏳",
+                    error=str(e),
+                )
+                raise
+            except Exception as e:
+                await self.log.aerror(
+                    "初始化 InSampleChecksEvaluateStage 时发生未知异常",
+                    emoji="💥",
+                    error=str(e),
+                    exc_info=True,
+                )
+                raise
+        else:
+            await self.log.adebug(
+                "InSampleChecksEvaluateStage 已初始化，无需重复操作",
+                emoji="✅",
+                initialized=self.initialized,
+            )
 
     async def _evaluate_stage(
         self,
@@ -65,8 +140,18 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
+        if not self.initialized:
+            await self.log.acritical(
+                "InSampleChecksEvaluateStage 尚未初始化，无法执行检查",
+                emoji="❌",
+                alpha_id=alpha.alpha_id,
+            )
+            raise RuntimeError(
+                "InSampleChecksEvaluateStage 尚未初始化，无法执行检查",
+            )
+
         if alpha.in_sample is None:
-            await log.awarning(
+            await self.log.awarning(
                 "Alpha 对象缺少 in_sample 属性，无法执行检查",
                 emoji="❌",
                 alpha_id=alpha.alpha_id,
@@ -98,9 +183,12 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
         record.in_sample_fitness = (
             alpha.in_sample.fitness if alpha.in_sample.fitness else 0.0
         )
+        record.in_sample_margin = (
+            alpha.in_sample.margin if alpha.in_sample.margin else 0.0
+        )
 
         if alpha.in_sample.checks is None:
-            await log.awarning(
+            await self.log.awarning(
                 "Alpha 对象的 in_sample 检查列表为空，无法执行检查",
                 emoji="❌",
                 alpha_id=alpha.alpha_id,
@@ -109,7 +197,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
 
         for check in alpha.in_sample.checks:
             pass_result_set: Set[SubmissionCheckResult] = (
-                self._check_pass_result_map.get(SubmissionCheckType(check.name), set())
+                self.check_pass_result_map.get(SubmissionCheckType(check.name), set())
             )
 
             if (
@@ -120,6 +208,38 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     check.multiplier if check.multiplier else 1.0
                 )
 
+                for pyramid in check.pyramids:
+                    key: str = pyramid.name.replace("/", "_").upper()
+                    alpha_count: int = self.region_category_delay_map.get(key, 0)
+                    if alpha_count < MIN_FORMULATED_PYRAMID_ALPHAS:
+                        record.matched_unformulated_pyramid = (
+                            record.matched_unformulated_pyramid + 1
+                            if record.matched_unformulated_pyramid
+                            else 1
+                        )
+                        await self.log.ainfo(
+                            "匹配的金字塔未点亮",
+                            pyramid=pyramid,
+                            key=key,
+                            pyramid_alpha_count=alpha_count,
+                            min_alpha_count=MIN_FORMULATED_PYRAMID_ALPHAS,
+                            emoji="🔆",
+                        )
+
+                effective_pyramids: int = check.effective if check.effective else 0
+                if (
+                    record.matched_unformulated_pyramid
+                    and record.matched_unformulated_pyramid > effective_pyramids
+                ):
+                    await self.log.awarning(
+                        "匹配的未完成金字塔数量超过有效金字塔数量",
+                        emoji="❌",
+                        alpha_id=alpha.alpha_id,
+                        matched_unformulated_pyramid=record.matched_unformulated_pyramid,
+                        effective_pyramids=effective_pyramids,
+                    )
+                    record.matched_unformulated_pyramid = effective_pyramids
+
             if (
                 check.name == SubmissionCheckType.MATCHES_THEMES.value
                 and check.result == SubmissionCheckResult.PASS
@@ -127,7 +247,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 record.theme_multiplier = check.multiplier if check.multiplier else 1.0
 
             if check.result == SubmissionCheckResult.FAIL:
-                await log.awarning(
+                await self.log.awarning(
                     "Alpha 对象的 in_sample 检查未通过",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
@@ -137,7 +257,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 return False
 
             if check.result == SubmissionCheckResult.PASS:
-                await log.ainfo(
+                await self.log.ainfo(
                     "Alpha 对象的 in_sample 检查通过",
                     emoji="✅",
                     alpha_id=alpha.alpha_id,
@@ -147,7 +267,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 continue
 
             if len(pass_result_set) == 0:
-                await log.awarning(
+                await self.log.awarning(
                     "Alpha 对象的 in_sample 检查通过结果集为空，跳过检查",
                     emoji="⚠️",
                     alpha_id=alpha.alpha_id,
@@ -156,7 +276,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 continue
 
             if check.result in pass_result_set:
-                await log.ainfo(
+                await self.log.ainfo(
                     "Alpha 对象的 in_sample 检查通过",
                     emoji="✅",
                     alpha_id=alpha.alpha_id,
@@ -165,7 +285,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     pass_result_set=pass_result_set,
                 )
             else:
-                await log.awarning(
+                await self.log.awarning(
                     "Alpha 对象的 in_sample 检查未通过",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
@@ -174,7 +294,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     pass_result_set=pass_result_set,
                 )
                 return False
-        await log.ainfo(
+        await self.log.ainfo(
             "Alpha 对象的 in_sample 检查全部通过",
             emoji="✅",
             alpha_id=alpha.alpha_id,
@@ -183,9 +303,6 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
 
 
 class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
-    """
-    本地相关性评估阶段，用于检查 Alpha 的自相关性。
-    """
 
     def __init__(
         self,
@@ -193,16 +310,13 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
         correlation_calculator: CorrelationCalculator,
         threshold: float = CONSULTANT_MAX_SELF_CORRELATION,
     ) -> None:
-        """
-        初始化本地相关性评估阶段。
 
-        Args:
-            next_stage: 下一个评估阶段 (责任链中的下一个节点)。
-            correlation_calculator: 相关性计算器实例。
-        """
         super().__init__(next_stage)
         self.correlation_calculator: CorrelationCalculator = correlation_calculator
         self._threshold: float = threshold
+        self.log: BoundLogger = get_logger(
+            f"{__name__}.{self.__class__.__name__}",
+        )
 
     async def _evaluate_stage(
         self,
@@ -211,19 +325,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
-        """
-        执行本地相关性检查。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-            policy: 刷新策略 (未使用)。
-            record: 当前评估的记录对象 (未使用)。
-            checks_ctx: 检查上下文，用于存储和共享检查结果。
-            kwargs: 其他参数。
-
-        Returns:
-            bool: 如果检查通过返回 True，否则返回 False。
-        """
         try:
             pairwise_correlation: Dict[Alpha, float] = (
                 await self.correlation_calculator.calculate_correlation(
@@ -234,7 +336,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             max_corr: float = max(pairwise_correlation.values(), default=0.0)
             min_corr: float = min(pairwise_correlation.values(), default=0.0)
 
-            await log.ainfo(
+            await self.log.ainfo(
                 "自相关性检查",
                 emoji="🔍",
                 alpha_id=alpha.alpha_id,
@@ -247,7 +349,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                 record.self_correlation if record.self_correlation else -1.0, max_corr
             )
             if max_corr > self._threshold:
-                await log.awarning(
+                await self.log.awarning(
                     "自相关性检查未通过，最大相关性超过阈值",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
@@ -257,7 +359,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                 )
                 return False
 
-            await log.ainfo(
+            await self.log.ainfo(
                 "自相关性检查通过",
                 emoji="✅",
                 alpha_id=alpha.alpha_id,
@@ -266,7 +368,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             return True
         except asyncio.TimeoutError as e:
             # 分类处理网络超时异常
-            await log.awarning(
+            await self.log.awarning(
                 "计算自相关性时发生超时异常，可能需要重试",
                 emoji="⏳",
                 alpha_id=alpha.alpha_id,
@@ -275,7 +377,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             return False
         except ValueError as e:
             # 分类处理数据解析异常
-            await log.aerror(
+            await self.log.aerror(
                 "计算自相关性时发生数据解析异常",
                 emoji="📉",
                 alpha_id=alpha.alpha_id,
@@ -285,7 +387,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
             return False
         except Exception as e:
             # 捕获其他异常并记录为 CRITICAL
-            await log.acritical(
+            await self.log.acritical(
                 "💥 计算自相关性时发生未知异常，程序可能无法继续",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -296,9 +398,6 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
 
 
 class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
-    """
-    平台相关性评估阶段，用于检查 Alpha 的平台相关性 (self 或 prod)。
-    """
 
     def __init__(
         self,
@@ -308,21 +407,15 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         correlation_dal: CorrelationDAL,
         client: WorldQuantClient,
     ) -> None:
-        """
-        初始化平台相关性评估阶段。
 
-        Args:
-            next_stage: 下一个评估阶段 (责任链中的下一个节点)。
-            correlation_type: 相关性类型 (self 或 prod)。
-            check_record_dal: 检查记录数据访问层实例。
-            correlation_dal: 相关性数据访问层实例。
-            client: 平台客户端实例。
-        """
         super().__init__(next_stage)
         self.correlation_type: CorrelationType = correlation_type
         self.check_record_dal: CheckRecordDAL = check_record_dal
         self.correlation_dal: CorrelationDAL = correlation_dal
         self.client: WorldQuantClient = client
+        self.log: BoundLogger = get_logger(
+            f"{__name__}.{self.__class__.__name__}",
+        )
 
     async def _evaluate_stage(
         self,
@@ -331,18 +424,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
-        """
-        执行平台相关性检查。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-            policy: 刷新策略。
-            record: 当前评估的记录对象。
-            kwargs: 其他参数。
-
-        Returns:
-            bool: 如果检查通过返回 True，否则返回 False。
-        """
         record_type: CheckRecordType = (
             CheckRecordType.CORRELATION_SELF
             if self.correlation_type == CorrelationType.SELF
@@ -355,7 +437,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         )
 
         try:
-            # FIXME: 数据库连接池测试
+
             async with session_manager.get_session(Database.EVALUATE) as session:
                 self.check_record_dal.session = session
                 exist_check_record: Optional[CheckRecord] = (
@@ -365,7 +447,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                         order_by=CheckRecord.created_at.desc(),
                     )
                 )
-            await log.adebug(
+            await self.log.adebug(
                 f"查询现有{check_type_name}检查记录结果",
                 emoji="💾" if exist_check_record else "❓",
                 alpha_id=alpha.alpha_id,
@@ -386,7 +468,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
             if action == AbstractEvaluateStage.CheckAction.REFRESH:
                 correlation_content = await self._refresh_correlation_data(alpha)
                 if not correlation_content:
-                    await log.awarning(
+                    await self.log.awarning(
                         f"{check_type_name}数据刷新失败，检查不通过",
                         emoji="⚠️",
                         alpha_id=alpha.alpha_id,
@@ -406,7 +488,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
             }:
                 return False
             elif action == AbstractEvaluateStage.CheckAction.ERROR:
-                await log.aerror(
+                await self.log.aerror(
                     f"处理 {check_type_name} 检查遇到错误状态",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
@@ -419,7 +501,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                 if self.correlation_type == CorrelationType.SELF:
                     record.self_correlation = max_corr
                     if max_corr > CONSULTANT_MAX_SELF_CORRELATION:
-                        await log.awarning(
+                        await self.log.awarning(
                             f"{check_type_name}检查未通过，最大相关性超过阈值",
                             emoji="❌",
                             alpha_id=alpha.alpha_id,
@@ -429,7 +511,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                 elif self.correlation_type == CorrelationType.PROD:
                     record.prod_correlation = max_corr
                     if max_corr > CONSULTANT_MAX_PROD_CORRELATION:
-                        await log.awarning(
+                        await self.log.awarning(
                             f"{check_type_name}检查未通过，最大相关性超过阈值",
                             emoji="❌",
                             alpha_id=alpha.alpha_id,
@@ -437,7 +519,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                         )
                         return False
 
-                await log.ainfo(
+                await self.log.ainfo(
                     f"{check_type_name}检查通过",
                     emoji="✅",
                     alpha_id=alpha.alpha_id,
@@ -445,7 +527,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                 )
                 return True
             else:
-                await log.aerror(
+                await self.log.aerror(
                     f"未能获取或加载{check_type_name}数据，无法执行检查",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
@@ -453,7 +535,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                 )
                 return False
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 f"检查 {check_type_name} 时发生异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -464,19 +546,11 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
             return False
 
     async def _refresh_correlation_data(self, alpha: Alpha) -> Optional[TableView]:
-        """
-        刷新相关性数据。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-
-        Returns:
-            Optional[TableView]: 刷新后的相关性数据。
-        """
         try:
             retry_count: int = 0  # 重试计数器
             max_retries: int = 3  # 最大重试次数
-            await log.adebug(
+            await self.log.adebug(
                 "开始刷新相关性数据",
                 emoji="🔄",
                 alpha_id=alpha.alpha_id,
@@ -492,7 +566,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                         corr_type=self.correlation_type,
                     )
                 )
-                await log.adebug(
+                await self.log.adebug(
                     "相关性检查 API 调用结果",
                     emoji="📡",
                     alpha_id=alpha.alpha_id,
@@ -502,7 +576,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                 )
                 if finished:
                     if api_result:
-                        await log.ainfo(
+                        await self.log.ainfo(
                             "相关性数据 API 获取成功",
                             emoji="🎉",
                             alpha_id=alpha.alpha_id,
@@ -517,14 +591,14 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             ),
                             content=api_result.model_dump(mode="python"),
                         )
-                        # FIXME: 数据库连接池测试
+
                         async with (
                             session_manager.get_session(Database.EVALUATE) as session,
                             session.begin(),
                         ):
                             self.check_record_dal.session = session
                             await self.check_record_dal.create(check_record)
-                            await log.adebug(
+                            await self.log.adebug(
                                 "相关性数据已保存到数据库",
                                 emoji="💾",
                                 alpha_id=alpha.alpha_id,
@@ -532,7 +606,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             )
                         return api_result
                     else:
-                        await log.awarning(
+                        await self.log.awarning(
                             "相关性检查 API 声称完成，但未返回有效结果",
                             emoji="❓",
                             alpha_id=alpha.alpha_id,
@@ -540,7 +614,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                         )
                         return None
                 elif retry_after and retry_after > 0:
-                    await log.adebug(
+                    await self.log.adebug(
                         "API 请求未完成，等待重试",
                         emoji="⏳",
                         alpha_id=alpha.alpha_id,
@@ -549,14 +623,14 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                     await asyncio.sleep(retry_after)
                 else:
                     retry_count += 1
-                    await log.awarning(
+                    await self.log.awarning(
                         "相关性检查 API 返回异常状态：未完成且无重试时间",
                         emoji="⚠️",
                         alpha_id=alpha.alpha_id,
                         corr_type=self.correlation_type,
                         retry_count=retry_count,
                     )
-            await log.acritical(
+            await self.log.acritical(
                 "相关性检查 API 多次重试失败，程序可能无法继续",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -565,7 +639,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
             )
             return None
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "刷新相关性数据时发生异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -577,9 +651,6 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
 
 
 class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
-    """
-    业绩对比评估阶段。
-    """
 
     def __init__(
         self,
@@ -588,16 +659,14 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         check_record_dal: CheckRecordDAL,
         client: WorldQuantClient,
     ) -> None:
-        """
-        初始化业绩对比评估阶段。
 
-        Args:
-            competition_id: 如果提供，则执行竞赛专用业绩对比，否则执行普通业绩对比。
-        """
         super().__init__(next_stage)
         self.competition_id = competition_id
         self.check_record_dal = check_record_dal
         self.client = client
+        self.log: BoundLogger = get_logger(
+            f"{__name__}.{self.__class__.__name__}",
+        )
 
     async def _evaluate_stage(
         self,
@@ -606,20 +675,9 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
-        """
-        执行业绩对比评估逻辑。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-            policy: 刷新策略。
-            record: 当前评估的记录对象。
-            kwargs: 其他参数。
-
-        Returns:
-            bool: 评估是否通过。
-        """
         check_type_name = "因子池绩效差异"
-        await log.adebug(
+        await self.log.adebug(
             f"开始评估 {check_type_name}",
             emoji="🔍",
             alpha_id=alpha.alpha_id,
@@ -634,7 +692,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                 alpha, policy, check_type_name, **kwargs
             )
             if not perf_diff_view:
-                await log.awarning(
+                await self.log.awarning(
                     f"{check_type_name}数据获取失败，评估不通过",
                     emoji="⚠️",
                     alpha_id=alpha.alpha_id,
@@ -649,7 +707,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                 record=record,
                 **kwargs,
             )
-            await log.ainfo(
+            await self.log.ainfo(
                 f"{check_type_name}评估完成",
                 emoji="✅" if result else "❌",
                 alpha_id=alpha.alpha_id,
@@ -659,7 +717,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
             return result
 
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 f"{check_type_name}评估时发生异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -676,20 +734,9 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         check_type_name: str,
         **kwargs: Any,
     ) -> Optional[BeforeAndAfterPerformanceView]:
-        """
-        刷新或获取业绩对比数据。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-            policy: 刷新策略。
-            check_type_name: 检查类型名称，用于日志。
-            kwargs: 其他参数。
-
-        Returns:
-            Optional[BeforeAndAfterPerformanceView]: 业绩对比数据。
-        """
         # 根据策略决定是否刷新数据
-        # FIXME: 数据库连接池测试
+
         async with session_manager.get_session(Database.EVALUATE) as session:
             self.check_record_dal.session = session
             # 查找现有的检查记录
@@ -700,7 +747,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                     order_by=CheckRecord.created_at.desc(),
                 )
             )
-            await log.adebug(
+            await self.log.adebug(
                 f"查询现有{check_type_name}检查记录结果",
                 emoji="💾" if exist_check_record else "❓",
                 alpha_id=alpha.alpha_id,
@@ -718,7 +765,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         if action == AbstractEvaluateStage.CheckAction.REFRESH:
             return await self._refresh_alpha_pool_performance_diff(alpha)
         elif action == AbstractEvaluateStage.CheckAction.USE_EXISTING:
-            # FIXME: 数据库连接池测试
+
             async with session_manager.get_session(Database.EVALUATE) as session:
                 self.check_record_dal.session = session
                 record = await self.check_record_dal.find_one_by(
@@ -739,16 +786,8 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
     async def _refresh_alpha_pool_performance_diff(
         self, alpha: Alpha
     ) -> Optional[BeforeAndAfterPerformanceView]:
-        """
-        刷新因子池绩效差异数据。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-
-        Returns:
-            Optional[BeforeAndAfterPerformanceView]: 刷新后的绩效差异数据。
-        """
-        await log.adebug(
+        await self.log.adebug(
             "刷新因子池绩效差异数据",
             emoji="🔄",
             alpha_id=alpha.alpha_id,
@@ -765,7 +804,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                         )
                     )
                     if finished and result:
-                        # FIXME: 数据库连接池测试
+
                         async with (
                             session_manager.get_session(Database.EVALUATE) as session,
                             session.begin(),
@@ -780,7 +819,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                             )
                         return result
                     elif retry_after and retry_after > 0:
-                        await log.adebug(
+                        await self.log.adebug(
                             "等待重试",
                             emoji="⏳",
                             alpha_id=alpha.alpha_id,
@@ -789,7 +828,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                         )
                         await asyncio.sleep(retry_after)
                     else:
-                        await log.awarning(
+                        await self.log.awarning(
                             "刷新因子池绩效差异数据时发生异常",
                             emoji="⚠️",
                             alpha_id=alpha.alpha_id,
@@ -798,7 +837,7 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                         )
                         return None
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "刷新因子池绩效差异数据时发生异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -815,24 +854,11 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
-        """
-        判断业绩是否符合要求。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-            perf_diff_view: 业绩对比数据。
-            kwargs: 其他参数。
-
-        Returns:
-            bool: 是否符合要求。
-        """
         raise NotImplementedError("子类必须实现业绩对比条件的判断逻辑")
 
 
 class SubmissionEvaluateStage(AbstractEvaluateStage):
-    """
-    提交检查评估阶段。
-    """
 
     def __init__(
         self,
@@ -840,17 +866,12 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
         check_record_dal: CheckRecordDAL,
         client: WorldQuantClient,
     ) -> None:
-        """
-        初始化提交检查评估阶段。
-
-        Args:
-            next_stage: 下一个评估阶段 (责任链中的下一个节点)。
-            check_record_dal: 检查记录数据访问层实例。
-            client: 平台客户端实例。
-        """
         super().__init__(next_stage)
         self.check_record_dal = check_record_dal
         self.client = client
+        self.log: BoundLogger = get_logger(
+            f"{__name__}.{self.__class__.__name__}",
+        )
 
     async def _evaluate_stage(
         self,
@@ -859,22 +880,11 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
-        """
-        执行提交检查评估逻辑。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-            policy: 刷新策略。
-            record: 当前评估的记录对象。
-            kwargs: 其他参数。
-
-        Returns:
-            bool: 评估是否通过。
-        """
         check_type_name = "提交检查"
         record_type = CheckRecordType.SUBMISSION
 
-        await log.adebug(
+        await self.log.adebug(
             f"开始评估 {check_type_name}",
             emoji="🔍",
             alpha_id=alpha.alpha_id,
@@ -884,7 +894,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
 
         try:
             # 查找现有的检查记录
-            # FIXME: 数据库连接池测试
+
             async with session_manager.get_session(Database.EVALUATE) as session:
                 self.check_record_dal.session = session
                 exist_check_record: Optional[CheckRecord] = (
@@ -894,7 +904,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                         order_by=CheckRecord.created_at.desc(),
                     )
                 )
-            await log.adebug(
+            await self.log.adebug(
                 f"查询现有{check_type_name}检查记录结果",
                 emoji="💾" if exist_check_record else "❓",
                 alpha_id=alpha.alpha_id,
@@ -915,7 +925,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
             if action == AbstractEvaluateStage.CheckAction.REFRESH:
                 submission_check_view = await self._refresh_submission_check_data(alpha)
                 if not submission_check_view:
-                    await log.awarning(
+                    await self.log.awarning(
                         f"{check_type_name}数据刷新失败，检查不通过",
                         emoji="⚠️",
                         alpha_id=alpha.alpha_id,
@@ -929,7 +939,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                             **exist_check_record.content
                         )
                     except (TypeError, ValueError, KeyError) as parse_err:
-                        await log.aerror(
+                        await self.log.aerror(
                             f"解析现有{check_type_name}记录时出错",
                             emoji="❌",
                             alpha_id=alpha.alpha_id,
@@ -946,7 +956,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                 return False
 
             elif action == AbstractEvaluateStage.CheckAction.ERROR:
-                await log.aerror(
+                await self.log.aerror(
                     f"处理 {check_type_name} 检查遇到错误状态",
                     emoji="❌",
                     alpha_id=alpha.alpha_id,
@@ -960,7 +970,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                     submission_check_view=submission_check_view,
                     **kwargs,
                 )
-                await log.ainfo(
+                await self.log.ainfo(
                     f"{check_type_name}评估完成",
                     emoji="✅" if result else "❌",
                     alpha_id=alpha.alpha_id,
@@ -968,7 +978,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                 )
                 return result
 
-            await log.aerror(
+            await self.log.aerror(
                 f"未能获取或加载{check_type_name}数据，无法执行检查",
                 emoji="❌",
                 alpha_id=alpha.alpha_id,
@@ -976,7 +986,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
             return False
 
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 f"{check_type_name}评估时发生异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -989,16 +999,8 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
         self,
         alpha: Alpha,
     ) -> Optional[SubmissionCheckResultView]:
-        """
-        刷新提交检查数据。
 
-        Args:
-            alpha: 待评估的 Alpha 对象。
-
-        Returns:
-            Optional[SubmissionCheckResultView]: 刷新后的提交检查数据。
-        """
-        await log.adebug(
+        await self.log.adebug(
             "开始刷新提交检查数据",
             emoji="🔄",
             alpha_id=alpha.alpha_id,
@@ -1015,7 +1017,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                         )
                     )
                     if finished and result:
-                        # FIXME: 数据库连接池测试
+
                         async with (
                             session_manager.get_session(Database.EVALUATE) as session,
                             session.begin(),
@@ -1030,7 +1032,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                             )
                         return result
                     elif retry_after and retry_after > 0:
-                        await log.adebug(
+                        await self.log.adebug(
                             "等待重试",
                             emoji="⏳",
                             alpha_id=alpha.alpha_id,
@@ -1038,7 +1040,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                         )
                         await asyncio.sleep(retry_after)
                     else:
-                        await log.awarning(
+                        await self.log.awarning(
                             "刷新提交检查数据时发生异常",
                             emoji="⚠️",
                             alpha_id=alpha.alpha_id,
@@ -1046,7 +1048,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                         )
                         return None
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "刷新提交检查数据时发生异常",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -1060,15 +1062,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
         submission_check_view: SubmissionCheckResultView,
         **kwargs: Any,
     ) -> bool:
-        """
-        判断提交检查是否符合要求。
 
-        Args:
-            submission_check_view: 提交检查数据。
-
-        Returns:
-            bool: 是否符合要求。
-        """
         if submission_check_view.in_sample is None:
             return False
         if submission_check_view.in_sample.checks is None:

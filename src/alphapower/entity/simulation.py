@@ -96,6 +96,8 @@ class SimulationTaskStatus(enum.Enum):
     COMPLETE = "COMPLETE"
     ERROR = "ERROR"
     CANCELLED = "CANCELLED"
+    FAIL = "FAIL"
+    WARNING = "WARNING"
 
 
 class SimulationTask(Base):

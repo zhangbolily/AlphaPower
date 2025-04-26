@@ -309,10 +309,12 @@ if __name__ == "__main__":
                 },
             }
 
-            in_sample_stage: AbstractEvaluateStage = InSampleChecksEvaluateStage(
+            in_sample_stage: InSampleChecksEvaluateStage = InSampleChecksEvaluateStage(
+                client=client,
                 next_stage=None,
                 check_pass_result_map=check_pass_result_map,
             )
+            await in_sample_stage.initialize()
 
             local_correlation_stage: AbstractEvaluateStage = (
                 CorrelationLocalEvaluateStage(

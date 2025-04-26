@@ -85,6 +85,7 @@ class SubmissionCheckView(BaseModel):
         serialization_alias="endDate",
     )
     multiplier: Optional[float] = None
+    effective: Optional[float] = None  # Pyramid PASS 的时候这个字段应该有值
 
 
 SubmissionCheckViewListAdapter: TypeAdapter[List[SubmissionCheckView]] = TypeAdapter(

@@ -12,6 +12,7 @@ from alphapower.constants import CorrelationType
 from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
+from alphapower.view.activities import PyramidAlphasQuery, PyramidAlphasView
 from alphapower.view.alpha import (
     AlphaDetailView,
     SelfAlphaListQueryParams,
@@ -58,6 +59,7 @@ from .raw_api import (
     get_self_alphas,
     get_simulation_progress,
     set_alpha_properties,
+    user_fetch_pyramid_alphas,
 )
 from .utils import rate_limit_handler
 
@@ -692,6 +694,35 @@ class WorldQuantClient:
             raise RuntimeError("会话未初始化")
 
         resp = await get_all_operators(self.session)
+        return resp
+
+    @exception_handler
+    async def user_fetch_pyramid_alphas(
+        self,
+        query: PyramidAlphasQuery,
+    ) -> PyramidAlphasView:
+        """
+        获取用户的金字塔 Alpha。
+
+        参数:
+        query (PyramidAlphasQuery): 查询参数。
+
+        返回:
+        PyramidAlphasView: 金字塔 Alpha 视图。
+        """
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        resp = await user_fetch_pyramid_alphas(
+            self.session,
+            query.model_dump(
+                mode="json",
+                by_alias=True,
+            ),
+        )
         return resp
 
 
