@@ -1,7 +1,7 @@
 import asyncio
 import signal
 import types
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from structlog.stdlib import BoundLogger
@@ -271,6 +271,9 @@ class AlphaSyncService:
             end_time=end_time,
             emoji="✅",
         )
+        est: timezone = timezone(timedelta(hours=-5))  # 定义 EST 时区
+        start_time = start_time.replace(tzinfo=est)
+        end_time = end_time.replace(tzinfo=est)
         return start_time, end_time
 
     async def process_alphas_page(
@@ -819,20 +822,14 @@ class AlphaSyncService:
 
         if increamental:
             async with wq_client:
-                sync_time_range: Tuple[datetime, datetime] = (
-                    await self.fetch_last_sync_time_range(wq_client)
+                sync_start_time, sync_end_time = await self.fetch_last_sync_time_range(
+                    wq_client
                 )
 
                 start_time = (
-                    max(sync_time_range[0], start_time)
-                    if start_time
-                    else sync_time_range[0]
+                    max(sync_start_time, start_time) if start_time else sync_start_time
                 )
-                end_time = (
-                    min(sync_time_range[1], end_time)
-                    if end_time
-                    else sync_time_range[1]
-                )
+                end_time = min(sync_end_time, end_time) if end_time else sync_end_time
         else:
             # 没有传入时间范围，则使用默认值
             # 时间范围实际上是必传参数，因为列表查询接口对过滤条件有限制
