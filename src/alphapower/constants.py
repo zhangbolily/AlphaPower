@@ -86,10 +86,9 @@ ENDPOINT_SIMULATION: Final[str] = "simulations"
 
 # 用户活动端点
 ENDPOINT_ACTIVITIES: Final[str] = "/users/self/activities/"
-ENDPOINT_ACTIVITIES_SIMULATION: Final[str] = "users/self/activities/simulations"
-ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS: Final[str] = urljoin(
-    ENDPOINT_ACTIVITIES, "pyramid-alphas"
-)
+ENDPOINT_ACTIVITIES_SIMULATIONS: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "simulations")
+ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "pyramid-alphas")
+ENDPOINT_ACTIVITIES_DIVERSITY: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "diversity")
 
 
 # 数据相关端点

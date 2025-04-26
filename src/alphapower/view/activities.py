@@ -34,3 +34,28 @@ class PyramidAlphasView(BaseModel):
         category: DataCategoryRefView
 
     pyramids: Optional[List[PyramidAlpha]]
+
+
+class DiversityView(BaseModel):
+    class Alpha(BaseModel):
+        class DataDiversity(BaseModel):
+            check: Optional[str]
+            limit: Optional[float]
+
+        region: Region
+        delay: Optional[Delay]
+        alpha_count: int = Field(
+            validation_alias=AliasChoices("alpha_count", "alphaCount"),
+            serialization_alias="alphaCount",
+        )
+        data_diversity: Optional[DataDiversity] = Field(
+            validation_alias=AliasChoices("data_diversity", "dataDiversity"),
+            serialization_alias="dataDiversity",
+        )
+        data_category: DataCategoryRefView = Field(
+            validation_alias=AliasChoices("data_category", "dataCategory"),
+            serialization_alias="dataCategory",
+        )
+
+    alphas: List[Alpha]
+    count: int
