@@ -25,7 +25,7 @@ from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
 from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import log_time_elapsed  # 引入公共方法
 
-from .utils import get_or_create_entity  # 引入公共方法
+from .common import get_or_create_entity  # 引入公共方法
 
 # 配置日志，禁用控制台日志输出
 logger = get_logger(f"{__name__}_file", enable_console=False)

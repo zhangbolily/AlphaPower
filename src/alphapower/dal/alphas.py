@@ -120,15 +120,40 @@ class AlphaDAL(EntityDAL[Alpha]):
             合并后的 Alpha 实体。
         """
         actual_session: AsyncSession = self._actual_session(session)
-        existing_entity = await self.find_by_alpha_id(
-            entity.alpha_id, session=actual_session
+
+        # ⚡️ 日志：合并 Alpha 实体，调试级别，输出关键参数
+        await self.log.adebug(
+            event=f"{self.__class__.__name__}.upsert",
+            alpha_id=entity.alpha_id,
+            author=entity.author,
+            status=entity.status,
+            stage=entity.stage,
+            session_id=actual_session.info.get("session_id", None),
+            message="合并 Alpha 实体，准备写入数据库。",
+            emoji="📝",
         )
-        if existing_entity:
-            await self._update_entity_references(existing_entity, entity)
-            entity = await actual_session.merge(entity)
-        else:
-            actual_session.add(entity)
-        return entity
+
+        try:
+            existing_entity = await self.find_by_alpha_id(
+                entity.alpha_id, session=actual_session
+            )
+
+            if existing_entity:
+                await self._update_entity_references(existing_entity, entity)
+                entity = await actual_session.merge(entity)
+            else:
+                actual_session.add(entity)
+            await actual_session.flush()
+            return entity
+        except Exception as e:
+            # ⚡️ 日志：合并 Alpha 实体失败，错误级别，输出异常信息
+            await self.log.aerror(
+                event=f"{self.__class__.__name__}.upsert",
+                session_id=actual_session.info.get("session_id", None),
+                message=f"合并 Alpha 实体失败：{str(e)}",
+                emoji="❌",
+            )
+            raise e
 
     async def bulk_upsert(
         self, entities: List[Alpha], session: Optional[AsyncSession] = None
@@ -176,6 +201,7 @@ class AlphaDAL(EntityDAL[Alpha]):
                 await actual_session.merge(entity)
             else:
                 actual_session.add(entity)
+        await actual_session.flush()
         return entities
 
     async def _update_entity_references(

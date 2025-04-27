@@ -41,12 +41,16 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
     def __init__(
         self,
         client: WorldQuantClient,
-        next_stage: Optional[AbstractEvaluateStage],
-        check_pass_result_map: Dict[SubmissionCheckType, Set[SubmissionCheckResult]],
+        next_stage: Optional[AbstractEvaluateStage] = None,
+        check_pass_result_map: Optional[
+            Dict[SubmissionCheckType, Set[SubmissionCheckResult]]
+        ] = None,
     ) -> None:
         super().__init__(next_stage)
         self.client: WorldQuantClient = client
-        self.check_pass_result_map = check_pass_result_map
+        self.check_pass_result_map: Dict[
+            SubmissionCheckType, Set[SubmissionCheckResult]
+        ] = (check_pass_result_map if check_pass_result_map else {})
         self.initialized: bool = False
         self.region_category_delay_map: Dict[str, int] = {}
         self.log: BoundLogger = get_logger(
@@ -88,6 +92,16 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     )
                 if pyramid_alphas and pyramid_alphas.pyramids:
                     for pyramid_alpha in pyramid_alphas.pyramids:
+                        if not pyramid_alpha.category or not pyramid_alpha.category.id:
+                            await self.log.aerror(
+                                "金字塔因子缺少分类信息，无法处理",
+                                emoji="❌",
+                                pyramid_alpha=pyramid_alpha,
+                            )
+                            raise ValueError(
+                                "金字塔因子缺少分类信息，无法处理",
+                            )
+
                         key: str = await self._get_pyramid_alpha_key(
                             region=pyramid_alpha.region,
                             delay=pyramid_alpha.delay,
@@ -158,32 +172,32 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
             )
             return False
 
-        record.in_sample_pnl = alpha.in_sample.pnl if alpha.in_sample.pnl else 0.0
-        record.in_sample_long_count = (
+        record.is_pnl = alpha.in_sample.pnl if alpha.in_sample.pnl else 0.0
+        record.is_long_count = (
             alpha.in_sample.long_count if alpha.in_sample.long_count else 0
         )
-        record.in_sample_short_count = (
+        record.is_short_count = (
             alpha.in_sample.short_count if alpha.in_sample.short_count else 0
         )
-        record.in_sample_book_size = (
+        record.is_book_size = (
             alpha.in_sample.book_size if alpha.in_sample.book_size else 0.0
         )
-        record.in_sample_turnover = (
+        record.is_turnover = (
             alpha.in_sample.turnover if alpha.in_sample.turnover else 0.0
         )
-        record.in_sample_returns = (
+        record.is_returns = (
             alpha.in_sample.returns if alpha.in_sample.returns else 0.0
         )
-        record.in_sample_drawdown = (
+        record.is_drawdown = (
             alpha.in_sample.drawdown if alpha.in_sample.drawdown else 0.0
         )
-        record.in_sample_sharpe = (
+        record.is_sharpe = (
             alpha.in_sample.sharpe if alpha.in_sample.sharpe else 0.0
         )
-        record.in_sample_fitness = (
+        record.is_fitness = (
             alpha.in_sample.fitness if alpha.in_sample.fitness else 0.0
         )
-        record.in_sample_margin = (
+        record.is_margin = (
             alpha.in_sample.margin if alpha.in_sample.margin else 0.0
         )
 

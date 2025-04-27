@@ -245,16 +245,17 @@ class BaseEvaluator(AbstractEvaluator):
         try:
             evaluate_record: EvaluateRecord = EvaluateRecord(
                 alpha_id=alpha.alpha_id,
-                in_sample_pnl=0.0,
-                in_sample_long_count=0,
-                in_sample_short_count=0,
-                in_sample_book_size=0.0,
-                in_sample_turnover=0.0,
-                in_sample_returns=0.0,
-                in_sample_drawdown=0.0,
-                in_sample_sharpe=0.0,
-                in_sample_fitness=0.0,
+                is_pnl=0.0,
+                is_long_count=0,
+                is_short_count=0,
+                is_book_size=0.0,
+                is_turnover=0.0,
+                is_returns=0.0,
+                is_drawdown=0.0,
+                is_sharpe=0.0,
+                is_fitness=0.0,
                 self_correlation=0.0,
+                evaluator=self.__class__.__name__,
             )
 
             # 调用评估阶段链的核心逻辑

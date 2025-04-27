@@ -126,7 +126,7 @@ def create_aggregate_data(
             start_date=sample_data.start_date,
             checks=sample_data.checks,
         )
+
+        return aggregate_data
     except Exception as e:
         raise ValueError(f"创建样本数据失败: {e}, 样本数据: {sample_data}") from e
-    finally:
-        return aggregate_data

@@ -32,8 +32,8 @@ from alphapower.view.alpha import (
     SelfAlphaListView,
 )
 
+from .common import create_aggregate_data
 from .sync_competition import competition_data_expire_check, sync_competition
-from .utils import create_aggregate_data
 
 
 class AlphaSyncService:

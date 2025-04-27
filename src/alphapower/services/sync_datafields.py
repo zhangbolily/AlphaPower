@@ -28,7 +28,7 @@ from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Category, DataField, Dataset
 from alphapower.internal.logging import get_logger  # 修复导入
 
-from .utils import get_or_create_entity
+from .common import get_or_create_entity
 
 # 配置日志
 file_logger = get_logger(f"{__name__}_file", enable_console=False)  # 文件日志

@@ -1,22 +1,16 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
-from typing import Any, AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, List
 
-from alphapower.client import BeforeAndAfterPerformanceView, WorldQuantClient
-from alphapower.client.models import AlphaPropertiesPayload
 from alphapower.constants import (
     CorrelationType,
     Database,
-    Delay,
     RefreshPolicy,
-    Region,
     Stage,
-    Status,
 )
 from alphapower.dal.base import DALFactory
 from alphapower.dal.session_manager import session_manager
-from alphapower.engine.evaluate.base_evaluate_stages import PerformanceDiffEvaluateStage
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import (
@@ -29,10 +23,10 @@ from alphapower.internal.logging import get_logger
 log = get_logger(module_name=__name__)
 
 
-class PPAC2025Evaluator(BaseEvaluator):
+class ConsultantEvaluator(BaseEvaluator):
     """
-    PPAC2025Evaluator 是 BaseEvaluator 的子类，
-    专门用于实现 PPAC2025 相关的 Alpha 评估逻辑。
+    ConsultantEvaluator 是 BaseEvaluator 的子类，
+    专门用于实现 Consultant 相关的 Alpha 评估逻辑。
     """
 
     _db_lock: asyncio.Lock = asyncio.Lock()
@@ -109,9 +103,7 @@ class PPAC2025Evaluator(BaseEvaluator):
             session.begin(),
         ):
             await self.evaluate_record_dal.delete_by_filter(
-                session=session,
-                alpha_id=alpha.alpha_id,
-                evaluator=self.__class__.__name__,
+                session=session, alpha_id=alpha.alpha_id
             )
 
         await log.ainfo(
@@ -122,117 +114,11 @@ class PPAC2025Evaluator(BaseEvaluator):
         )
 
 
-class PPAC2025PerfDiffEvaluateStage(PerformanceDiffEvaluateStage):
-
-    def __init__(
-        self,
-        next_stage: Optional[AbstractEvaluateStage],
-        check_record_dal: CheckRecordDAL,
-        client: WorldQuantClient,
-    ) -> None:
-        """
-        初始化 PPAC2025 评估阶段。
-
-        参数:
-            next_stage (Optional[AbstractEvaluateStage]): 下一个评估阶段。
-            competition_id (Optional[str]): 竞赛 ID。
-            check_record_dal (CheckRecordDAL): 检查记录数据访问层。
-            client (WorldQuantClient): WorldQuant 客户端。
-        """
-        competition_id = "PPAC2025"
-        super().__init__(next_stage, competition_id, check_record_dal, client)
-
-    async def _determine_performance_diff_pass_status(
-        self,
-        alpha: Alpha,
-        perf_diff_view: BeforeAndAfterPerformanceView,
-        record: EvaluateRecord,
-        **kwargs: Any,
-    ) -> bool:
-        if alpha.regular is None or alpha.regular.operator_count is None:
-            # 如果因子没有 regular 属性，评估失败
-            await log.aerror(
-                event="PPAC2025 评估失败，因子没有有效的 regular 属性",
-                alpha_id=alpha.alpha_id,
-                regular=alpha.regular,
-                emoji="❌",
-            )
-            return False
-
-        if alpha.region != Region.USA or alpha.delay != Delay.ONE:
-            # 如果因子不在美国市场或延迟不是 1，评估失败
-            await log.aerror(
-                event="PPAC2025 评估失败，因子不在美国市场或延迟不是 1",
-                alpha_id=alpha.alpha_id,
-                region=alpha.region,
-                delay=alpha.delay,
-                emoji="❌",
-            )
-            return False
-
-        if alpha.regular.operator_count > 8:
-            # 如果因子操作数超过 8，评估失败
-            await log.aerror(
-                event="PPAC2025 评估失败",
-                alpha_id=alpha.alpha_id,
-                operator_count=alpha.regular.operator_count,
-                emoji="❌",
-            )
-            return False
-
-        if perf_diff_view.score is None:
-            # 如果没有分数，无法比较竞赛业绩
-            await log.aerror(
-                event="PPAC2025 评估失败，没有分数",
-                alpha_id=alpha.alpha_id,
-                emoji="❌",
-            )
-            return False
-
-        record.score_diff = perf_diff_view.score.after - perf_diff_view.score.before
-        await log.ainfo(
-            event="PPAC2025 评估成功",
-            alpha_id=alpha.alpha_id,
-            score_diff=record.score_diff,
-            before_score=perf_diff_view.score.before,
-            after_score=perf_diff_view.score.after,
-            emoji="✅",
-        )
-
-        # 顺便更新一下评估记录的其他字段
-        async with self.client as client:
-            payload: AlphaPropertiesPayload = AlphaPropertiesPayload(
-                regular=AlphaPropertiesPayload.Regular(
-                    description=(
-                        "Idea: Power Pool Alphas Competition 2025\n"
-                        "Rationale for data used: Power Pool Alphas Competition 2025\n"
-                        "Rationale for operators used: Power Pool Alphas Competition 2025"
-                    ),
-                ),
-                tags=alpha.tags,
-            )
-
-            await client.alpha_update_properties(
-                alpha_id=alpha.alpha_id, properties=payload
-            )
-
-            await self.log.ainfo(
-                event="PPAC2025 评估成功，更新因子属性",
-                alpha_id=alpha.alpha_id,
-                properties=payload,
-                emoji="✅",
-            )
-
-        return True
-
-
 if __name__ == "__main__":
     # 运行测试
     from datetime import datetime
-    from typing import Dict, Set
 
     from alphapower.client import wq_client
-    from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
     from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
     from alphapower.dal.evaluate import (
         CheckRecordDAL,
@@ -250,7 +136,7 @@ if __name__ == "__main__":
         CorrelationCalculator,
     )
 
-    async def test() -> None:
+    async def main() -> None:
         """
         测试 PPAC2025Evaluator 的功能。
         """
@@ -279,22 +165,7 @@ if __name__ == "__main__":
 
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
             for alpha in os_alphas:
-                for classification in alpha.classifications:
-                    if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
-                        await log.ainfo(
-                            event="Alpha 策略符合 Power Pool 条件",
-                            alpha_id=alpha.alpha_id,
-                            classifications=alpha.classifications,
-                            emoji="✅",
-                        )
-                        yield alpha
-
-                await log.ainfo(
-                    event="Alpha 策略不符合 Power Pool 条件",
-                    alpha_id=alpha.alpha_id,
-                    classifications=alpha.classifications,
-                    emoji="❌",
-                )
+                yield alpha
 
         async with wq_client as client:
             correlation_calculator = CorrelationCalculator(
@@ -309,28 +180,13 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 2, 21),
+                start_time=datetime(2025, 3, 17),
                 end_time=datetime(2025, 4, 24, 23, 59, 59),
-                status=Status.UNSUBMITTED,
             )
-
-            check_pass_result_map: Dict[
-                SubmissionCheckType, Set[SubmissionCheckResult]
-            ] = {
-                SubmissionCheckType.MATCHES_COMPETITION: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.CONCENTRATED_WEIGHT: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.PENDING,
-                },
-            }
 
             in_sample_stage: InSampleChecksEvaluateStage = InSampleChecksEvaluateStage(
                 client=client,
                 next_stage=None,
-                check_pass_result_map=check_pass_result_map,
             )
             await in_sample_stage.initialize()
 
@@ -341,36 +197,27 @@ if __name__ == "__main__":
                     threshold=0.5,
                 )
             )
-            platform_self_correlation_stage: AbstractEvaluateStage = (
+            platform_prod_correlation_stage: AbstractEvaluateStage = (
                 CorrelationPlatformEvaluateStage(
                     next_stage=None,
-                    correlation_type=CorrelationType.SELF,
+                    correlation_type=CorrelationType.PROD,
                     check_record_dal=check_record_dal,
                     correlation_dal=correlation_dal,
                     client=client,
                 )
             )
-            perf_diff_stage: AbstractEvaluateStage = PPAC2025PerfDiffEvaluateStage(
-                next_stage=None,
-                check_record_dal=check_record_dal,
-                client=client,
-            )
 
             in_sample_stage.next_stage = local_correlation_stage
-            local_correlation_stage.next_stage = (
-                perf_diff_stage  # TODO: 自相关性计算直接用本地的数据，否则太慢了
-            )
-            platform_self_correlation_stage.next_stage = perf_diff_stage
-
-            evaluator = PPAC2025Evaluator(
+            local_correlation_stage.next_stage = platform_prod_correlation_stage
+            evaluator = BaseEvaluator(
                 fetcher=fetcher,
                 evaluate_stage_chain=in_sample_stage,
                 evaluate_record_dal=evaluate_record_dal,
             )
 
             async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH, concurrency=60
+                policy=RefreshPolicy.FORCE_REFRESH, concurrency=1
             ):
                 print(alpha)
 
-    asyncio.run(test())
+    asyncio.run(main())

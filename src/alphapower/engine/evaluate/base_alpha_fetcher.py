@@ -186,6 +186,9 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
             # 如果指定了结束时间，则添加时间范围条件
             criteria.append(Alpha.date_created <= self.end_time)
 
+        for key, value in kwargs.items():
+            query = query.where(getattr(AggregateData, key) == value)
+
         # 应用筛选条件到查询
         final_query: Select = query.where(and_(*criteria))
 

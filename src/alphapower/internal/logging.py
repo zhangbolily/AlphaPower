@@ -50,7 +50,6 @@ def get_logger(
     shared_processors: list[Any] = [
         structlog.stdlib.add_logger_name,  # 添加日志记录器名称
         structlog.stdlib.add_log_level,  # 添加日志级别
-        structlog.stdlib.add_log_level_number,  # 添加日志级别数字
         structlog.stdlib.PositionalArgumentsFormatter(),  # 格式化位置参数
         structlog.processors.TimeStamper(
             fmt="iso", utc=False, key="datetime"
@@ -98,10 +97,8 @@ def get_logger(
             key_order=[
                 "datetime",
                 "level",
-                "level_number",
                 "logger",
                 "thread",
-                "coroutine_id",
                 "module",
                 "func_name",
                 "lineno",

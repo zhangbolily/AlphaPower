@@ -201,7 +201,15 @@ class WorldQuantClient:
 
         logger.warning("WorldQuantClient 实例被销毁", emoji="🗑️")
         if self.session and not self.session.closed:
-            asyncio.create_task(self.session.close())
+            # 等待 close 协程执行完成，确保资源释放
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果事件循环已在运行，提交关闭任务并等待完成
+                close_task = asyncio.create_task(self.session.close())
+                loop.run_until_complete(close_task)
+            else:
+                # 如果事件循环未运行，直接运行关闭协程
+                loop.run_until_complete(self.session.close())
 
     # -------------------------------
     # Simulation-related methods

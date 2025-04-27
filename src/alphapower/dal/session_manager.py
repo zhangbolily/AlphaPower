@@ -3,8 +3,9 @@ import logging
 import traceback
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Dict, Optional, Set, Type
+from typing import Any, AsyncGenerator, Dict, Optional, Set, Type
 
+from sqlalchemy import NullPool, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -76,20 +77,61 @@ class SessionManager:
                     )
                     return
 
+                connect_args: Dict[str, Any] = {}
+                execution_options: Dict[str, Any] = {}
+
+                if "sqlite" in config.dsn.scheme:
+                    # SQLite 数据库需要设置连接参数
+                    connect_args = {
+                        "check_same_thread": False,
+                        "timeout": 30, # 连接超时时间，不设置的话出现连接并发冲突会直接报错
+                    }
+                    execution_options = {
+                        "isolation_level": "SERIALIZABLE",
+                    }
+
+                await self.log.ainfo(
+                    "注册数据库引擎",
+                    alias=db,
+                    url=config.dsn.encoded_string(),
+                    readonly=readonly,
+                    force_recreate=force_recreate,
+                    connect_args=connect_args,
+                    execution_options=execution_options,
+                    emoji="🔄",
+                )
+
                 # 创建异步数据库引擎
                 engine: AsyncEngine = create_async_engine(
                     url=config.dsn.encoded_string(),
                     logging_name=db.value,
+                    connect_args=connect_args,
+                    execution_options=execution_options,
+                    poolclass=NullPool,
                 )
                 session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-                # 注册数据库引擎和会话工厂
-                self._engines[db] = engine
-                self._session_factories[db] = session_factory
+                if "sqlite" in config.dsn.scheme:
+                    async with engine.begin() as conn:
+                        await conn.execute(text("PRAGMA journal_mode=WAL;"))
+                        await conn.execute(text("PRAGMA synchronous=NORMAL;"))
+                        await self.log.ainfo(
+                            "SQLite 数据库设置成功",
+                            alias=db,
+                            readonly=readonly,
+                            journal_mode="wal",
+                            synchronous="NORMAL",
+                            force_recreate=force_recreate,
+                            emoji="✅",
+                        )
 
+                # 注册数据库引擎和会话工厂
                 if readonly:
                     self._readonly_engines[db] = engine
                     self._readonly_session_factories[db] = session_factory
+                else:
+                    self._engines[db] = engine
+                    self._session_factories[db] = session_factory
 
                 await self.log.adebug(
                     "数据库引擎注册信息",
@@ -97,6 +139,8 @@ class SessionManager:
                     url=config.dsn.encoded_string(),
                     readonly=readonly,
                     force_recreate=force_recreate,
+                    connect_args=connect_args,
+                    emoji="🔧",
                 )
         except ValueError as ve:
             await self.log.aerror(
@@ -253,7 +297,7 @@ class SessionManager:
         )
         session: AsyncSession = session_factory()
         session_id: uuid.UUID = uuid.uuid4()
-        session.info["session_id"] = session_id.hex
+        session.info["session_id"] = session_id
 
         await self.log.ainfo(
             "成功获取数据库会话",

@@ -215,52 +215,52 @@ class EvaluateRecord(Base):
         nullable=False,
         comment="Alpha ID",  # 添加字段注释
     )
-    in_sample_pnl: MappedColumn[float] = mapped_column(
+    is_pnl: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内收益",  # 添加字段注释
     )
-    in_sample_long_count: MappedColumn[int] = mapped_column(
+    is_long_count: MappedColumn[int] = mapped_column(
         Integer,
         nullable=False,
         comment="样本内多头持仓数",  # 添加字段注释
     )
-    in_sample_short_count: MappedColumn[int] = mapped_column(
+    is_short_count: MappedColumn[int] = mapped_column(
         Integer,
         nullable=False,
         comment="样本内空头持仓数",  # 添加字段注释
     )
-    in_sample_book_size: MappedColumn[float] = mapped_column(
+    is_book_size: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内持仓规模",  # 添加字段注释
     )
-    in_sample_turnover: MappedColumn[float] = mapped_column(
+    is_turnover: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内换手率",  # 添加字段注释
     )
-    in_sample_returns: MappedColumn[float] = mapped_column(
+    is_returns: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内收益率",  # 添加字段注释
     )
-    in_sample_drawdown: MappedColumn[float] = mapped_column(
+    is_drawdown: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内最大回撤",  # 添加字段注释
     )
-    in_sample_sharpe: MappedColumn[float] = mapped_column(
+    is_sharpe: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内夏普比率",  # 添加字段注释
     )
-    in_sample_fitness: MappedColumn[float] = mapped_column(
+    is_fitness: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内拟合度",  # 添加字段注释
     )
-    in_sample_margin: MappedColumn[float] = mapped_column(
+    is_margin: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
         comment="样本内保证金",  # 添加字段注释
@@ -301,6 +301,11 @@ class EvaluateRecord(Base):
         JSON,
         nullable=True,
         comment="检查记录 (JSON)",  # 添加字段注释
+    )
+    evaluator: MappedColumn[str] = mapped_column(
+        String(32),
+        nullable=False,
+        comment="评估者",  # 添加字段注释
     )
     created_at: MappedColumn[datetime] = mapped_column(
         DateTime,

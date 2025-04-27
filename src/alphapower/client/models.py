@@ -476,7 +476,7 @@ class AlphaPropertiesPayload(BaseModel):
 
     color: Optional[str] = None
     name: Optional[str] = None
-    tags: Optional[List[str]] = None
+    tags: List[str]
     category: Optional[str] = None
     regular: Regular = Regular()
 
