@@ -30,14 +30,14 @@ class DatabaseTaskProvider(AbstractTaskProvider):
     - 提供任务调度确认功能。
     """
 
-    def __init__(self, sample_rate: int = 1) -> None:
+    def __init__(self, sample_rate: int = 1, cursor: int = 0) -> None:
         """
         初始化任务提供者。
 
         参数：
         - sample_rate (int): 采样率，用于跳采样任务，默认为 1（不跳采样）。
         """
-        self.cursor = 0
+        self.cursor = cursor
         self.committing_scheduled_task_ids: Set[int] = set()
         self._lock = asyncio.Lock()
         self._sample_rate = sample_rate  # 新增采样率参数

@@ -32,6 +32,7 @@ from alphapower.view.alpha import (
     AlphaDetailView,
     SelfAlphaListView,
 )
+from alphapower.view.simulation import SingleSimulationResultView
 
 from .checks_view import BeforeAndAfterPerformanceView, SubmissionCheckResultView
 from .common_view import TableView
@@ -49,7 +50,6 @@ from .models import (
     RateLimit,
     SelfSimulationActivitiesView,
     SimulationProgressView,
-    SingleSimulationResultView,
 )
 
 log: BoundLogger = get_logger(module_name=__name__)
@@ -215,7 +215,7 @@ async def set_alpha_properties(
 
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHAS}/{alpha_id}"
     async with session.patch(
-        url, json=properties.model_dump(mode="python")
+        url, json=properties.model_dump(mode="json", by_alias=True)
     ) as response:
         response.raise_for_status()
         return AlphaDetailView.model_validate(

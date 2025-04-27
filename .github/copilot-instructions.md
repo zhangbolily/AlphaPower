@@ -10,10 +10,10 @@
 - 总是使用异步 IO
 
 日志输出规范：
-- 日志输出使用 alphapower.internal.logging 中 setup_logging 获取日志对象
+- 日志输出使用 alphapower.internal.logging 中 get_logger 获取日志对象 BoundLogger
 - 日志框架是 structlog 注意使用对应风格的字段打印方法
-- async 方法中总是使用 structlog 的异步接口，用 await 去调用
-- 同步方法中总是使用 structlog 的同步接口
+- async 方法中总是使用 structlog 的异步接口 ainfo awarning adebug aerror 等，用 await 去调用
+- 同步方法中总是使用 structlog 的同步接口 info warning debug error 等
 - 变量解除引用输出内容，除非特别指明打印变量的指针地址
 - 长度超过 80 的日志行必须进行断行拼接
 - 调试日志至少要覆盖函数入参、出参

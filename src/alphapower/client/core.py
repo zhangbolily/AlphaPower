@@ -18,6 +18,7 @@ from alphapower.view.alpha import (
     SelfAlphaListQueryParams,
     SelfAlphaListView,
 )
+from alphapower.view.simulation import SingleSimulationResultView
 
 from .checks_view import BeforeAndAfterPerformanceView, SubmissionCheckResultView
 from .common_view import TableView
@@ -38,7 +39,6 @@ from .models import (
     RateLimit,
     SimulationProgressView,
     SingleSimulationPayload,
-    SingleSimulationResultView,
 )
 from .raw_api import (
     alpha_fetch_before_and_after_performance,
@@ -218,7 +218,7 @@ class WorldQuantClient:
             raise RuntimeError("会话未初始化")
 
         success, progress_id, retry_after = await create_single_simulation(
-            self.session, payload.to_params()
+            self.session, payload.model_dump(mode="json", by_alias=True)
         )
         return success, progress_id, retry_after
 
@@ -234,7 +234,7 @@ class WorldQuantClient:
             raise RuntimeError("会话未初始化")
 
         success, progress_id, retry_after = await create_multi_simulation(
-            self.session, payload.to_params()
+            self.session, payload.model_dump(mode="json", by_alias=True)
         )
         return success, progress_id, retry_after
 

@@ -2,7 +2,6 @@
 日志模块
 """
 
-import asyncio
 import logging
 import os
 import sys
@@ -23,26 +22,6 @@ def unicode_decoder(
     for key, value in event_dict.items():
         if isinstance(value, bytes):
             event_dict[key] = value.decode("utf-8")
-    return event_dict
-
-
-def add_coroutine_id(
-    _: Any, __: str, event_dict: MutableMapping[str, Any]
-) -> Mapping[str, Any]:
-    """
-    添加当前协程ID到日志事件中。
-
-    如果当前是在协程中运行，则添加协程ID；否则添加线程ID。
-    """
-    try:
-        # 尝试获取当前协程的任务
-        task = asyncio.current_task()
-        if task:
-            # 如果是协程，添加协程ID
-            event_dict["coroutine_id"] = id(task)
-    except RuntimeError:
-        event_dict["coroutine_id"] = None
-
     return event_dict
 
 
@@ -87,7 +66,6 @@ def get_logger(
                 # structlog.processors.CallsiteParameter.PATHNAME, # 路径通常较长，暂不添加
             }
         ),
-        add_coroutine_id,  # 添加协程或线程 ID
         unicode_decoder,  # 解码字节字符串为 UTF-8
     ]
 

@@ -12,7 +12,6 @@ from alphapower.client import (
     SimulationProgressView,
     SimulationSettingsView,
     SingleSimulationPayload,
-    SingleSimulationResultView,
     WorldQuantClient,
 )
 from alphapower.constants import (
@@ -21,12 +20,15 @@ from alphapower.constants import (
     ROLE_USER,
     AlphaType,
     Database,
+    SimulationResultStatus,
+    SimulationTaskStatus,
     UserRole,
 )
 from alphapower.dal.session_manager import session_manager
 from alphapower.dal.simulation import SimulationTaskDAL
-from alphapower.entity import SimulationTask, SimulationTaskStatus
+from alphapower.entity import SimulationTask
 from alphapower.internal.logging import get_logger
+from alphapower.view.simulation import SingleSimulationResultView
 
 from .scheduler_abc import AbstractScheduler
 from .worker_abc import AbstractWorker
@@ -195,7 +197,7 @@ class Worker(AbstractWorker):
         task.result = result.model_dump(mode="json")  # 保存原始结果，用户后续评估分析
         task.child_progress_id = result.id
         try:
-            task.status = SimulationTaskStatus(result.status)
+            task.status = SimulationTaskStatus(result.status.value)
         except ValueError:
             await self.log.aerror(
                 event="收到未知的任务状态",
@@ -382,7 +384,7 @@ class Worker(AbstractWorker):
             # 模拟一个成功的响应
             mock_result = SingleSimulationResultView(
                 id=f"dry-run-single-{task.id}",
-                status=SimulationTaskStatus.COMPLETE.value,  # 使用枚举值
+                status=SimulationResultStatus.COMPLETE,  # 使用枚举值
                 alpha=f"dry-run-alpha-{task.id}",  # 模拟 Alpha ID
                 type=task.type,  # 使用任务的类型
             )
@@ -595,7 +597,7 @@ class Worker(AbstractWorker):
                 task_ids=task_ids,
                 result_status=result.status,
             )
-            return
+            # 不要返回，还有子任务需要处理
 
         # 内部函数处理单个子任务结果，DEBUG 级别详细跟踪
         async def handle_finished_task(task: SimulationTask, child_id: str) -> None:
@@ -614,7 +616,7 @@ class Worker(AbstractWorker):
                 )
                 mock_result: SingleSimulationResultView = SingleSimulationResultView(
                     id=child_id,  # 使用传入的 child_id
-                    status=SimulationTaskStatus.COMPLETE.value,
+                    status=SimulationResultStatus.COMPLETE,
                     alpha=f"dry-run-alpha-{task.id}",
                     type=task.type,
                 )
@@ -629,14 +631,16 @@ class Worker(AbstractWorker):
                         task_id=task.id,
                         child_progress_id=child_id,
                     )
-                    success: bool
+                    finished: bool
                     child_result: Optional[SingleSimulationResultView]
-                    success, child_result = (
+                    dal: SimulationTaskDAL
+
+                    finished, child_result = (
                         await self._client.simulation_get_child_result(
                             child_progress_id=child_id,
                         )
                     )
-                    if not success or not isinstance(
+                    if not finished or not isinstance(
                         child_result, SingleSimulationResultView
                     ):
                         await self.log.aerror(
@@ -644,7 +648,7 @@ class Worker(AbstractWorker):
                             emoji="❌",
                             task_id=task.id,
                             child_progress_id=child_id,
-                            success=success,
+                            finished=finished,
                             result_type=type(child_result).__name__,
                         )
                         # 标记任务为错误状态
@@ -654,7 +658,7 @@ class Worker(AbstractWorker):
                             session_manager.get_session(Database.SIMULATION) as session,
                             session.begin(),
                         ):
-                            dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                            dal = SimulationTaskDAL(session)
                             await dal.update(task)
                         return
 
@@ -682,7 +686,7 @@ class Worker(AbstractWorker):
                         session_manager.get_session(Database.SIMULATION) as session,
                         session.begin(),
                     ):
-                        dal: SimulationTaskDAL = SimulationTaskDAL(session)
+                        dal = SimulationTaskDAL(session)
                         await dal.update(task)
                 finally:
                     await self.log.adebug(

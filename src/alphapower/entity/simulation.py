@@ -1,28 +1,6 @@
 # -*- coding: utf-8 -*-
-"""模拟任务实体类模块。
 
-此模块定义了与模拟任务相关的数据库模型，包括任务的各种属性和状态。
-这些模型用于在数据库中表示和跟踪模拟任务的生命周期。
 
-Example:
-    创建一个新的模拟任务：
-
-    ```python
-    task = SimulationTask(
-        type=AlphaType.REGULAR,
-        settings={"param1": "value1"},
-        settings_group_key="group1",
-        regular="regular_value",
-        status=SimulationTaskStatus.PENDING,
-        signature="unique_signature"
-    )
-    ```
-
-Attributes:
-    Base (DeclarativeBase): 基础数据库模型类，支持异步操作。
-"""
-
-import enum
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
@@ -50,6 +28,7 @@ from alphapower.constants import (
     Neutralization,
     Region,
     RegularLanguage,
+    SimulationTaskStatus,
     Switch,
     Truncation,
     UnitHandling,
@@ -63,81 +42,10 @@ from alphapower.constants import (
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    """基础数据库模型类。
-
-    为所有实体模型提供异步操作支持的基础类。
-    继承此类的模型可以使用异步方法与数据库交互。
-    """
-
-
-class SimulationTaskStatus(enum.Enum):
-    """模拟任务的状态枚举。
-
-    定义了模拟任务在其生命周期中可能处于的不同状态。
-    这些状态反映了任务从创建到完成的整个过程。
-
-    Attributes:
-        PENDING: 任务已创建但尚未计划执行。
-        NOT_SCHEDULABLE:
-            任务无法调度，可以根据任务执行结果反馈信息，\n
-            并由调度提示去干预阻止任务调度。
-        SCHEDULED: 任务已被计划在特定时间执行。
-        RUNNING: 任务当前正在执行中。
-        COMPLETE: 任务已成功完成。
-        ERROR: 任务执行过程中遇到错误。
-        CANCELLED: 任务被用户或系统取消。
-    """
-
-    DEFAULT = "DEFAULT"
-    PENDING = "PENDING"
-    NOT_SCHEDULABLE = "NOT_SCHEDULABLE"
-    SCHEDULED = "SCHEDULED"
-    RUNNING = "RUNNING"
-    COMPLETE = "COMPLETE"
-    ERROR = "ERROR"
-    CANCELLED = "CANCELLED"
-    FAIL = "FAIL"
-    WARNING = "WARNING"
+    pass
 
 
 class SimulationTask(Base):
-    """模拟任务的数据库实体模型。
-
-    该模型表示系统中的一个模拟计算任务，记录任务的完整生命周期和相关属性。
-    模型定义了任务的状态、配置、优先级以及时间戳等信息，用于追踪和管理模拟过程。
-
-    Attributes:
-        id (int): 主键，模拟任务的自增标识符。
-        type (AlphaType): 任务类型枚举，表示模拟任务的类别。
-        settings (dict): JSON 字段，包含任务的配置参数和设置。
-        settings_group_key (str): 任务分组键，用于相关任务的分组查询，已建立索引。
-        regular (str): 模拟任务中特定用途的字符串字段。
-        parent_progress_id (str, optional): 父级进度的标识符，用于多级任务结构。
-        child_progress_id (str, optional): 子级进度的标识符，用于多级任务结构。
-        status (SimulationTaskStatus): 表示任务当前状态的枚举值。
-        alpha_id (str, optional): 关联 alpha 组件的标识符（如适用）。
-        priority (int): 任务的执行优先级，值越高优先级越高，默认为 0。
-        result (dict, optional): JSON 字段，存储任务执行结果。
-        signature (str): 任务的唯一签名，用于标识和去重。
-        created_at (datetime): 任务创建时间。
-        scheduled_at (datetime, optional): 任务计划执行的时间。
-        updated_at (datetime): 任务上次更新的时间。
-        deleted_at (datetime, optional): 任务软删除的时间（如适用）。
-        description (str, optional): 任务的描述文本。
-        tags (str, optional): 与任务关联的标签，用于分类和筛选。
-        dependencies (dict, optional): JSON 字段，描述任务的依赖关系。
-        completed_at (datetime, optional): 任务完成的时间。
-        instrument_type (InstrumentType): 使用的金融工具类型，定义了任务处理的金融产品类别。
-        region (Region): Alpha 应用的市场区域，指定了任务所针对的地理市场范围。
-        universe (Universe): Alpha 选用的股票范围，确定了模拟中包含的证券集合。
-        delay (Delay): 信号延迟时间（单位：天），模拟交易执行中的实际延迟。
-        decay (Optional[int]): 信号衰减参数，控制信号随时间的衰减速率。
-        neutralization (Neutralization): 中性化方法，用于降低特定风险因子的敞口。
-        truncation (Optional[float]): 截断阈值，控制异常值对模型的影响程度。
-        pasteurization (Switch): 巴氏化处理方法，用于数据清洗和预处理。
-        unit_handling (UnitHandling): 单位处理策略，定义了如何处理不同度量单位的数据。
-    """
-
     __tablename__ = "simulation_tasks"
 
     # 标识符字段
@@ -219,11 +127,6 @@ class SimulationTask(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     def __init__(self, **kwargs: Any) -> None:
-        """初始化模拟任务对象，处理特殊属性。
-
-        Args:
-            **kwargs: 包含所有模型属性的关键字参数。
-        """
         # 处理 tags 属性 (如果存在)
         tags: Optional[List[str]] = kwargs.pop("tags", None)
         self._initializing: bool = True
@@ -257,7 +160,6 @@ class SimulationTask(Base):
         self.validate_field_relationships()
 
     def _update_settings_group_key(self) -> None:
-        """根据 region、delay、language 和 instrument_type 生成并更新 settings_group_key"""
         if self.region and self.delay and self.language and self.instrument_type:
             # 存在 None 的情况，都视为初始化未完成的实例，不要执行自动更新操作
             self.settings_group_key = (
@@ -266,7 +168,6 @@ class SimulationTask(Base):
             )
 
     def validate_field_relationships(self) -> None:
-        """验证字段间的关系是否符合业务规则"""
         if self.region == Region.DEFAULT:
             raise ValueError("region 不能使用 DEFAULT 值")
         if self.instrument_type == InstrumentType.DEFAULT:
@@ -336,7 +237,6 @@ class SimulationTask(Base):
 
     @hybrid_property
     def tags(self) -> Optional[List[str]]:
-        """获取标签列表，确保标签唯一性"""
         if self._tags is None:
             return None
         return sorted(
@@ -345,7 +245,6 @@ class SimulationTask(Base):
 
     @tags.setter  # type: ignore[no-redef]
     def tags(self, value: Optional[List[str]]) -> None:
-        """设置标签列表，确保标签唯一性"""
         if value is None:
             self._tags = None
         else:
@@ -365,7 +264,6 @@ class SimulationTask(Base):
             )
 
     def add_tag(self, tag: str) -> None:
-        """添加单个标签到标签列表"""
         if not tag or not tag.strip():
             return
 
@@ -375,7 +273,6 @@ class SimulationTask(Base):
             self.tags = current_tags  # type: ignore[method-assign]
 
     def remove_tag(self, tag: str) -> None:
-        """从标签列表中移除单个标签"""
         if not tag or not tag.strip() or not self.tags:
             return
 
@@ -395,15 +292,6 @@ def validate_before_insert(
     connection: Connection,  # pylint: disable=unused-argument
     target: SimulationTask,
 ) -> None:
-    """在对象插入前验证字段关系
-    通过 SQLAlchemy 事件监听器，确保在对象插入前重新验证字段关系。
-    这确保了在对象属性变更后，字段间的关系仍然符合业务规则。
-
-    Args:
-        mapper: SQLAlchemy映射器对象
-        connection: 数据库连接对象
-        target: 插入前的SimulationTask实例
-    """
     target.validate_field_relationships()
     target._update_settings_group_key()  # pylint: disable=W0212
 
@@ -414,14 +302,5 @@ def validate_before_update(
     connection: Connection,  # pylint: disable=unused-argument
     target: SimulationTask,
 ) -> None:
-    """在对象更新前验证字段关系
-    通过 SQLAlchemy 事件监听器，确保在对象更新前重新验证字段关系。
-    这确保了在对象属性变更后，字段间的关系仍然符合业务规则。
-
-    Args:
-        mapper: SQLAlchemy映射器对象
-        connection: 数据库连接对象
-        target: 更新前的SimulationTask实例
-    """
     target.validate_field_relationships()
     target._update_settings_group_key()  # pylint: disable=W0212

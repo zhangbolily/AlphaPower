@@ -24,8 +24,8 @@ def setup_sqlalchemy_logging() -> None:
     logging.basicConfig()
     engine_logger: logging.Logger = logging.getLogger("sqlalchemy.engine")
     pool_logger: logging.Logger = logging.getLogger("sqlalchemy.pool")
-    engine_logger.setLevel(settings.log_level)
-    pool_logger.setLevel(settings.log_level)
+    engine_logger.setLevel(settings.sql_log_level)
+    pool_logger.setLevel(settings.sql_log_level)
 
 
 class SessionManager:
@@ -95,7 +95,6 @@ class SessionManager:
                     "数据库引擎注册信息",
                     alias=db,
                     url=config.dsn.encoded_string(),
-                    echo=settings.sql_echo,
                     readonly=readonly,
                     force_recreate=force_recreate,
                 )

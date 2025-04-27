@@ -64,7 +64,7 @@ class AppConfig(BaseSettings):
     log_dir: str = "./logs"
     log_file_max_bytes: int = 32 * 1024 * 1024  # 5 MB
     log_file_backup_count: int = 3
-    sql_echo: bool = True
+    sql_log_level: str = "WARNING"
     environment: str = Environment.PROD.value
     credential: CredentialConfig = CredentialConfig()
     root_dir: pathlib.Path = Field(

@@ -266,6 +266,11 @@ async def datafields(
 @click.option("--task-fetch-size", default=10, help="每次从任务提供者获取的任务数量")
 @click.option("--sample-rate", default=1, help="任务跳采样率")
 @click.option("--low-priority-threshold", default=10, help="低优先级任务提升阈值")
+@click.option(
+    "--cursor",
+    default=0,
+    help="任务提供者的游标，默认为 0",
+)
 async def start_worker_pool(
     initial_workers: int,
     dry_run: bool,
@@ -273,37 +278,58 @@ async def start_worker_pool(
     task_fetch_size: int,
     low_priority_threshold: int,
     sample_rate: int,
+    cursor: int,
 ) -> None:
     """
     启动工作池以执行模拟任务。
 
-    Args:
+    参数:
         initial_workers (int): 初始工作者数量。
         dry_run (bool): 是否以仿真模式运行。
         worker_timeout (int): 工作者健康检查超时时间（秒）。
         task_fetch_size (int): 每次从任务提供者获取的任务数量。
         low_priority_threshold (int): 低优先级任务提升阈值。
+        sample_rate (int): 跳采样率（sample rate）。
+        cursor (int): 任务游标（cursor）。
 
-    Returns:
+    返回:
         None
 
-    Raises:
+    异常:
         Exception: 如果工作池启动过程中发生错误。
     """
+    # INFO 日志，记录方法进入
     await logger.ainfo(
-        f"启动工作池，参数: initial_workers={initial_workers}, dry_run={dry_run}, "
-        f"worker_timeout={worker_timeout}, task_fetch_size={task_fetch_size}, "
-        f"low_priority_threshold={low_priority_threshold}",
+        "启动模拟任务工作池。",
         emoji="⚙️",
-    )
-    await task_start_worker_pool(
         initial_workers=initial_workers,
         dry_run=dry_run,
         worker_timeout=worker_timeout,
         task_fetch_size=task_fetch_size,
         low_priority_threshold=low_priority_threshold,
         sample_rate=sample_rate,
+        cursor=cursor,
     )
+    try:
+        await task_start_worker_pool(
+            initial_workers=initial_workers,
+            dry_run=dry_run,
+            worker_timeout=worker_timeout,
+            task_fetch_size=task_fetch_size,
+            low_priority_threshold=low_priority_threshold,
+            sample_rate=sample_rate,
+            cursor=cursor,
+        )
+        # INFO 日志，记录方法退出
+        await logger.ainfo("模拟任务工作池结束。", emoji="✅")
+    except Exception as e:
+        # ERROR 日志，记录异常和堆栈
+        await logger.aerror(
+            f"模拟任务工作池启动失败，原因: {e}",
+            emoji="❌",
+            exc_info=True,
+        )
+        raise
 
 
 if __name__ == "__main__":

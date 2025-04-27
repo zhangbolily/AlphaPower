@@ -86,8 +86,12 @@ ENDPOINT_SIMULATION: Final[str] = "simulations"
 
 # 用户活动端点
 ENDPOINT_ACTIVITIES: Final[str] = "/users/self/activities/"
-ENDPOINT_ACTIVITIES_SIMULATIONS: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "simulations")
-ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "pyramid-alphas")
+ENDPOINT_ACTIVITIES_SIMULATIONS: Final[str] = urljoin(
+    ENDPOINT_ACTIVITIES, "simulations"
+)
+ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS: Final[str] = urljoin(
+    ENDPOINT_ACTIVITIES, "pyramid-alphas"
+)
 ENDPOINT_ACTIVITIES_DIVERSITY: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "diversity")
 
 
@@ -599,6 +603,30 @@ class CompetitionScoring(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CHALLENGE = "CHALLENGE"  # 挑战赛
     PERFORMANCE = "PERFORMANCE"  # 性能赛
+
+
+class SimulationResultStatus(Enum):
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    COMPLETE = "COMPLETE"  # 完成
+    WARNING = "WARNING"  # 警告
+    FAIL = "FAIL"  # 失败
+    ERROR = "ERROR"  # 错误
+    CANCELLED = "CANCELLED"  # 已取消
+
+
+class SimulationTaskStatus(Enum):
+    # SimulationTaskStatus 是 SimulationResultStatus 的超集
+
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    COMPLETE = "COMPLETE"  # 完成
+    WARNING = "WARNING"  # 警告
+    FAIL = "FAIL"  # 失败
+    ERROR = "ERROR"  # 错误
+    CANCELLED = "CANCELLED"  # 已取消
+    PENDING = "PENDING"
+    NOT_SCHEDULABLE = "NOT_SCHEDULABLE"
+    SCHEDULED = "SCHEDULED"
+    RUNNING = "RUNNING"
 
 
 # -----------------------------------------------------------------------------
