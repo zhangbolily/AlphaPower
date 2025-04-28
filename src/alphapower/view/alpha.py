@@ -249,6 +249,11 @@ class AlphaView(BaseModel):
     team: Optional[str] = None
 
 
+StringListAdapter: TypeAdapter[List[str]] = TypeAdapter(
+    List[str],
+)
+
+
 class AlphaDetailView(BaseModel):
 
     id: str

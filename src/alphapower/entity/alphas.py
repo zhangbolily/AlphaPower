@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     event,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -50,6 +51,7 @@ from alphapower.view.alpha import (
     ExpressionView,
     PyramidRefView,
     PyramidRefViewListAdapter,
+    StringListAdapter,
     SubmissionCheckView,
     SubmissionCheckViewListAdapter,
 )
@@ -80,18 +82,18 @@ class Competition(Base):
 
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     competition_id: MappedColumn[str] = mapped_column(
-        String, nullable=False, unique=True
+        String(256), nullable=False, unique=True
     )
-    name: MappedColumn[str] = mapped_column(String)
-    description: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    _universities: MappedColumn[Optional[str]] = mapped_column(
-        String, nullable=True, name="universities"
+    name: MappedColumn[str] = mapped_column(String(256))
+    description: MappedColumn[Optional[str]] = mapped_column(Text, nullable=True)
+    _universities: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON, nullable=True, name="universities"
     )
-    _countries: MappedColumn[Optional[str]] = mapped_column(
-        String, nullable=True, name="countries"
+    _countries: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON, nullable=True, name="countries"
     )
-    _excluded_countries: MappedColumn[Optional[str]] = mapped_column(
-        String, nullable=True, name="excluded_countries"
+    _excluded_countries: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON, nullable=True, name="excluded_countries"
     )
     status: MappedColumn[CompetitionStatus] = mapped_column(
         Enum(CompetitionStatus), nullable=False
@@ -110,7 +112,7 @@ class Competition(Base):
     sign_up_date: MappedColumn[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
     )
-    team: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    team: MappedColumn[Optional[str]] = mapped_column(String(256), nullable=True)
     scoring: MappedColumn[CompetitionScoring] = mapped_column(
         Enum(CompetitionScoring), nullable=False
     )
@@ -120,7 +122,7 @@ class Competition(Base):
     prize_board: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     university_board: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     submissions: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
-    faq: MappedColumn[str] = mapped_column(String, nullable=True)
+    faq: MappedColumn[str] = mapped_column(String(512), nullable=True)
     progress: MappedColumn[Optional[float]] = mapped_column(Float, nullable=True)
 
     @hybrid_property
@@ -128,7 +130,8 @@ class Competition(Base):
 
         if self._universities is None:
             return []
-        return [university.strip() for university in self._universities.split(",")]
+        universities: List[str] = StringListAdapter.validate_python(self._universities)
+        return universities
 
     @universities.setter  # type: ignore[no-redef]
     def universities(self, value: Optional[List[str]]) -> None:
@@ -136,18 +139,9 @@ class Competition(Base):
         if value is None:
             self._universities = None
         else:
-            self._universities = ",".join(
-                filter(
-                    None,
-                    [
-                        (
-                            university.strip()
-                            if isinstance(university, str)
-                            else str(university)
-                        )
-                        for university in value
-                    ],
-                )
+            self._universities = StringListAdapter.dump_python(
+                value,
+                mode="json",
             )
 
     @hybrid_property
@@ -155,7 +149,8 @@ class Competition(Base):
 
         if self._countries is None:
             return []
-        return [country.strip() for country in self._countries.split(",")]
+        countries: List[str] = StringListAdapter.validate_python(self._countries)
+        return countries
 
     @countries.setter  # type: ignore[no-redef]
     def countries(self, value: Optional[List[str]]) -> None:
@@ -163,14 +158,9 @@ class Competition(Base):
         if value is None:
             self._countries = None
         else:
-            self._countries = ",".join(
-                filter(
-                    None,
-                    [
-                        country.strip() if isinstance(country, str) else str(country)
-                        for country in value
-                    ],
-                )
+            self._countries = StringListAdapter.dump_python(
+                value,
+                mode="json",
             )
 
     @hybrid_property
@@ -178,7 +168,10 @@ class Competition(Base):
 
         if self._excluded_countries is None:
             return []
-        return [country.strip() for country in self._excluded_countries.split(",")]
+        excluded_countries: List[str] = StringListAdapter.validate_python(
+            self._excluded_countries
+        )
+        return excluded_countries
 
     @excluded_countries.setter  # type: ignore[no-redef]
     def excluded_countries(self, value: Optional[List[str]]) -> None:
@@ -186,14 +179,9 @@ class Competition(Base):
         if value is None:
             self._excluded_countries = None
         else:
-            self._excluded_countries = ",".join(
-                filter(
-                    None,
-                    [
-                        country.strip() if isinstance(country, str) else str(country)
-                        for country in value
-                    ],
-                )
+            self._excluded_countries = StringListAdapter.dump_python(
+                value,
+                mode="json",
             )
 
 
@@ -277,11 +265,13 @@ class Alpha(Base):
     alpha_id: MappedColumn[str] = mapped_column(
         String(ALPHA_ID_LENGTH), nullable=False, unique=True
     )
-    author: MappedColumn[str] = mapped_column(String, nullable=False)
-    name: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    category: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    themes: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
-    team: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    author: MappedColumn[str] = mapped_column(String(16), nullable=False)
+    name: MappedColumn[Optional[str]] = mapped_column(String(128), nullable=True)
+    category: MappedColumn[Optional[str]] = mapped_column(String(16), nullable=True)
+    _themes: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON, nullable=True, name="themes"
+    )
+    team: MappedColumn[Optional[str]] = mapped_column(String(256), nullable=True)
     favorite: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     hidden: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
     type: MappedColumn[AlphaType] = mapped_column(
@@ -304,7 +294,7 @@ class Alpha(Base):
     language: MappedColumn[RegularLanguage] = mapped_column(
         Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
     )
-    test_period: MappedColumn[Optional[str]] = mapped_column(String, nullable=True)
+    test_period: MappedColumn[Optional[str]] = mapped_column(String(64), nullable=True)
     decay: MappedColumn[int] = mapped_column(Integer, nullable=False)
     truncation: MappedColumn[float] = mapped_column(Float, nullable=False)
     visualization: MappedColumn[bool] = mapped_column(Boolean, nullable=False)
@@ -415,10 +405,11 @@ class Alpha(Base):
     _competitions: MappedColumn[JSON] = mapped_column(
         JSON, nullable=True, name="competitions"
     )
-    _tags: MappedColumn[Optional[str]] = mapped_column(String, name="tags")
+    _tags: MappedColumn[Optional[JSON]] = mapped_column(JSON, name="tags")
 
     def __init__(self, **kwargs: Any) -> None:
 
+        themes: Optional[List[str]] = kwargs.pop("themes", None)
         regular: Optional[ExpressionView] = kwargs.pop("regular", None)
         combo: Optional[ExpressionView] = kwargs.pop("combo", None)
         selection: Optional[ExpressionView] = kwargs.pop("selection", None)
@@ -433,11 +424,9 @@ class Alpha(Base):
 
         super().__init__(**kwargs)
         if tags is not None:
-            self._tags = ",".join(
-                filter(
-                    None,
-                    [tag.strip() if isinstance(tag, str) else str(tag) for tag in tags],
-                )
+            self._tags = StringListAdapter.dump_python(
+                tags,
+                mode="json",
             )
 
         self._regular_view_cache: Optional[ExpressionView] = None
@@ -446,6 +435,12 @@ class Alpha(Base):
         self._pyramids_view_cache: Optional[List[PyramidRefView]] = None
         self._classifications_view_cache: Optional[List[ClassificationRefView]] = None
         self._competitions_view_cache: Optional[List[CompetitionRefView]] = None
+
+        if themes is not None:
+            self._themes = StringListAdapter.dump_python(
+                themes,
+                mode="json",
+            )
 
         if regular is not None:
             self._regular = cast(Any, regular.model_dump(mode="json"))
@@ -479,6 +474,23 @@ class Alpha(Base):
                 mode="json",
             )
             self._competitions_view_cache = competitions
+
+    @hybrid_property
+    def themes(self) -> List[str]:
+        if self._themes is None:
+            return []
+        themes: List[str] = StringListAdapter.validate_python(self._themes)
+        return themes
+
+    @themes.setter  # type: ignore[no-redef]
+    def themes(self, value: Optional[List[str]]) -> None:
+        if value is None:
+            self._themes = None
+        else:
+            self._themes = StringListAdapter.dump_python(
+                value,
+                mode="json",
+            )
 
     @hybrid_property
     def regular(self) -> Optional[ExpressionView]:
@@ -666,7 +678,7 @@ class Alpha(Base):
 
         if self._tags is None:
             return []
-        return [tag.strip() for tag in self._tags.split(",") if tag.strip()]
+        return StringListAdapter.validate_python(self._tags)
 
     @tags.setter  # type: ignore[no-redef]
     def tags(self, value: Optional[List[str]]) -> None:
@@ -674,14 +686,9 @@ class Alpha(Base):
         if value is None:
             self._tags = None
         else:
-            self._tags = ",".join(
-                filter(
-                    None,
-                    [
-                        tag.strip() if isinstance(tag, str) else str(tag)
-                        for tag in value
-                    ],
-                )
+            self._tags = StringListAdapter.dump_python(
+                value,
+                mode="json",
             )
 
     def add_tag(self, tag: str) -> None:

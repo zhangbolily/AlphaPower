@@ -5,7 +5,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, Optional, Set, Type
 
-from sqlalchemy import NullPool, text
+from sqlalchemy import AsyncAdaptedQueuePool, NullPool, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -79,16 +79,24 @@ class SessionManager:
 
                 connect_args: Dict[str, Any] = {}
                 execution_options: Dict[str, Any] = {}
+                poolclass: Optional[Type] = None
 
                 if "sqlite" in config.dsn.scheme:
                     # SQLite 数据库需要设置连接参数
                     connect_args = {
                         "check_same_thread": False,
-                        "timeout": 30, # 连接超时时间，不设置的话出现连接并发冲突会直接报错
+                        "timeout": 30,  # 连接超时时间，不设置的话出现连接并发冲突会直接报错
                     }
                     execution_options = {
                         "isolation_level": "SERIALIZABLE",
                     }
+                    poolclass = NullPool
+
+                if "mysql" in config.dsn.scheme:
+                    connect_args = {
+                        "charset": "utf8mb4",
+                    }
+                    poolclass = AsyncAdaptedQueuePool
 
                 await self.log.ainfo(
                     "注册数据库引擎",
@@ -107,7 +115,7 @@ class SessionManager:
                     logging_name=db.value,
                     connect_args=connect_args,
                     execution_options=execution_options,
-                    poolclass=NullPool,
+                    poolclass=poolclass,
                 )
                 session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -303,6 +311,7 @@ class SessionManager:
             "成功获取数据库会话",
             database=db,
             session_id=session_id,
+            session=session,
             readonly=readonly,
             emoji="🔄",
         )

@@ -162,6 +162,7 @@ class BaseDAL(Generic[T]):
         """
         actual_session: AsyncSession = self._actual_session(session)
         actual_session.add(entity)
+        await actual_session.flush()
         return entity
 
     async def bulk_create(
@@ -218,14 +219,14 @@ class BaseDAL(Generic[T]):
         actual_session: AsyncSession = self._actual_session(session)
 
         existing_entity = await self.find_one_by(
-            **{unique_key: getattr(entity, unique_key)}
+            session=actual_session, **{unique_key: getattr(entity, unique_key)}
         )
         if existing_entity:
             entity.id = existing_entity.id
             await actual_session.merge(entity)
             await actual_session.flush()
             return existing_entity
-        return await self.create(entity)
+        return await self.create(entity, session=actual_session)
 
     async def bulk_upsert(
         self, entities: List[T], session: Optional[AsyncSession] = None
@@ -245,7 +246,7 @@ class BaseDAL(Generic[T]):
             return []
 
         ids: List[int] = [entity.id for entity in entities]
-        existing_entities = await self.find_by(in_={"id": ids})
+        existing_entities = await self.find_by(in_={"id": ids}, session=actual_session)
         existing_entities_map: Dict[Any, T] = {
             entity.id: entity for entity in existing_entities
         }
@@ -281,7 +282,9 @@ class BaseDAL(Generic[T]):
             return []
 
         unique_values: List[Any] = [getattr(entity, unique_key) for entity in entities]
-        existing_entities = await self.find_by(in_={unique_key: unique_values})
+        existing_entities = await self.find_by(
+            in_={unique_key: unique_values}, session=actual_session
+        )
         existing_entities_map: Dict[Any, T] = {
             getattr(entity, unique_key): entity for entity in existing_entities
         }

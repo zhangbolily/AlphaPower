@@ -107,8 +107,8 @@ class AlphaSyncService:
                 pyramids=alpha_view.pyramids,
                 competitions=alpha_view.competitions,
                 classifications=alpha_view.classifications,
-                themes=",".join(alpha_view.themes) if alpha_view.themes else None,
-                team=",".join(alpha_view.team) if alpha_view.team else None,
+                themes=alpha_view.themes,
+                team=alpha_view.team,
             )
             return alpha
         except AttributeError as e:
