@@ -13,7 +13,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     JSON,
@@ -25,6 +25,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.ext.hybrid import hybrid_property
 
 # 导入 validates 装饰器
 from sqlalchemy.orm import (
@@ -37,8 +38,12 @@ from alphapower.constants import (
     ALPHA_ID_LENGTH,
     CheckRecordType,
     CorrelationCalcType,
+    Delay,
     RecordSetType,
+    Region,
+    Universe,
 )
+from alphapower.view.alpha import StringListAdapter
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -80,9 +85,9 @@ class Correlation(Base):
         nullable=False,
         comment="第一个 Alpha ID (字典序较小)",  # 添加字段注释
     )
-    alpha_id_b: MappedColumn[str] = mapped_column(
+    alpha_id_b: MappedColumn[Optional[str]] = mapped_column(
         String(ALPHA_ID_LENGTH),
-        nullable=False,
+        nullable=True,
         comment="第二个 Alpha ID (字典序较大)",  # 添加字段注释
     )
     correlation: MappedColumn[float] = mapped_column(
@@ -105,7 +110,7 @@ class Correlation(Base):
     def __init__(
         self,
         alpha_id_a: str,
-        alpha_id_b: str,
+        alpha_id_b: Optional[str],
         correlation: float,
         calc_type: CorrelationCalcType,
         **kw: Any,  # 允许传递其他 SQLAlchemy 可能需要的参数
@@ -122,7 +127,7 @@ class Correlation(Base):
         # 在调用父类构造函数之前排序 alpha_id
         # 这样传递给 SQLAlchemy 核心的值已经是排序好的
         # 避免了在 validates 中需要再次排序和 setattr 的复杂性
-        if alpha_id_a > alpha_id_b:
+        if alpha_id_b is not None and alpha_id_a > alpha_id_b:
             alpha_id_a, alpha_id_b = alpha_id_b, alpha_id_a
 
         # 调用父类构造函数或 SQLAlchemy 的处理逻辑
@@ -215,6 +220,21 @@ class EvaluateRecord(Base):
         nullable=False,
         comment="Alpha ID",  # 添加字段注释
     )
+    region: MappedColumn[Region] = mapped_column(
+        Enum(Region),
+        nullable=False,
+        comment="地区",  # 添加字段注释
+    )
+    delay: MappedColumn[Delay] = mapped_column(
+        Enum(Delay),
+        nullable=False,
+        comment="延迟",  # 添加字段注释
+    )
+    universe: MappedColumn[Universe] = mapped_column(
+        Enum(Universe),
+        nullable=False,
+        comment="投资组合",  # 添加字段注释
+    )
     is_pnl: MappedColumn[float] = mapped_column(
         Float,
         nullable=False,
@@ -280,16 +300,23 @@ class EvaluateRecord(Base):
         nullable=True,
         comment="评分差异，部分场景下会有",  # 添加字段注释
     )
-    matched_unformulated_pyramid: MappedColumn[Optional[int]] = mapped_column(
-        Integer,
+    _matched_unformulated_pyramid: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON,
         nullable=True,
-        comment="匹配未形成金字塔，部分场景下会有",  # 添加字段注释
+        name="matched_unformulated_pyramid",
+        comment="匹配的未形成金字塔",  # 添加字段注释
     )
     pyramid_multiplier: MappedColumn[float] = mapped_column(
         Float,
         default=1.0,
         nullable=True,
         comment="金字塔乘数，部分场景下会有",  # 添加字段注释
+    )
+    _themes: MappedColumn[Optional[JSON]] = mapped_column(
+        JSON,
+        nullable=True,
+        name="themes",
+        comment="主题列表",  # 添加字段注释
     )
     theme_multiplier: MappedColumn[float] = mapped_column(
         Float,
@@ -313,3 +340,84 @@ class EvaluateRecord(Base):
         insert_default=func.now(),  # pylint: disable=E1102
         comment="创建时间",  # 添加字段注释
     )
+
+    def __init__(
+        self,
+        **kwargs: Any,
+    ) -> None:
+        """初始化 EvaluateRecord 对象。
+
+        Args:
+            **kwargs: 其他关键字参数。
+        """
+        if "matched_unformulated_pyramid" in kwargs:
+            matched_unformulated_pyramid = kwargs.pop("matched_unformulated_pyramid")
+            if matched_unformulated_pyramid is None:
+                self._matched_unformulated_pyramid = None
+            else:
+                self._matched_unformulated_pyramid = StringListAdapter.dump_python(
+                    matched_unformulated_pyramid, mode="json"
+                )
+
+        if "themes" in kwargs:
+            themes = kwargs.pop("themes")
+            if themes is None:
+                self._themes = None
+            else:
+                self._themes = StringListAdapter.dump_python(themes, mode="json")
+
+        super().__init__(**kwargs)
+
+    @hybrid_property
+    def matched_unformulated_pyramid(self) -> Optional[List[str]]:
+        """获取匹配的未形成金字塔。
+
+        返回:
+            Optional[List[str]]: 匹配的未形成金字塔列表。
+        """
+        if self._matched_unformulated_pyramid is None:
+            return None
+        matched_unformulated_pyramid: List[str] = StringListAdapter.validate_python(
+            self._matched_unformulated_pyramid
+        )
+
+        return matched_unformulated_pyramid
+
+    @matched_unformulated_pyramid.setter  # type: ignore
+    def matched_unformulated_pyramid(self, value: Optional[List[str]]):
+        """设置匹配的未形成金字塔。
+
+        Args:
+            value (Optional[List[str]]): 匹配的未形成金字塔列表。
+        """
+        if value is None:
+            self._matched_unformulated_pyramid = None
+        else:
+            self._matched_unformulated_pyramid = StringListAdapter.dump_python(
+                value, mode="json"
+            )
+
+    @hybrid_property
+    def themes(self) -> Optional[List[str]]:
+        """获取主题列表。
+
+        返回:
+            Optional[List[str]]: 主题列表。
+        """
+        if self._themes is None:
+            return None
+        themes: List[str] = StringListAdapter.validate_python(self._themes)
+
+        return themes
+
+    @themes.setter  # type: ignore
+    def themes(self, value: Optional[List[str]]):
+        """设置主题列表。
+
+        Args:
+            value (Optional[List[str]]): 主题列表。
+        """
+        if value is None:
+            self._themes = None
+        else:
+            self._themes = StringListAdapter.dump_python(value, mode="json")

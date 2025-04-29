@@ -1,7 +1,8 @@
 import asyncio
 from datetime import date
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
+import pandas as pd
 from structlog.stdlib import BoundLogger
 
 from alphapower.client import (
@@ -13,8 +14,10 @@ from alphapower.client import (
 from alphapower.constants import (
     CONSULTANT_MAX_PROD_CORRELATION,
     CONSULTANT_MAX_SELF_CORRELATION,
+    MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA,
     MIN_FORMULATED_PYRAMID_ALPHAS,
     CheckRecordType,
+    CorrelationCalcType,
     CorrelationType,
     Database,
     Delay,
@@ -30,6 +33,7 @@ from alphapower.dal.evaluate import (
 from alphapower.dal.session_manager import session_manager
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import Alpha, CheckRecord, EvaluateRecord
+from alphapower.entity.evaluate import Correlation
 from alphapower.internal.logging import get_logger
 from alphapower.view.activities import PyramidAlphasQuery, PyramidAlphasView
 
@@ -185,21 +189,13 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
         record.is_turnover = (
             alpha.in_sample.turnover if alpha.in_sample.turnover else 0.0
         )
-        record.is_returns = (
-            alpha.in_sample.returns if alpha.in_sample.returns else 0.0
-        )
+        record.is_returns = alpha.in_sample.returns if alpha.in_sample.returns else 0.0
         record.is_drawdown = (
             alpha.in_sample.drawdown if alpha.in_sample.drawdown else 0.0
         )
-        record.is_sharpe = (
-            alpha.in_sample.sharpe if alpha.in_sample.sharpe else 0.0
-        )
-        record.is_fitness = (
-            alpha.in_sample.fitness if alpha.in_sample.fitness else 0.0
-        )
-        record.is_margin = (
-            alpha.in_sample.margin if alpha.in_sample.margin else 0.0
-        )
+        record.is_sharpe = alpha.in_sample.sharpe if alpha.in_sample.sharpe else 0.0
+        record.is_fitness = alpha.in_sample.fitness if alpha.in_sample.fitness else 0.0
+        record.is_margin = alpha.in_sample.margin if alpha.in_sample.margin else 0.0
 
         if alpha.in_sample.checks is None:
             await self.log.awarning(
@@ -222,17 +218,15 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     check.multiplier if check.multiplier else 1.0
                 )
 
+                matched_unformulated_pyramid: List[str] = []
+
                 for pyramid in check.pyramids:
                     key: str = pyramid.name.replace("/", "_").upper()
                     alpha_count: int = self.region_category_delay_map.get(key, 0)
                     if alpha_count < MIN_FORMULATED_PYRAMID_ALPHAS:
-                        record.matched_unformulated_pyramid = (
-                            record.matched_unformulated_pyramid + 1
-                            if record.matched_unformulated_pyramid
-                            else 1
-                        )
+                        matched_unformulated_pyramid.append(pyramid.name)
                         await self.log.ainfo(
-                            "匹配的金字塔未点亮",
+                            "匹配到 Genius 未点亮金字塔",
                             pyramid=pyramid,
                             key=key,
                             pyramid_alpha_count=alpha_count,
@@ -242,23 +236,41 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
 
                 effective_pyramids: int = check.effective if check.effective else 0
                 if (
-                    record.matched_unformulated_pyramid
-                    and record.matched_unformulated_pyramid > effective_pyramids
+                    matched_unformulated_pyramid
+                    and len(matched_unformulated_pyramid) > effective_pyramids
                 ):
                     await self.log.awarning(
-                        "匹配的未完成金字塔数量超过有效金字塔数量",
+                        "匹配到的 Genius 未点亮金字塔超过限制",
                         emoji="❌",
                         alpha_id=alpha.alpha_id,
-                        matched_unformulated_pyramid=record.matched_unformulated_pyramid,
+                        matched_unformulated_pyramid=matched_unformulated_pyramid,
                         effective_pyramids=effective_pyramids,
+                        max_pyramids_in_alpha=MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA,
                     )
-                    record.matched_unformulated_pyramid = effective_pyramids
+                    # 一个 Alpha 匹配到的 Pyramid 过多，不会被认为是能点亮 Genius 进度的 Pyramid
+                    record.matched_unformulated_pyramid = []  # type: ignore
+
+                record.matched_unformulated_pyramid = matched_unformulated_pyramid  # type: ignore
 
             if (
                 check.name == SubmissionCheckType.MATCHES_THEMES.value
                 and check.result == SubmissionCheckResult.PASS
             ):
                 record.theme_multiplier = check.multiplier if check.multiplier else 1.0
+
+                themes: List[str] = []
+                for theme in check.themes:
+                    if theme.name:
+                        themes.append(theme.name)
+                    else:
+                        await self.log.awarning(
+                            "主题名称为空，无法处理",
+                            emoji="❌",
+                            alpha_id=alpha.alpha_id,
+                            theme=theme,
+                        )
+                        continue
+                record.themes = themes  # type: ignore
 
             if check.result == SubmissionCheckResult.FAIL:
                 await self.log.awarning(
@@ -270,18 +282,10 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                 )
                 return False
 
-            if check.result == SubmissionCheckResult.PASS:
-                await self.log.ainfo(
-                    "Alpha 对象的 in_sample 检查通过",
-                    emoji="✅",
-                    alpha_id=alpha.alpha_id,
-                    check_name=check.name,
-                    check_result=check.result,
-                )
-                continue
-
+            # 处理部分 PENDING 和 WARNING 算通过的情况
+            # 需要外部输入配置，指定哪些检查可以通过
             if len(pass_result_set) == 0:
-                await self.log.awarning(
+                await self.log.adebug(
                     "Alpha 对象的 in_sample 检查通过结果集为空，跳过检查",
                     emoji="⚠️",
                     alpha_id=alpha.alpha_id,
@@ -308,6 +312,17 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     pass_result_set=pass_result_set,
                 )
                 return False
+
+            if check.result == SubmissionCheckResult.PASS:
+                await self.log.adebug(
+                    "Alpha 对象的 in_sample 检查通过",
+                    emoji="✅",
+                    alpha_id=alpha.alpha_id,
+                    check_name=check.name,
+                    check_result=check.result,
+                )
+                continue
+
         await self.log.ainfo(
             "Alpha 对象的 in_sample 检查全部通过",
             emoji="✅",
@@ -347,7 +362,15 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                 )
             )
 
-            max_corr: float = max(pairwise_correlation.values(), default=0.0)
+            if not pairwise_correlation:
+                await self.log.awarning(
+                    "自相关性检查未能计算出任何相关性",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                )
+                return True
+
+            max_corr: float = max(pairwise_correlation.values(), default=1.0)
             min_corr: float = min(pairwise_correlation.values(), default=0.0)
 
             await self.log.ainfo(
@@ -450,12 +473,20 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
             else "生产相关性"
         )
 
+        await self.log.ainfo(
+            f"开始评估 {check_type_name} 检查",
+            emoji="🔍",
+            alpha_id=alpha.alpha_id,
+            record_type=record_type,
+            policy=policy,
+        )
+
         try:
 
             async with session_manager.get_session(Database.EVALUATE) as session:
-                self.check_record_dal.session = session
                 exist_check_record: Optional[CheckRecord] = (
                     await self.check_record_dal.find_one_by(
+                        session=session,
                         alpha_id=alpha.alpha_id,
                         record_type=record_type,
                         order_by=CheckRecord.created_at.desc(),
@@ -559,8 +590,104 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
             )
             return False
 
-    async def _refresh_correlation_data(self, alpha: Alpha) -> Optional[TableView]:
+    async def _save_correlation_data(
+        self,
+        corr_type: CorrelationType,
+        alpha: Optional[Alpha],
+        data: Optional[TableView],
+    ) -> None:
+        if not alpha:
+            await self.log.awarning(
+                "空的 Alpha 对象",
+                emoji="❌",
+                alpha_id=None,
+                correlation_type=corr_type,
+            )
+            return
 
+        if not data:
+            await self.log.awarning(
+                "尝试保存空的相关性数据",
+                emoji="❌",
+                alpha_id=None,
+                correlation_type=corr_type,
+            )
+            return
+
+        corr_records: List[Correlation] = []
+        check_record: CheckRecord = CheckRecord(
+            alpha_id=alpha.alpha_id,
+            record_type=(
+                CheckRecordType.CORRELATION_SELF
+                if self.correlation_type == CorrelationType.SELF
+                else CheckRecordType.CORRELATION_PROD
+            ),
+            content=data.model_dump(mode="python"),
+        )
+
+        if corr_type == CorrelationType.SELF:
+            corr_df: Optional[pd.DataFrame] = data.to_dataframe()
+
+            if corr_df is None or corr_df.empty:
+                await self.log.awarning(
+                    "相关性数据为空，无法保存",
+                    emoji="❌",
+                    alpha_id=alpha.alpha_id,
+                    correlation_type=corr_type,
+                )
+                return
+
+            for _, row in corr_df.iterrows():
+                if row["id"] == alpha.alpha_id:
+                    continue
+
+                corr_record = Correlation(
+                    alpha_id_a=alpha.alpha_id,
+                    alpha_id_b=row["id"],
+                    correlation=row["correlation"],
+                    calc_type=CorrelationCalcType.PLATFORM_SELF,
+                )
+                corr_records.append(corr_record)
+
+        elif corr_type == CorrelationType.PROD:
+            corr_record = Correlation(
+                alpha_id_a=alpha.alpha_id,
+                alpha_id_b=None,
+                correlation=data.max if data.max else 1.0,
+                calc_type=CorrelationCalcType.PLATFORM_PROD,
+            )
+            corr_records.append(corr_record)
+
+        async with (
+            session_manager.get_session(Database.EVALUATE) as session,
+            session.begin(),
+        ):
+            await self.correlation_dal.bulk_create(
+                entities=corr_records,
+                session=session,
+            )
+            check_record = await self.check_record_dal.create(
+                entity=check_record,
+                session=session,
+            )
+
+        await self.log.ainfo(
+            "相关性数据已成功保存",
+            emoji="✅",
+            corr_type=corr_type,
+            alpha_id=alpha.alpha_id,
+            correlation_type=corr_type,
+            check_record_id=check_record.id if check_record else None,
+        )
+
+    async def _refresh_correlation_data(self, alpha: Alpha) -> Optional[TableView]:
+        """
+        刷新相关性数据，调用平台 API，支持重试机制
+        参数:
+            alpha: Alpha 实体对象
+        返回:
+            TableView | None
+        """
         try:
             retry_count: int = 0  # 重试计数器
             max_retries: int = 3  # 最大重试次数
@@ -569,6 +696,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                 emoji="🔄",
                 alpha_id=alpha.alpha_id,
                 max_retries=max_retries,
+                correlation_type=self.correlation_type,
             )
             while retry_count < max_retries:
                 finished: bool
@@ -586,7 +714,8 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                     alpha_id=alpha.alpha_id,
                     finished=finished,
                     retry_after=retry_after,
-                    api_result=bool(api_result),
+                    api_result_exists=api_result is not None,
+                    retry_count=retry_count,
                 )
                 if finished:
                     if api_result:
@@ -596,28 +725,11 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             alpha_id=alpha.alpha_id,
                             corr_type=self.correlation_type,
                         )
-                        check_record: CheckRecord = CheckRecord(
-                            alpha_id=alpha.alpha_id,
-                            record_type=(
-                                CheckRecordType.CORRELATION_SELF
-                                if self.correlation_type == CorrelationType.SELF
-                                else CheckRecordType.CORRELATION_PROD
-                            ),
-                            content=api_result.model_dump(mode="python"),
+                        await self._save_correlation_data(
+                            corr_type=self.correlation_type,
+                            alpha=alpha,
+                            data=api_result,
                         )
-
-                        async with (
-                            session_manager.get_session(Database.EVALUATE) as session,
-                            session.begin(),
-                        ):
-                            self.check_record_dal.session = session
-                            await self.check_record_dal.create(check_record)
-                            await self.log.adebug(
-                                "相关性数据已保存到数据库",
-                                emoji="💾",
-                                alpha_id=alpha.alpha_id,
-                                record_type=check_record.record_type,
-                            )
                         return api_result
                     else:
                         await self.log.awarning(
@@ -625,6 +737,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             emoji="❓",
                             alpha_id=alpha.alpha_id,
                             corr_type=self.correlation_type,
+                            retry_count=retry_count,
                         )
                         return None
                 elif retry_after and retry_after > 0:
@@ -633,19 +746,21 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                         emoji="⏳",
                         alpha_id=alpha.alpha_id,
                         retry_after=retry_after,
+                        retry_count=retry_count,
                     )
                     await asyncio.sleep(retry_after)
                 else:
                     retry_count += 1
                     await self.log.awarning(
-                        "相关性检查 API 返回异常状态：未完成且无重试时间",
+                        "相关性检查 API 返回异常状态：未完成且无重试时间，递增重试计数",
                         emoji="⚠️",
                         alpha_id=alpha.alpha_id,
                         corr_type=self.correlation_type,
                         retry_count=retry_count,
+                        max_retries=max_retries,
                     )
             await self.log.acritical(
-                "相关性检查 API 多次重试失败，程序可能无法继续",
+                "相关性检查 API 多次重试失败，程序即将放弃本次检查",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
                 corr_type=self.correlation_type,
@@ -752,10 +867,10 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         # 根据策略决定是否刷新数据
 
         async with session_manager.get_session(Database.EVALUATE) as session:
-            self.check_record_dal.session = session
             # 查找现有的检查记录
             exist_check_record: Optional[CheckRecord] = (
                 await self.check_record_dal.find_one_by(
+                    session=session,
                     alpha_id=alpha.alpha_id,
                     record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
                     order_by=CheckRecord.created_at.desc(),
@@ -781,8 +896,8 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
         elif action == AbstractEvaluateStage.CheckAction.USE_EXISTING:
 
             async with session_manager.get_session(Database.EVALUATE) as session:
-                self.check_record_dal.session = session
                 record = await self.check_record_dal.find_one_by(
+                    session=session,
                     alpha_id=alpha.alpha_id,
                     record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
                     order_by=CheckRecord.created_at.desc(),
@@ -823,13 +938,13 @@ class PerformanceDiffEvaluateStage(AbstractEvaluateStage):
                             session_manager.get_session(Database.EVALUATE) as session,
                             session.begin(),
                         ):
-                            self.check_record_dal.session = session
                             await self.check_record_dal.create(
-                                CheckRecord(
+                                session=session,
+                                entity=CheckRecord(
                                     alpha_id=alpha.alpha_id,
                                     record_type=CheckRecordType.BEFORE_AND_AFTER_PERFORMANCE,
                                     content=result.model_dump(mode="json"),
-                                )
+                                ),
                             )
                         return result
                     elif retry_after and retry_after > 0:
@@ -910,9 +1025,9 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
             # 查找现有的检查记录
 
             async with session_manager.get_session(Database.EVALUATE) as session:
-                self.check_record_dal.session = session
                 exist_check_record: Optional[CheckRecord] = (
                     await self.check_record_dal.find_one_by(
+                        session=session,
                         alpha_id=alpha.alpha_id,
                         record_type=record_type,
                         order_by=CheckRecord.created_at.desc(),
@@ -1036,13 +1151,13 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                             session_manager.get_session(Database.EVALUATE) as session,
                             session.begin(),
                         ):
-                            self.check_record_dal.session = session
                             await self.check_record_dal.create(
-                                CheckRecord(
+                                session=session,
+                                entity=CheckRecord(
                                     alpha_id=alpha.alpha_id,
                                     record_type=CheckRecordType.SUBMISSION,
                                     content=result.model_dump(),
-                                )
+                                ),
                             )
                         return result
                     elif retry_after and retry_after > 0:

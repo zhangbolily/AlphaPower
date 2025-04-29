@@ -80,6 +80,7 @@ class SessionManager:
                 connect_args: Dict[str, Any] = {}
                 execution_options: Dict[str, Any] = {}
                 poolclass: Optional[Type] = None
+                engine_kwargs: Dict[str, Any] = {}
 
                 if "sqlite" in config.dsn.scheme:
                     # SQLite 数据库需要设置连接参数
@@ -95,8 +96,17 @@ class SessionManager:
                 if "mysql" in config.dsn.scheme:
                     connect_args = {
                         "charset": "utf8mb4",
+                        "connect_timeout": 5,
                     }
                     poolclass = AsyncAdaptedQueuePool
+                    engine_kwargs = {
+                        "pool_pre_ping": True,
+                        "pool_recycle": 3600,
+                        "pool_size": 30,
+                        "max_overflow": 10,
+                        "pool_timeout": 60,
+                        "pool_use_lifo": True,
+                    }
 
                 await self.log.ainfo(
                     "注册数据库引擎",
@@ -116,8 +126,13 @@ class SessionManager:
                     connect_args=connect_args,
                     execution_options=execution_options,
                     poolclass=poolclass,
+                    **engine_kwargs,
                 )
-                session_factory = async_sessionmaker(engine, expire_on_commit=False)
+                session_factory = async_sessionmaker(
+                    engine,
+                    expire_on_commit=False,
+                    autoflush=False,
+                )
 
                 if "sqlite" in config.dsn.scheme:
                     async with engine.begin() as conn:

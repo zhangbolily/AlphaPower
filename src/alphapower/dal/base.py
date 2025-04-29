@@ -198,7 +198,6 @@ class BaseDAL(Generic[T]):
         existing_entity = await self.get_by_id(entity.id, session=actual_session)
         if existing_entity:
             await actual_session.merge(entity)
-            await actual_session.flush()
             return existing_entity
         return await self.create(entity, session=actual_session)
 
@@ -224,7 +223,6 @@ class BaseDAL(Generic[T]):
         if existing_entity:
             entity.id = existing_entity.id
             await actual_session.merge(entity)
-            await actual_session.flush()
             return existing_entity
         return await self.create(entity, session=actual_session)
 

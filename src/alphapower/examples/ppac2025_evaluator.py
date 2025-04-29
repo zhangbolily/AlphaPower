@@ -29,99 +29,6 @@ from alphapower.internal.logging import get_logger
 log = get_logger(module_name=__name__)
 
 
-class PPAC2025Evaluator(BaseEvaluator):
-    """
-    PPAC2025Evaluator 是 BaseEvaluator 的子类，
-    专门用于实现 PPAC2025 相关的 Alpha 评估逻辑。
-    """
-
-    _db_lock: asyncio.Lock = asyncio.Lock()
-
-    async def _handle_evaluate_success(
-        self, alpha: Alpha, record: EvaluateRecord, **kwargs: Any
-    ) -> None:
-        """
-        处理评估成功的逻辑。
-
-        参数:
-            alpha (Alpha): 被评估的因子对象。
-            record (EvaluateRecord): 评估记录对象。
-            kwargs (Any): 额外参数。
-        """
-        await self._log_evaluate_success(alpha, record)
-        await self._create_evaluate_record(record)
-
-    async def _log_evaluate_success(self, alpha: Alpha, record: EvaluateRecord) -> None:
-        """
-        记录评估成功的日志。
-
-        参数:
-            alpha (Alpha): 被评估的因子对象。
-            record (EvaluateRecord): 评估记录对象。
-        """
-        await log.ainfo(
-            event="因子评估成功",
-            alpha_id=alpha.id,
-            record_id=record.id,
-            emoji="✅",
-        )
-
-    async def _create_evaluate_record(self, record: EvaluateRecord) -> None:
-        """
-        创建评估记录。
-
-        参数:
-            record (EvaluateRecord): 评估记录对象。
-        """
-        try:
-            async with (
-                session_manager.get_session(Database.EVALUATE) as session,
-                session.begin(),
-            ):
-                await self.evaluate_record_dal.create(session=session, entity=record)
-            await log.ainfo(
-                event="因子评估记录创建成功",
-                record_id=record.id,
-                emoji="📄",
-            )
-        except Exception as e:
-            await log.aerror(
-                event="因子评估记录创建失败",
-                record_id=record.id,
-                error=str(e),
-                emoji="❌",
-            )
-            raise e
-
-    async def _handle_evaluate_failure(
-        self, alpha: Alpha, record: EvaluateRecord, **kwargs: Any
-    ) -> None:
-        """
-        处理评估失败的逻辑。
-
-        参数:
-            alpha (Alpha): 被评估的因子对象。
-            record (EvaluateRecord): 评估记录对象。
-            kwargs (Any): 额外参数。
-        """
-        async with (
-            session_manager.get_session(Database.EVALUATE) as session,
-            session.begin(),
-        ):
-            await self.evaluate_record_dal.delete_by_filter(
-                session=session,
-                alpha_id=alpha.alpha_id,
-                evaluator=self.__class__.__name__,
-            )
-
-        await log.ainfo(
-            event="因子评估失败，评估记录已删除",
-            alpha_id=alpha.alpha_id,
-            record_id=record.id,
-            emoji="❌",
-        )
-
-
 class PPAC2025PerfDiffEvaluateStage(PerformanceDiffEvaluateStage):
 
     def __init__(
@@ -362,7 +269,8 @@ if __name__ == "__main__":
             )
             platform_self_correlation_stage.next_stage = perf_diff_stage
 
-            evaluator = PPAC2025Evaluator(
+            evaluator = BaseEvaluator(
+                name="ppac2025",
                 fetcher=fetcher,
                 evaluate_stage_chain=in_sample_stage,
                 evaluate_record_dal=evaluate_record_dal,

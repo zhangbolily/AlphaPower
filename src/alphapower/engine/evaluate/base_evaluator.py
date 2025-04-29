@@ -9,11 +9,14 @@ from typing import (
 
 import aiostream.stream as stream
 from aiostream import Stream
+from structlog.stdlib import BoundLogger
 
 from alphapower.constants import (
+    Database,
     RefreshPolicy,
 )
 from alphapower.dal.evaluate import EvaluateRecordDAL
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Alpha, EvaluateRecord
 from alphapower.internal.logging import get_logger
 
@@ -21,21 +24,29 @@ from .alpha_fetcher_abc import AbstractAlphaFetcher
 from .evaluate_stage_abc import AbstractEvaluateStage
 from .evaluator_abc import AbstractEvaluator
 
-# 获取日志记录器 (logger)
-log = get_logger(module_name=__name__)
-
 
 class BaseEvaluator(AbstractEvaluator):
 
     def __init__(
         self,
+        name: str,
         fetcher: AbstractAlphaFetcher,
         evaluate_stage_chain: AbstractEvaluateStage,
         evaluate_record_dal: EvaluateRecordDAL,
     ):
         super().__init__(fetcher, evaluate_stage_chain, evaluate_record_dal)
         # 使用同步日志记录器，因为 __init__ 通常是同步的
-        log.info("📊 BaseEvaluator 初始化完成", emoji="📊")
+        self.name: str = name
+        self.log: BoundLogger = get_logger(
+            module_name=f"{__name__}.{self.__class__.__name__}"
+        )
+        self.log.info(
+            "初始化 Evaluator",
+            emoji="🔧",
+            evaluator=self.__class__.__name__,
+            fetcher=self.fetcher.__class__.__name__,
+            evaluate_stage_chain=self.evaluate_stage_chain.__class__.__name__,
+        )
 
     async def evaluate_many(
         self,
@@ -43,7 +54,7 @@ class BaseEvaluator(AbstractEvaluator):
         concurrency: int,
         **kwargs: Any,
     ) -> AsyncGenerator[Alpha, None]:
-        await log.ainfo(
+        await self.log.ainfo(
             "🚀 开始批量评估 Alpha (aiostream 模式)",
             emoji="🚀",
             policy=policy.name,
@@ -89,10 +100,10 @@ class BaseEvaluator(AbstractEvaluator):
             ):
                 yield passed_alpha
         except asyncio.CancelledError:
-            await log.ainfo("🚫 批量评估任务被取消", emoji="🚫")
+            await self.log.ainfo("🚫 批量评估任务被取消", emoji="🚫")
             raise
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "💥 批量评估过程中发生未预期异常",
                 emoji="💥",
                 policy=policy.name,
@@ -110,10 +121,10 @@ class BaseEvaluator(AbstractEvaluator):
         """获取待评估 Alpha 的总数"""
         try:
             count = await self.to_evaluate_alpha_count(**kwargs)
-            await log.ainfo("🔢 待评估 Alpha 总数", emoji="🔢", count=count)
+            await self.log.ainfo("🔢 待评估 Alpha 总数", emoji="🔢", count=count)
             return count
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "💥 获取待评估 Alpha 总数失败",
                 emoji="💥",
                 error=str(e),
@@ -145,7 +156,7 @@ class BaseEvaluator(AbstractEvaluator):
                     if passed_alpha:
                         yield passed_alpha
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "💥 处理 Alpha 流时发生异常",
                 emoji="💥",
                 error=str(e),
@@ -163,7 +174,7 @@ class BaseEvaluator(AbstractEvaluator):
         progress_percent: float = (
             (processed_count / total_to_evaluate) * 100 if total_to_evaluate > 0 else 0
         )
-        await log.ainfo(
+        await self.log.ainfo(
             "📊 批量评估进度",
             emoji="📊",
             processed=processed_count,
@@ -182,7 +193,7 @@ class BaseEvaluator(AbstractEvaluator):
         final_total_str: str = (
             str(total_to_evaluate) if total_to_evaluate > 0 else "未知"
         )
-        await log.ainfo(
+        await self.log.ainfo(
             "🏁 批量评估完成",
             emoji="🏁",
             total_processed=processed_count,
@@ -192,7 +203,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _log_start_alpha(self, alpha: Alpha) -> None:
         """记录单个 Alpha 开始评估的日志"""
-        await log.adebug(
+        await self.log.adebug(
             "⏳ 开始处理单个 Alpha",
             emoji="⏳",
             alpha_id=alpha.alpha_id,
@@ -200,7 +211,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _log_alpha_passed(self, alpha: Alpha) -> None:
         """记录单个 Alpha 评估通过的日志"""
-        await log.adebug(
+        await self.log.adebug(
             "✅ Alpha 评估通过",
             emoji="✅",
             alpha_id=alpha.alpha_id,
@@ -208,7 +219,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _log_alpha_failed(self, alpha: Alpha) -> None:
         """记录单个 Alpha 评估未通过的日志"""
-        await log.adebug(
+        await self.log.adebug(
             "❌ Alpha 评估未通过",
             emoji="❌",
             alpha_id=alpha.alpha_id,
@@ -216,7 +227,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _log_alpha_cancelled(self, alpha: Alpha) -> None:
         """记录单个 Alpha 评估任务被取消的日志"""
-        await log.ainfo(
+        await self.log.ainfo(
             "🚫 Alpha 评估任务被取消",
             emoji="🚫",
             alpha_id=alpha.alpha_id,
@@ -224,7 +235,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _log_alpha_exception(self, alpha: Alpha, exception: Exception) -> None:
         """记录单个 Alpha 评估任务中发生异常的日志"""
-        await log.aerror(
+        await self.log.aerror(
             "💥 Alpha 评估任务中发生异常",
             emoji="💥",
             alpha_id=alpha.alpha_id,
@@ -245,6 +256,9 @@ class BaseEvaluator(AbstractEvaluator):
         try:
             evaluate_record: EvaluateRecord = EvaluateRecord(
                 alpha_id=alpha.alpha_id,
+                region=alpha.region,
+                delay=alpha.delay,
+                universe=alpha.universe,
                 is_pnl=0.0,
                 is_long_count=0,
                 is_short_count=0,
@@ -255,7 +269,7 @@ class BaseEvaluator(AbstractEvaluator):
                 is_sharpe=0.0,
                 is_fitness=0.0,
                 self_correlation=0.0,
-                evaluator=self.__class__.__name__,
+                evaluator=self.name,
             )
 
             # 调用评估阶段链的核心逻辑
@@ -301,7 +315,7 @@ class BaseEvaluator(AbstractEvaluator):
                 **kwargs,
             )
         except Exception as e:
-            await log.aerror(
+            await self.log.aerror(
                 "💥 评估阶段链执行失败",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
@@ -315,7 +329,7 @@ class BaseEvaluator(AbstractEvaluator):
         self, alpha: Alpha, policy: RefreshPolicy, kwargs: Any
     ) -> None:
         """记录评估开始的日志"""
-        await log.adebug(
+        await self.log.adebug(
             "🎬 开始评估单个 Alpha",
             emoji="🎬",
             alpha_id=alpha.alpha_id,
@@ -327,7 +341,7 @@ class BaseEvaluator(AbstractEvaluator):
         self, alpha: Alpha, overall_result: bool
     ) -> None:
         """记录评估完成的日志"""
-        await log.ainfo(
+        await self.log.ainfo(
             "🏁 Alpha 评估完成",
             emoji="✅" if overall_result else "❌",
             alpha_id=alpha.alpha_id,
@@ -338,7 +352,7 @@ class BaseEvaluator(AbstractEvaluator):
         self, alpha: Alpha, exception: NotImplementedError
     ) -> None:
         """记录未实现错误的日志"""
-        await log.aerror(
+        await self.log.aerror(
             "评估失败：子类必须实现必要的检查方法",
             emoji="❌",
             alpha_id=alpha.alpha_id,
@@ -348,7 +362,7 @@ class BaseEvaluator(AbstractEvaluator):
 
     async def _log_evaluation_cancelled(self, alpha: Alpha) -> None:
         """记录评估任务被取消的日志"""
-        await log.ainfo(
+        await self.log.ainfo(
             "🚫 Alpha 评估任务被取消",
             emoji="🚫",
             alpha_id=alpha.alpha_id,
@@ -358,7 +372,7 @@ class BaseEvaluator(AbstractEvaluator):
         self, alpha: Alpha, policy: RefreshPolicy, exception: Exception
     ) -> None:
         """记录未预期异常的日志"""
-        await log.aerror(
+        await self.log.aerror(
             "💥 评估 Alpha 时发生未预期异常",
             emoji="💥",
             alpha_id=alpha.alpha_id,
@@ -370,21 +384,58 @@ class BaseEvaluator(AbstractEvaluator):
     async def _handle_evaluate_success(
         self, alpha: Alpha, record: EvaluateRecord, **kwargs: Any
     ) -> None:
-        raise NotImplementedError("子类必须实现 _handle_evaluate_success 方法")
+        await self.log.ainfo(
+            "✅ 评估成功通过",
+            emoji="✅",
+            alpha_id=alpha.alpha_id,
+        )
+
+        async with (
+            session_manager.get_session(Database.EVALUATE) as session,
+            session.begin(),
+        ):
+            await self.evaluate_record_dal.create(session=session, entity=record)
+
+        await self.log.ainfo(
+            "📄 评估记录创建成功",
+            emoji="📄",
+            record_id=record.id,
+        )
 
     async def _handle_evaluate_failure(
         self, alpha: Alpha, record: EvaluateRecord, **kwargs: Any
     ) -> None:
-        raise NotImplementedError("子类必须实现 _handle_evaluate_failure 方法")
+        await self.log.aerror(
+            "❌ 评估未通过",
+            emoji="❌",
+            alpha_id=alpha.alpha_id,
+        )
+
+        # 删除所有相关评估记录
+        async with (
+            session_manager.get_session(Database.EVALUATE) as session,
+            session.begin(),
+        ):
+            deleted: int = await self.evaluate_record_dal.delete_by_filter(
+                session=session,
+                alpha_id=alpha.alpha_id,
+                evaluator=self.name,
+            )
+        await self.log.ainfo(
+            "🗑️ 删除评估记录成功",
+            emoji="🗑️",
+            alpha_id=alpha.alpha_id,
+            deleted=deleted,
+        )
 
     async def to_evaluate_alpha_count(
         self,
         **kwargs: Any,
     ) -> int:
-        await log.adebug(
+        await self.log.adebug(
             "准备调用 fetcher 获取待评估 Alpha 总数", emoji="🔢", kwargs=kwargs
         )
         # 直接调用 fetcher 的方法
         count = await self.fetcher.total_alpha_count(**kwargs)
-        await log.adebug("成功获取待评估 Alpha 总数", emoji="✅", count=count)
+        await self.log.adebug("成功获取待评估 Alpha 总数", emoji="✅", count=count)
         return count

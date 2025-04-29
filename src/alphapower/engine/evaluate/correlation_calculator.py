@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from multiprocessing import Manager, Process
+from multiprocessing.managers import DictProxy
 from typing import AsyncGenerator, Dict, List, Optional  # 用于可选类型注解
 
 import pandas as pd
@@ -50,20 +51,49 @@ class CorrelationCalculator:
         self._is_initialized: bool = False
         self._region_to_alpha_map: Dict[Region, List[Alpha]] = {}
         self.multiprocess: bool = multiprocess
-        self.log: BoundLogger = get_logger(module_name=self.__class__.__name__)
+        self.other_alphas_pnl_cache: Dict[Alpha, pd.DataFrame] = {}
+        self.log: BoundLogger = get_logger(
+            module_name=f"{__name__}.{self.__class__.__name__}"
+        )
 
-    async def _load_missing_pnl(self, alpha_id: str) -> None:
+    async def _load_missing_pnl(self, alpha: Alpha) -> None:
         """
         处理缺失的 pnl 数据。
 
-        :param alpha_id: Alpha 策略 ID
+        :param alpha: Alpha 策略实例
         """
         try:
-            await self._retrieve_pnl_from_platform(alpha_id)
+            pnl_data: Optional[pd.DataFrame] = await self._retrieve_pnl_from_platform(
+                alpha.alpha_id
+            )
+            if pnl_data is None or pnl_data.empty:
+                await self.log.aerror(
+                    event="Alpha 策略缺少 pnl 数据",
+                    alpha_id=alpha.alpha_id,
+                    emoji="⚠️",
+                    module=__name__,
+                )
+                raise ValueError("Alpha 策略缺少 pnl 数据")
+
+            pnl_data = await self._validate_pnl_dataframe(
+                pnl_data,
+                alpha.alpha_id,
+            )
+            pnl_data = await self._prepare_pnl_dataframe(pnl_data)
+
+            # 缓存 pnl 数据
+            self.other_alphas_pnl_cache[alpha] = pnl_data
+            await self.log.ainfo(
+                event="成功加载 Alpha 策略的 pnl 数据",
+                alpha_id=alpha.alpha_id,
+                rows=len(pnl_data),
+                columns=list(pnl_data.columns),
+                emoji="✅",
+            )
         except ValueError as ve:
             await self.log.aerror(
                 event="加载 Alpha 策略的 pnl 数据失败 - 数据错误",
-                alpha_id=alpha_id,
+                alpha_id=alpha.alpha_id,
                 error=str(ve),
                 emoji="❌",
                 module=__name__,
@@ -73,7 +103,7 @@ class CorrelationCalculator:
         except ConnectionError as ce:
             await self.log.aerror(
                 event="加载 Alpha 策略的 pnl 数据失败 - 网络错误",
-                alpha_id=alpha_id,
+                alpha_id=alpha.alpha_id,
                 error=str(ce),
                 emoji="❌",
                 module=__name__,
@@ -82,7 +112,7 @@ class CorrelationCalculator:
         except Exception as e:
             await self.log.acritical(
                 event="加载 Alpha 策略的 pnl 数据失败 - 未知错误",
-                alpha_id=alpha_id,
+                alpha_id=alpha.alpha_id,
                 error=str(e),
                 emoji="💥",
                 module=__name__,
@@ -121,7 +151,7 @@ class CorrelationCalculator:
             module=__name__,
         )
 
-        missing_pnl_alpha_ids: List[str] = []
+        missing_pnl_alphas: List[Alpha] = []
 
         if not self.alpha_stream:
             await self.log.aerror(
@@ -145,40 +175,52 @@ class CorrelationCalculator:
 
             self._region_to_alpha_map.setdefault(region, []).append(alpha)
 
-            # FIXME: 数据库连接池测试
-            async with session_manager.get_session(
-                Database.EVALUATE, readonly=True
-            ) as session:
-                self.record_set_dal.session = session
-                record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
-                    alpha_id=alpha.alpha_id,
-                    set_type=RecordSetType.PNL,
-                )
-
-            if record_set is None or record_set.content is None:
-                missing_pnl_alpha_ids.append(alpha.alpha_id)
+            pnl_data: Optional[pd.DataFrame] = await self._retrieve_pnl_from_local(
+                alpha_id=alpha.alpha_id
+            )
+            if pnl_data is None or pnl_data.empty:
+                missing_pnl_alphas.append(alpha)
                 await self.log.awarning(
-                    event="Alpha 策略缺少或为空的 pnl 数据",
+                    event="Alpha 策略缺少 pnl 数据",
                     alpha_id=alpha.alpha_id,
                     emoji="⚠️",
                     module=__name__,
                 )
                 continue
 
-        if missing_pnl_alpha_ids:
+            pnl_data = await self._validate_pnl_dataframe(
+                pnl_data,
+                alpha.alpha_id,
+            )
+            pnl_data = await self._prepare_pnl_dataframe(pnl_data)
+
+            # 缓存 pnl 数据
+            self.other_alphas_pnl_cache[alpha] = pnl_data
+            await self.log.ainfo(
+                event="成功加载 Alpha 策略的 pnl 数据",
+                alpha_id=alpha.alpha_id,
+                rows=len(pnl_data),
+                columns=list(pnl_data.columns),
+                emoji="✅",
+            )
+
+        if missing_pnl_alphas:
+            missing_pnl_alpha_ids: List[str] = [
+                alpha.alpha_id for alpha in missing_pnl_alphas
+            ]
+
             await self.log.awarning(
                 event="缺少 pnl 数据的 Alpha 策略",
                 missing_pnl_alpha_ids=missing_pnl_alpha_ids,
                 emoji="⚠️",
                 module=__name__,
             )
-            for alpha_id in missing_pnl_alpha_ids:
-                await self._load_missing_pnl(alpha_id)
+            for alpha in missing_pnl_alphas:
+                await self._load_missing_pnl(alpha)
 
         self._is_initialized = True
         await self.log.ainfo(
             event="自相关性计算器初始化完成",
-            os_stage_alpha_ids=self._region_to_alpha_map,
             emoji="✅",
             module=__name__,
         )
@@ -233,25 +275,28 @@ class CorrelationCalculator:
                 content=pnl_table_view.model_dump(),
             )
 
-            # FIXME: 数据库连接池测试
             async with (
                 session_manager.get_session(Database.EVALUATE) as session,
                 session.begin(),
             ):
-                self.record_set_dal.session = session
                 existing_record_set: Optional[RecordSet] = (
                     await self.record_set_dal.find_one_by(
                         alpha_id=alpha_id,
                         set_type=RecordSetType.PNL,
+                        session=session,
                     )
                 )
 
                 if existing_record_set is None:
-                    await self.record_set_dal.create(record_set_pnl)
+                    await self.record_set_dal.create(
+                        record_set_pnl,
+                        session=session,
+                    )
                 else:
                     record_set_pnl.id = existing_record_set.id
                     await self.record_set_dal.update(
                         record_set_pnl,
+                        session=session,
                     )
 
             pnl_series_df: Optional[pd.DataFrame] = pnl_table_view.to_dataframe()
@@ -298,13 +343,12 @@ class CorrelationCalculator:
             raise
 
     async def _retrieve_pnl_from_local(self, alpha_id: str) -> Optional[pd.DataFrame]:
-        # FIXME: 数据库连接池测试
         async with session_manager.get_session(
             Database.EVALUATE, readonly=True
         ) as session:
-            self.record_set_dal.session = session
             # 从数据库中获取 pnl 数据
             pnl_record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
+                session=session,
                 alpha_id=alpha_id,
                 set_type=RecordSetType.PNL,
             )
@@ -415,7 +459,8 @@ class CorrelationCalculator:
             )
             pnl_df = pnl_df[pnl_df.index > four_years_ago]
 
-        pnl_diff_df: pd.DataFrame = (pnl_df - pnl_df.shift(1)).ffill()
+        pnl_diff_df: pd.DataFrame = pnl_df - pnl_df.shift(1)
+        pnl_diff_df = pnl_diff_df.ffill()
         pnl_diff_df = pnl_diff_df.sort_index(ascending=True)
 
         await self.log.adebug(
@@ -432,8 +477,8 @@ class CorrelationCalculator:
         others: Dict[Alpha, pd.DataFrame],
         log: BoundLogger,
         inner: bool = False,
-    ) -> Dict[Alpha, float]:
-        correlation_map: Dict[Alpha, float] = {}
+    ) -> Dict[str, float]:
+        correlation_map: Dict[str, float] = {}
 
         if target is None:
             log.error(
@@ -474,11 +519,11 @@ class CorrelationCalculator:
             if pd.isna(correlation):
                 log.warning(
                     event="相关性计算结果为 NaN",
-                    alpha_id=other_alpha.alpha_id,
+                    other_alpha_id=other_alpha.alpha_id,
                     emoji="⚠️",
                 )
                 continue
-            correlation_map[other_alpha] = correlation
+            correlation_map[other_alpha.alpha_id] = correlation
 
         elapsed_time: float = (datetime.now() - start).total_seconds()
         log.info(
@@ -488,6 +533,89 @@ class CorrelationCalculator:
         )
 
         return correlation_map
+
+    def _do_calculation_in_subprocess(
+        self,
+        target: pd.DataFrame,
+        others: Dict[Alpha, pd.DataFrame],
+        inner: bool = False,
+    ) -> Dict[str, float]:
+        """
+        在子进程中计算相关性，支持异常处理。
+
+        :param target: 目标 Alpha 的 pnl 数据
+        :param others: 其他 Alpha 的 pnl 数据字典
+        :param inner: 是否为内相关性计算
+        :return: 相关性结果字典
+        """
+
+        def _run(
+            shared_corr_val: DictProxy,
+            log: BoundLogger,
+        ) -> None:
+            """
+            子进程中计算相关性并存储到共享变量中。
+
+            :param shared_corr_val: 用于存储相关性值的共享字典
+            :param log: 日志对象
+            """
+            try:
+                corr_dict: Dict[str, float] = self._do_calculation(
+                    target=target,
+                    others=others,
+                    log=log,
+                    inner=inner,
+                )
+                shared_corr_val.update(corr_dict)
+                # 只打印前 10 个相关性结果，避免日志过长
+                preview_corr_val = dict(list(shared_corr_val.items())[:10])
+                log.info(
+                    event="子进程计算完成",
+                    shared_corr_val_preview=preview_corr_val,
+                    total_count=len(shared_corr_val),
+                    emoji="✅",
+                )
+            except Exception as e:
+                # 捕获所有异常，避免子进程崩溃
+                log.error(
+                    event="子进程相关性计算异常",
+                    error=str(e),
+                    emoji="💥",
+                    exc_info=True,
+                )
+                # 标记异常，主进程可据此判断
+                shared_corr_val["__error__"] = str(e)
+
+        pairwise_correlation: Dict[str, float] = {}
+
+        # 使用 Manager 创建共享字典
+        with Manager() as manager:
+            pairwise_corr_val: DictProxy = manager.dict()
+
+            # 创建子进程并传递共享字典
+            sub_process: Process = Process(
+                target=_run,
+                args=(
+                    pairwise_corr_val,
+                    self.log,
+                ),
+            )
+            sub_process.start()
+            sub_process.join()
+
+            # 检查是否有异常标记
+            if "__error__" in pairwise_corr_val:
+                error_msg: str = pairwise_corr_val["__error__"]
+                self.log.error(
+                    event="子进程相关性计算失败",
+                    error=error_msg,
+                    emoji="💥",
+                )
+                raise RuntimeError(f"子进程相关性计算失败: {error_msg}")
+
+            # 将共享字典转换为普通字典
+            pairwise_correlation = dict(pairwise_corr_val)
+        return pairwise_correlation
 
     async def calculate_correlation(
         self,
@@ -528,6 +656,9 @@ class CorrelationCalculator:
             raise ValueError("Alpha 策略缺少 region 设置") from e
 
         matched_region_alphas: List[Alpha] = self._region_to_alpha_map.get(region, [])
+        matched_alpha_map: Dict[str, Alpha] = {
+            alpha.alpha_id: alpha for alpha in matched_region_alphas
+        }
 
         if not matched_region_alphas:
             await self.log.awarning(
@@ -544,62 +675,20 @@ class CorrelationCalculator:
             inner=inner,
         )
 
-        shared_others_pnl_diff_dict: Dict[Alpha, pd.DataFrame] = {}
-
-        for alpha in matched_region_alphas:
-            if alpha == alpha.alpha_id:
-                continue
-
-            other_pnl_series_df: pd.DataFrame = await self._get_pnl_dataframe(
-                alpha_id=alpha.alpha_id,
-                force_refresh=force_refresh,
-                inner=inner,
-            )
-
-            shared_others_pnl_diff_dict[alpha] = other_pnl_series_df
-
-        def compute_correlation_in_subprocess(
-            shared_corr_val: Dict[Alpha, float],
-            shared_y_pnl_data: Dict[Alpha, pd.DataFrame],
-            log: BoundLogger,
-        ) -> None:
-            """
-            子进程中计算相关性并存储到共享变量中。
-
-            :param shared_corr_val: 用于存储相关性值的共享字典
-            """
-            shared_corr_val = self._do_calculation(
-                target=target_pnl_diff_df,
-                others=shared_y_pnl_data,
-                log=log,
-                inner=inner,
-            )
-
-            log.info(
-                event="子进程计算完成",
-                alpha_id=alpha.alpha_id,
-                shared_corr_val=shared_corr_val,
-                emoji="✅",
-            )
-
-        pairwise_correlation: Dict[Alpha, float] = {}
+        pairwise_correlation: Dict[str, float] = {}
 
         # 使用 Manager 创建共享字典
         if self.multiprocess:
             start_subprocess_time: datetime = datetime.now()
-            with Manager() as manager:
-                pairwise_corr_val = manager.dict()
 
-                # 创建子进程并传递共享字典
-                sub_process: Process = Process(
-                    target=compute_correlation_in_subprocess,
-                    args=(pairwise_corr_val, shared_others_pnl_diff_dict, self.log),
-                )
-                sub_process.start()
-                sub_process.join()
-
-                # 将共享字典转换为普通字典
-                pairwise_correlation = dict(pairwise_corr_val)
+            loop = asyncio.get_event_loop()
+            pairwise_correlation = await loop.run_in_executor(
+                None,
+                self._do_calculation_in_subprocess,
+                target_pnl_diff_df,
+                self.other_alphas_pnl_cache,
+                inner,
+            )
 
             subprocess_elapsed_time: float = (
                 datetime.now() - start_subprocess_time
@@ -612,7 +701,7 @@ class CorrelationCalculator:
         else:
             pairwise_correlation = self._do_calculation(
                 target=target_pnl_diff_df,
-                others=shared_others_pnl_diff_dict,
+                others=self.other_alphas_pnl_cache,
                 log=self.log,
                 inner=inner,
             )
@@ -631,7 +720,14 @@ class CorrelationCalculator:
             elapsed_time=f"{elapsed_time:.2f}秒",
             emoji="✅",
         )
-        return pairwise_correlation
+
+        result: Dict[Alpha, float] = {
+            matched_alpha_map[alpha_id]: correlation
+            for alpha_id, correlation in pairwise_correlation.items()
+            if alpha_id in matched_alpha_map
+        }
+
+        return result
 
 
 if __name__ == "__main__":

@@ -1,13 +1,16 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
-from typing import Any, AsyncGenerator, List
+from typing import AsyncGenerator, Dict, List, Set
 
 from alphapower.constants import (
     CorrelationType,
     Database,
     RefreshPolicy,
     Stage,
+    Status,
+    SubmissionCheckResult,
+    SubmissionCheckType,
 )
 from alphapower.dal.base import DALFactory
 from alphapower.dal.session_manager import session_manager
@@ -15,104 +18,11 @@ from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import (
     Alpha,
-    EvaluateRecord,
 )
 from alphapower.internal.logging import get_logger
 
 # 获取日志记录器 (logger)
 log = get_logger(module_name=__name__)
-
-
-class ConsultantEvaluator(BaseEvaluator):
-    """
-    ConsultantEvaluator 是 BaseEvaluator 的子类，
-    专门用于实现 Consultant 相关的 Alpha 评估逻辑。
-    """
-
-    _db_lock: asyncio.Lock = asyncio.Lock()
-
-    async def _handle_evaluate_success(
-        self, alpha: Alpha, record: EvaluateRecord, **kwargs: Any
-    ) -> None:
-        """
-        处理评估成功的逻辑。
-
-        参数:
-            alpha (Alpha): 被评估的因子对象。
-            record (EvaluateRecord): 评估记录对象。
-            kwargs (Any): 额外参数。
-        """
-        await self._log_evaluate_success(alpha, record)
-        await self._create_evaluate_record(record)
-
-    async def _log_evaluate_success(self, alpha: Alpha, record: EvaluateRecord) -> None:
-        """
-        记录评估成功的日志。
-
-        参数:
-            alpha (Alpha): 被评估的因子对象。
-            record (EvaluateRecord): 评估记录对象。
-        """
-        await log.ainfo(
-            event="因子评估成功",
-            alpha_id=alpha.id,
-            record_id=record.id,
-            emoji="✅",
-        )
-
-    async def _create_evaluate_record(self, record: EvaluateRecord) -> None:
-        """
-        创建评估记录。
-
-        参数:
-            record (EvaluateRecord): 评估记录对象。
-        """
-        try:
-            async with (
-                session_manager.get_session(Database.EVALUATE) as session,
-                session.begin(),
-            ):
-                await self.evaluate_record_dal.create(session=session, entity=record)
-            await log.ainfo(
-                event="因子评估记录创建成功",
-                record_id=record.id,
-                emoji="📄",
-            )
-        except Exception as e:
-            await log.aerror(
-                event="因子评估记录创建失败",
-                record_id=record.id,
-                error=str(e),
-                emoji="❌",
-            )
-            raise e
-
-    async def _handle_evaluate_failure(
-        self, alpha: Alpha, record: EvaluateRecord, **kwargs: Any
-    ) -> None:
-        """
-        处理评估失败的逻辑。
-
-        参数:
-            alpha (Alpha): 被评估的因子对象。
-            record (EvaluateRecord): 评估记录对象。
-            kwargs (Any): 额外参数。
-        """
-        async with (
-            session_manager.get_session(Database.EVALUATE) as session,
-            session.begin(),
-        ):
-            await self.evaluate_record_dal.delete_by_filter(
-                session=session, alpha_id=alpha.alpha_id
-            )
-
-        await log.ainfo(
-            event="因子评估失败，评估记录已删除",
-            alpha_id=alpha.alpha_id,
-            record_id=record.id,
-            emoji="❌",
-        )
-
 
 if __name__ == "__main__":
     # 运行测试
@@ -174,19 +84,44 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 record_set_dal=record_set_dal,
                 correlation_dal=correlation_dal,
+                multiprocess=True,
             )
             await correlation_calculator.initialize()
 
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 17),
-                end_time=datetime(2025, 4, 24, 23, 59, 59),
+                start_time=datetime(2025, 3, 25),
+                end_time=datetime(2025, 4, 28, 23, 59, 59),
+                status=Status.UNSUBMITTED,
             )
+
+            # 这几个检查是 WARNING 都要算不通过，没有办法提交生产相关性检查
+            check_pass_result_map: Dict[
+                SubmissionCheckType, Set[SubmissionCheckResult]
+            ] = {
+                SubmissionCheckType.SUB_UNIVERSE_SHARPE: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.IS_LADDER_SHARPE: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.LOW_2Y_SHARPE: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.CONCENTRATED_WEIGHT: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.PENDING,
+                },
+            }
 
             in_sample_stage: InSampleChecksEvaluateStage = InSampleChecksEvaluateStage(
                 client=client,
                 next_stage=None,
+                check_pass_result_map=check_pass_result_map,
             )
             await in_sample_stage.initialize()
 
@@ -194,7 +129,7 @@ if __name__ == "__main__":
                 CorrelationLocalEvaluateStage(
                     next_stage=None,
                     correlation_calculator=correlation_calculator,
-                    threshold=0.5,
+                    threshold=0.7,
                 )
             )
             platform_prod_correlation_stage: AbstractEvaluateStage = (
@@ -210,13 +145,15 @@ if __name__ == "__main__":
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = platform_prod_correlation_stage
             evaluator = BaseEvaluator(
+                name="consultant",
                 fetcher=fetcher,
                 evaluate_stage_chain=in_sample_stage,
                 evaluate_record_dal=evaluate_record_dal,
             )
 
             async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH, concurrency=1
+                policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
+                concurrency=50,
             ):
                 print(alpha)
 

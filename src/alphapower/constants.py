@@ -32,6 +32,9 @@ ALPHA_ID_LENGTH: Final[int] = 7  # Alpha ID的长度
 MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY: Final[int] = 10000  # 单个Alpha列表查询的最大数量
 CORRELATION_CALCULATION_YEARS: Final[int] = 4  # 相关性计算的年份范围
 MIN_FORMULATED_PYRAMID_ALPHAS: Final[int] = 3  # 点亮金字塔Alpha的最小数量
+MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA: Final[int] = (
+    2  # Alpha中有效的天才金字塔的最大数量
+)
 
 
 class Database(Enum):
@@ -588,7 +591,8 @@ class CorrelationCalcType(Enum):
 
     DEFAULT = "DEFAULT"
     LOCAL = "LOCAL"
-    PLATFORM = "PLATFORM"
+    PLATFORM_SELF = "PLATFORM_SELF"
+    PLATFORM_PROD = "PLATFORM_PROD"
 
 
 class CompetitionStatus(Enum):
