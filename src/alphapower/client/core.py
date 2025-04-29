@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 from aiohttp import BasicAuth, ClientSession
 
-from alphapower.constants import CorrelationType
+from alphapower.constants import CorrelationType, RecordSetType
 from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import exception_handler
 from alphapower.settings import settings
@@ -45,6 +45,7 @@ from .raw_api import (
     alpha_fetch_competitions,
     alpha_fetch_correlations,
     alpha_fetch_record_set_pnl,
+    alpha_fetch_record_sets,
     alpha_fetch_submission_check_result,
     authentication,
     create_multi_simulation,
@@ -435,6 +436,24 @@ class WorldQuantClient:
 
         finished, table, retry_after, rate_limit = await alpha_fetch_record_set_pnl(
             self.session, alpha_id
+        )
+        return finished, table, retry_after, rate_limit
+
+    @exception_handler
+    @rate_limit_handler
+    async def alpha_fetch_record_sets(
+        self,
+        alpha_id: str,
+        record_type: RecordSetType,
+    ) -> Tuple[bool, Optional[TableView], float, RateLimit]:
+        if not await self._is_initialized():
+            raise RuntimeError("客户端未初始化")
+
+        if self.session is None:
+            raise RuntimeError("会话未初始化")
+
+        finished, table, retry_after, rate_limit = await alpha_fetch_record_sets(
+            self.session, alpha_id, record_type
         )
         return finished, table, retry_after, rate_limit
 

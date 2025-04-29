@@ -84,6 +84,11 @@ ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[Optional[str], str], str]
     )
 )
 
+# 图表数据相关端点
+ENDPOINT_RECORD_SETS: Final[Callable[[RecordSetType, str], str]] = (
+    lambda record_set_type, alpha_id: f"alphas/{alpha_id}/recordsets/{record_set_type.value}"
+)
+
 # 模拟端点
 ENDPOINT_SIMULATION: Final[str] = "simulations"
 
@@ -567,8 +572,11 @@ class SubmissionCheckType(Enum):
 
 class RecordSetType(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
-    PNL = "PNL"  # 收益率
-    YEARLY_STATS = "YEARLY_STATS"  # 年度统计
+    DAILY_PNL = "daily-pnl"  # 日收益率
+    PNL = "pnl"  # 收益率
+    SHRPE = "sharpe"  # 夏普比率
+    TURNOVER = "turnover"  # 换手率
+    YEARLY_STATS = "yearly-stats"  # 年度统计数据
 
 
 class SubmissionCheckResult(Enum):

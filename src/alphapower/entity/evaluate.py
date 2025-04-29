@@ -13,7 +13,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy import (
     JSON,
@@ -34,6 +34,7 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
+from alphapower.client.common_view import TableView
 from alphapower.constants import (
     ALPHA_ID_LENGTH,
     CheckRecordType,
@@ -198,9 +199,10 @@ class RecordSet(Base):
         nullable=False,
         comment="记录集类型",  # 添加字段注释
     )
-    content: MappedColumn[JSON] = mapped_column(
+    _content: MappedColumn[JSON] = mapped_column(
         JSON,
         nullable=False,
+        name="content",
         comment="记录集内容 (JSON)",  # 添加字段注释
     )
     created_at: MappedColumn[datetime] = mapped_column(
@@ -210,6 +212,48 @@ class RecordSet(Base):
         comment="创建时间",  # 添加字段注释
     )
 
+    def __init__(self, **kwargs: Any):
+        """初始化 RecordSet 对象。
+
+        Args:
+            **kwargs: 其他关键字参数。
+        """
+        if "content" in kwargs:
+            content: Optional[TableView] = kwargs.pop("content")
+            if content is None:
+                raise ValueError("content 不能为 None")
+            if isinstance(content, TableView):
+                self._content = cast(Any, content.model_dump(mode="json"))
+            elif isinstance(content, dict):
+                self._content = content
+            else:
+                raise TypeError("content 必须是 TableView 或 dict 类型")
+
+        super().__init__(**kwargs)
+
+    @hybrid_property
+    def content(self) -> Optional[TableView]:
+        """获取记录集内容。
+
+        返回:
+            TableView: 记录集内容。
+        """
+        if self._content is None:
+            return None
+        content: TableView = TableView.model_validate(self._content)
+        return content
+
+    @content.setter  # type: ignore
+    def content(self, value: TableView) -> None:
+        """设置记录集内容。
+
+        Args:
+            value (TableView): 记录集内容。
+        """
+        if value is None:
+            self._content = None
+        else:
+            self._content = cast(Any, value.model_dump(mode="json"))
 
 class EvaluateRecord(Base):
     __tablename__ = "evaluate_records"

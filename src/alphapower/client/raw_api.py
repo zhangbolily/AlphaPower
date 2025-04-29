@@ -22,9 +22,11 @@ from alphapower.constants import (
     ENDPOINT_DATA_FIELDS,
     ENDPOINT_DATA_SETS,
     ENDPOINT_OPERATORS,
+    ENDPOINT_RECORD_SETS,
     ENDPOINT_SELF_ALPHA_LIST,
     ENDPOINT_SIMULATION,
     CorrelationType,
+    RecordSetType,
 )
 from alphapower.internal.logging import get_logger
 from alphapower.view.activities import DiversityView, PyramidAlphasView
@@ -137,6 +139,33 @@ async def alpha_fetch_record_set_pnl(
 ) -> Tuple[bool, Optional[TableView], float, RateLimit]:
 
     url: str = f"{BASE_URL}/{ENDPOINT_ALPHA_PNL(alpha_id)}"
+    async with session.get(url) as response:
+        response.raise_for_status()
+
+        retry_after: float = retry_after_from_headers(response.headers)
+        if retry_after != 0.0:
+            return (
+                False,
+                None,
+                retry_after,
+                RateLimit.from_headers(response.headers),
+            )
+
+        return (
+            True,
+            TableView.model_validate_json(await response.text()),
+            0.0,
+            RateLimit.from_headers(response.headers),
+        )
+
+
+async def alpha_fetch_record_sets(
+    session: aiohttp.ClientSession,
+    alpha_id: str,
+    record_type: RecordSetType,
+) -> Tuple[bool, Optional[TableView], float, RateLimit]:
+
+    url: str = f"{BASE_URL}/{ENDPOINT_RECORD_SETS(record_type, alpha_id)}"
     async with session.get(url) as response:
         response.raise_for_status()
 
