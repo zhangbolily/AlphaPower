@@ -21,6 +21,7 @@ from alphapower.entity import (
     Alpha,
 )
 from alphapower.internal.logging import get_logger
+from alphapower.settings import setup_multiprocessing_context
 
 # 获取日志记录器 (logger)
 log = get_logger(module_name=__name__)
@@ -156,8 +157,10 @@ if __name__ == "__main__":
 
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
-                concurrency=50,
+                concurrency=48,
             ):
                 print(alpha)
+
+    setup_multiprocessing_context()
 
     asyncio.run(main())
