@@ -147,7 +147,7 @@ if __name__ == "__main__":
             )
 
             in_sample_stage.next_stage = local_correlation_stage
-            local_correlation_stage.next_stage = platform_prod_correlation_stage
+            local_correlation_stage.next_stage = None
             evaluator = BaseEvaluator(
                 name="consultant",
                 fetcher=fetcher,

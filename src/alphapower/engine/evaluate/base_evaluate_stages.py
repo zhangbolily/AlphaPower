@@ -248,7 +248,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                         max_pyramids_in_alpha=MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA,
                     )
                     # 一个 Alpha 匹配到的 Pyramid 过多，不会被认为是能点亮 Genius 进度的 Pyramid
-                    record.matched_unformulated_pyramid = []  # type: ignore
+                    matched_unformulated_pyramid = []
 
                 record.matched_unformulated_pyramid = matched_unformulated_pyramid  # type: ignore
 
@@ -394,6 +394,35 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                     min_corr=min_corr,
                     threshold=self._threshold,
                 )
+
+                for other_alpha, corr in pairwise_correlation.items():
+                    if corr >= max_corr:
+                        # 检查夏普率（Sharpe Ratio）不为 None，避免除法异常
+                        if (
+                            alpha.in_sample.sharpe is not None
+                            and other_alpha.in_sample.sharpe is not None
+                            and other_alpha.in_sample.sharpe != 0
+                        ):
+                            sharp_improvement: float = (
+                                alpha.in_sample.sharpe / other_alpha.in_sample.sharpe - 1
+                            )
+                            if sharp_improvement >= 0.1:
+                                await self.log.ainfo(
+                                    "夏普率有显著提升",
+                                    emoji="✅",
+                                    alpha_id=alpha.alpha_id,
+                                    sharp_improvement=sharp_improvement,
+                                )
+                                return True
+                        else:
+                            await self.log.awarning(
+                                "夏普率为空或为零，无法计算提升幅度",
+                                emoji="⚠️",
+                                alpha_id=alpha.alpha_id,
+                                alpha_sharpe=alpha.in_sample.sharpe,
+                                other_alpha_sharpe=other_alpha.in_sample.sharpe,
+                            )
+
                 return False
 
             await self.log.ainfo(

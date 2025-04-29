@@ -1,6 +1,7 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
+import os
 from typing import Any, AsyncGenerator, List, Optional
 
 from alphapower.client import BeforeAndAfterPerformanceView, WorldQuantClient
@@ -277,8 +278,10 @@ if __name__ == "__main__":
             )
 
             async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH, concurrency=60
+                policy=RefreshPolicy.FORCE_REFRESH, concurrency=24
             ):
                 print(alpha)
+
+    os.environ["PYTHONASYNCIO_MAX_WORKERS"] = str(64)
 
     asyncio.run(test())
