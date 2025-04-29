@@ -1,6 +1,7 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
+import multiprocessing
 from typing import AsyncGenerator, Dict, List, Set
 
 from alphapower.constants import (
@@ -50,6 +51,8 @@ if __name__ == "__main__":
         """
         测试 PPAC2025Evaluator 的功能。
         """
+        multiprocessing.set_start_method("spawn", force=True)
+
         alpha_dal: AlphaDAL = DALFactory.create_dal(dal_class=AlphaDAL)
         aggregate_data_dal: AggregateDataDAL = DALFactory.create_dal(
             dal_class=AggregateDataDAL,

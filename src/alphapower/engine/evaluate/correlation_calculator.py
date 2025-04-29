@@ -22,6 +22,47 @@ from alphapower.entity import Alpha, RecordSet
 from alphapower.internal.logging import get_logger
 
 
+def process_target_calc_func(
+    shared_corr_val: DictProxy,
+    target_dict: dict,
+    others_dict: dict,
+    inner: bool,
+) -> None:
+    # 子进程内重新获取 logger
+    from alphapower.internal.logging import (  # pylint: disable=W0621,W0404,C0415
+        get_logger,
+    )
+
+    log = get_logger(module_name="alphapower.engine.evaluate.correlation_calculator")
+    try:
+        import pandas as pd  # pylint: disable=W0621,W0404,C0415
+
+        target_df = pd.DataFrame.from_dict(target_dict)
+        others_df = {k: pd.DataFrame.from_dict(v) for k, v in others_dict.items()}
+        corr_dict = CorrelationCalculator._do_calculation( # pylint: disable=W0212
+            target=target_df,
+            others=others_df,
+            log=log,
+            inner=inner,
+        )
+        shared_corr_val.update(corr_dict)
+        preview_corr_val = dict(list(shared_corr_val.items())[:10])
+        log.info(
+            event="子进程计算完成",
+            shared_corr_val_preview=preview_corr_val,
+            total_count=len(shared_corr_val),
+            emoji="✅",
+        )
+    except Exception as e:
+        log.error(
+            event="子进程相关性计算异常",
+            error=str(e),
+            emoji="💥",
+            exc_info=True,
+        )
+        shared_corr_val["__error__"] = str(e)
+
+
 class CorrelationCalculator:
     def __init__(
         self,
@@ -51,7 +92,7 @@ class CorrelationCalculator:
         self._is_initialized: bool = False
         self._region_to_alpha_map: Dict[Region, List[Alpha]] = {}
         self.multiprocess: bool = multiprocess
-        self.other_alphas_pnl_cache: Dict[Alpha, pd.DataFrame] = {}
+        self.other_alphas_pnl_cache: Dict[str, pd.DataFrame] = {}
         self.log: BoundLogger = get_logger(
             module_name=f"{__name__}.{self.__class__.__name__}"
         )
@@ -82,7 +123,7 @@ class CorrelationCalculator:
             pnl_data = await self._prepare_pnl_dataframe(pnl_data)
 
             # 缓存 pnl 数据
-            self.other_alphas_pnl_cache[alpha] = pnl_data
+            self.other_alphas_pnl_cache[alpha.alpha_id] = pnl_data
             await self.log.ainfo(
                 event="成功加载 Alpha 策略的 pnl 数据",
                 alpha_id=alpha.alpha_id,
@@ -195,7 +236,7 @@ class CorrelationCalculator:
             pnl_data = await self._prepare_pnl_dataframe(pnl_data)
 
             # 缓存 pnl 数据
-            self.other_alphas_pnl_cache[alpha] = pnl_data
+            self.other_alphas_pnl_cache[alpha.alpha_id] = pnl_data
             await self.log.ainfo(
                 event="成功加载 Alpha 策略的 pnl 数据",
                 alpha_id=alpha.alpha_id,
@@ -474,7 +515,7 @@ class CorrelationCalculator:
     @staticmethod
     def _do_calculation(
         target: pd.DataFrame,
-        others: Dict[Alpha, pd.DataFrame],
+        others: Dict[str, pd.DataFrame],
         log: BoundLogger,
         inner: bool = False,
     ) -> Dict[str, float]:
@@ -488,11 +529,11 @@ class CorrelationCalculator:
             return {}
 
         start: datetime = datetime.now()
-        for other_alpha, other_pnl_df in others.items():
-            if other_alpha is None or other_pnl_df is None:
+        for other_alpha_id, other_pnl_df in others.items():
+            if other_alpha_id is None or other_pnl_df is None:
                 log.error(
                     event="Alpha 策略的 pnl 数据为 None, 无法计算自相关性",
-                    alpha_id=other_alpha.alpha_id,
+                    alpha_id=other_alpha_id,
                     emoji="❌",
                 )
                 raise ValueError("Alpha 策略的 pnl 数据为 None, 无法计算自相关性")
@@ -507,7 +548,7 @@ class CorrelationCalculator:
                 if other_pnl_df.empty or inner_target.empty:
                     log.warning(
                         event="内相关性计算时，其他 Alpha 策略的 pnl 数据为空",
-                        alpha_id=other_alpha.alpha_id,
+                        alpha_id=other_alpha_id,
                         emoji="⚠️",
                     )
                     continue
@@ -519,11 +560,11 @@ class CorrelationCalculator:
             if pd.isna(correlation):
                 log.warning(
                     event="相关性计算结果为 NaN",
-                    other_alpha_id=other_alpha.alpha_id,
+                    other_alpha_id=other_alpha_id,
                     emoji="⚠️",
                 )
                 continue
-            correlation_map[other_alpha.alpha_id] = correlation
+            correlation_map[other_alpha_id] = correlation
 
         elapsed_time: float = (datetime.now() - start).total_seconds()
         log.info(
@@ -534,86 +575,61 @@ class CorrelationCalculator:
 
         return correlation_map
 
+    @staticmethod
     def _do_calculation_in_subprocess(
-        self,
         target: pd.DataFrame,
-        others: Dict[Alpha, pd.DataFrame],
+        others: Dict[str, pd.DataFrame],  # 用 alpha_id 作为 key
         inner: bool = False,
     ) -> Dict[str, float]:
         """
         在子进程中计算相关性，支持异常处理。
-
-        :param target: 目标 Alpha 的 pnl 数据
-        :param others: 其他 Alpha 的 pnl 数据字典
-        :param inner: 是否为内相关性计算
-        :return: 相关性结果字典
+        只传递可序列化对象，避免传递 self、log、复杂对象。
         """
+        local_log: BoundLogger = get_logger(
+            module_name="alphapower.engine.evaluate.correlation_calculator"
+        )
 
-        def _run(
-            shared_corr_val: DictProxy,
-            log: BoundLogger,
-        ) -> None:
-            """
-            子进程中计算相关性并存储到共享变量中。
+        # 只传递 dict
+        target_dict = target.to_dict()
+        others_dict = {k: v.to_dict() for k, v in others.items()}
 
-            :param shared_corr_val: 用于存储相关性值的共享字典
-            :param log: 日志对象
-            """
-            try:
-                corr_dict: Dict[str, float] = self._do_calculation(
-                    target=target,
-                    others=others,
-                    log=log,
-                    inner=inner,
-                )
-                shared_corr_val.update(corr_dict)
-                # 只打印前 10 个相关性结果，避免日志过长
-                preview_corr_val = dict(list(shared_corr_val.items())[:10])
-                log.info(
-                    event="子进程计算完成",
-                    shared_corr_val_preview=preview_corr_val,
-                    total_count=len(shared_corr_val),
-                    emoji="✅",
-                )
-            except Exception as e:
-                # 捕获所有异常，避免子进程崩溃
-                log.error(
-                    event="子进程相关性计算异常",
-                    error=str(e),
-                    emoji="💥",
-                    exc_info=True,
-                )
-                # 标记异常，主进程可据此判断
-                shared_corr_val["__error__"] = str(e)
-
-        pairwise_correlation: Dict[str, float] = {}
-
-        # 使用 Manager 创建共享字典
         with Manager() as manager:
             pairwise_corr_val: DictProxy = manager.dict()
-
-            # 创建子进程并传递共享字典
-            sub_process: Process = Process(
-                target=_run,
-                args=(
-                    pairwise_corr_val,
-                    self.log,
-                ),
+            sub_process = Process(
+                target=process_target_calc_func,
+                args=(pairwise_corr_val, target_dict, others_dict, inner),
+                name="CorrelationCalculator",
             )
             sub_process.start()
-            sub_process.join()
 
-            # 检查是否有异常标记
+            local_log.info(
+                event="子进程计算开始",
+                emoji="🔄",
+                module=__name__,
+                pid=sub_process.pid,
+            )
+
+            sub_process.join(timeout=30)
             if "__error__" in pairwise_corr_val:
-                error_msg: str = pairwise_corr_val["__error__"]
-                self.log.error(
+                error_msg = pairwise_corr_val["__error__"]
+                local_log.error(
                     event="子进程相关性计算失败",
+                    pid=sub_process.pid,
                     error=error_msg,
                     emoji="💥",
                 )
                 raise RuntimeError(f"子进程相关性计算失败: {error_msg}")
 
-            # 将共享字典转换为普通字典
+            if sub_process.is_alive():
+                sub_process.terminate()
+                local_log.error(
+                    event="子进程相关性计算超时",
+                    pid=sub_process.pid,
+                    emoji="⏰",
+                )
+                raise TimeoutError("子进程相关性计算超时")
+
+            sub_process.close()
             pairwise_correlation = dict(pairwise_corr_val)
         return pairwise_correlation
 
@@ -681,14 +697,13 @@ class CorrelationCalculator:
         if self.multiprocess:
             start_subprocess_time: datetime = datetime.now()
 
-            loop = asyncio.get_event_loop()
-            pairwise_correlation = await loop.run_in_executor(
-                None,
+            task = asyncio.to_thread(
                 self._do_calculation_in_subprocess,
                 target_pnl_diff_df,
                 self.other_alphas_pnl_cache,
                 inner,
             )
+            pairwise_correlation = await task
 
             subprocess_elapsed_time: float = (
                 datetime.now() - start_subprocess_time
