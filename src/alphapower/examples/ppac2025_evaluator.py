@@ -278,7 +278,7 @@ if __name__ == "__main__":
             )
 
             async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH, concurrency=24
+                policy=RefreshPolicy.FORCE_REFRESH, concurrency=48
             ):
                 print(alpha)
 

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     Integer,
     String,
+    Text,
     event,
     func,
 )
@@ -21,6 +22,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, Mapper, mapped_column
 
 from alphapower.constants import (
+    ALPHA_ID_LENGTH,
     AlphaType,
     Decay,
     Delay,
@@ -39,6 +41,7 @@ from alphapower.constants import (
     get_universe_for_instrument_region,
     is_region_supported_for_instrument_type,
 )
+from alphapower.view.alpha import StringListAdapter
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -85,19 +88,23 @@ class SimulationTask(Base):
     )
 
     # 基础数据类型字段
-    settings_group_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    regular: Mapped[str] = mapped_column(String, nullable=False)
-    alpha_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    settings_group_key: Mapped[str] = mapped_column(
+        String(32), nullable=False, index=True
+    )
+    regular: Mapped[str] = mapped_column(Text, nullable=False)
+    alpha_id: Mapped[Optional[str]] = mapped_column(
+        String(ALPHA_ID_LENGTH), nullable=True
+    )
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    signature: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    _tags: Mapped[Optional[str]] = mapped_column(String, nullable=True, name="tags")
-    parent_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    child_progress_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    signature: Mapped[str] = mapped_column(String(32), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    _tags: Mapped[Optional[JSON]] = mapped_column(JSON, nullable=True, name="tags")
+    parent_progress_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    child_progress_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     language: Mapped[RegularLanguage] = mapped_column(
         Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
     )
-    test_period: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    test_period: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 
     # 数值类型字段
     decay: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -136,20 +143,7 @@ class SimulationTask(Base):
 
         # 手动设置 _tags 属性
         if tags is not None:
-            # 过滤空标签，确保唯一性，并使用逗号连接
-            self._tags = ",".join(
-                sorted(
-                    set(
-                        filter(
-                            None,
-                            [
-                                tag.strip() if isinstance(tag, str) else str(tag)
-                                for tag in tags
-                            ],
-                        )
-                    )
-                )
-            )
+            self._tags = StringListAdapter.dump_python(tags, mode="json")
 
         self._initializing = False
 
@@ -239,29 +233,15 @@ class SimulationTask(Base):
     def tags(self) -> Optional[List[str]]:
         if self._tags is None:
             return None
-        return sorted(
-            set([tag.strip() for tag in self._tags.split(",") if tag.strip()])
-        )
+        tags: List[str] = StringListAdapter.validate_python(self._tags)
+        return tags
 
     @tags.setter  # type: ignore[no-redef]
     def tags(self, value: Optional[List[str]]) -> None:
         if value is None:
             self._tags = None
         else:
-            # 过滤空标签，确保唯一性，并使用逗号连接
-            self._tags = ",".join(
-                sorted(
-                    set(
-                        filter(
-                            None,
-                            [
-                                tag.strip() if isinstance(tag, str) else str(tag)
-                                for tag in value
-                            ],
-                        )
-                    )
-                )
-            )
+            self._tags = StringListAdapter.dump_python(value, mode="json")
 
     def add_tag(self, tag: str) -> None:
         if not tag or not tag.strip():

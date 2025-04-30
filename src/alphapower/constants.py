@@ -1,8 +1,8 @@
 from __future__ import annotations  # 添加此行解决前向引用问题
 
-from enum import Enum
+from enum import Enum, auto
 from functools import lru_cache  # 添加缓存支持
-from typing import Callable, Dict, Final, List, Optional, Tuple
+from typing import Callable, Dict, Final, List, Optional, Set, Tuple
 from urllib.parse import urljoin
 
 # 类型别名定义，提高代码可读性
@@ -122,6 +122,18 @@ class UserRole(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CONSULTANT = "ROLE_CONSULTANT"  # 顾问角色
     USER = "ROLE_USER"  # 普通用户角色
+
+
+class UserPermission(Enum):
+    DEFAULT = auto()
+    BEFORE_AND_AFTER_PERFORMANCE_V2 = auto()  # 提交前后性能对比检查
+    CONSULTANT = auto()  # 顾问角色
+    MULTI_SIMULATION = auto()  # 多模拟槽位
+    PROD_ALPHAS = auto()  # 生产环境相关性检查
+    REFERRAL = auto()  # 推荐
+    SUPER_ALPHA = auto()  # 超级Alpha
+    VISUALIZATION = auto()  # 可视化
+    WORKDAY = auto()  # 工作日
 
 
 # 用户角色常量 (兼容性保留，建议使用UserRole枚举)
@@ -311,6 +323,15 @@ HTTP_CODE_MESSAGE_MAP: Final[Dict[int, str]] = {
     509: "Bandwidth Limit Exceeded",
     510: "Not Extended",
     511: "Network Authentication Required",
+}
+
+# 需要重试的 HTTP 状态码集合（RETRYABLE HTTP CODES）
+RETRYABLE_HTTP_CODES: Final[Set[int]] = {
+    429,  # 请求过多（Too Many Requests）
+    500,  # 服务器内部错误（Internal Server Error）
+    502,  # 错误网关（Bad Gateway）
+    503,  # 服务不可用（Service Unavailable）
+    504,  # 网关超时（Gateway Timeout）
 }
 
 # -----------------------------------------------------------------------------
