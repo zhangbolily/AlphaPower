@@ -33,6 +33,7 @@ dependencies = [
     "aiostream (>=0.6.4,<0.7.0)",
     "aiomysql (>=0.2.0,<0.3.0)",
     "httpx (>=0.28.1,<0.29.0)",
+    "aiomultiprocess (>=0.9.1,<0.10.0)",
 ]
 
 [project.urls]

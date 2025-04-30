@@ -595,7 +595,7 @@ class RecordSetType(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     DAILY_PNL = "daily-pnl"  # 日收益率
     PNL = "pnl"  # 收益率
-    SHRPE = "sharpe"  # 夏普比率
+    SHARPE = "sharpe"  # 夏普比率
     TURNOVER = "turnover"  # 换手率
     YEARLY_STATS = "yearly-stats"  # 年度统计数据
 

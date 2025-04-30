@@ -10,7 +10,9 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import abc
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable
+
+from pydantic import BaseModel
 
 from alphapower.constants import RefreshPolicy
 from alphapower.dal.evaluate import EvaluateRecordDAL
@@ -158,3 +160,66 @@ class AbstractEvaluator(abc.ABC):
             符合 `fetcher` 筛选条件的 Alpha 实体总数。
         """
         raise NotImplementedError("子类必须实现 to_evaluate_alpha_count 方法")
+
+
+class AbstractFactory(abc.ABC, BaseModel):
+
+    @abc.abstractmethod
+    def __call__(self) -> Any:
+        """工厂方法，用于创建实例。
+
+        返回:
+            创建的实例对象。
+        """
+        raise NotImplementedError("子类必须实现 __call__ 方法")
+
+
+class AbstractEvaluatorV2(abc.ABC):
+    """支持多进程 (multiprocessing) 的 Alpha 评估器抽象基类。
+
+    该类设计用于多进程环境，所有依赖（如 fetcher、evaluate_stage_chain、evaluate_record_dal）
+    必须在子进程内独立实例化，避免父进程对象被子进程复用导致的资源竞争或状态污染。
+    父进程仅负责任务分发，不参与实际评估逻辑。
+
+    子类需实现所有抽象方法，确保每个子进程内的依赖对象生命周期独立、线程安全。
+    """
+
+    def __init__(
+        self,
+        fetcher_factory: Callable[[], AbstractAlphaFetcher],
+        evaluate_stage_chain_factory: Callable[[], AbstractEvaluateStage],
+        evaluate_record_dal_factory: Callable[[], EvaluateRecordDAL],
+    ):
+        self.fetcher_factory: Callable[[], AbstractAlphaFetcher] = fetcher_factory
+        self.evaluate_stage_chain_factory: Callable[[], AbstractEvaluateStage] = (
+            evaluate_stage_chain_factory
+        )
+        self.evaluate_record_dal_factory: Callable[[], EvaluateRecordDAL] = (
+            evaluate_record_dal_factory
+        )
+
+    @abc.abstractmethod
+    async def evaluate_many_mp(
+        self,
+        policy: RefreshPolicy,
+        concurrency: int,
+        process_count: int,
+        **kwargs: Any,
+    ) -> AsyncGenerator[Alpha, None]:
+        """多进程异步批量评估 Alpha。
+
+        父进程负责将待评估 Alpha 分片分发到各子进程，子进程独立评估并返回结果。
+        每个子进程内的依赖对象必须通过 create_child_dependencies 独立初始化。
+
+        参数:
+            policy: 默认刷新策略 (RefreshPolicy)。
+            concurrency: 每个子进程内的最大并发任务数。
+            process_count: 启动的子进程数量。
+            **kwargs: 传递给 fetcher、evaluate_one 等的参数。
+
+        产出:
+            逐个返回所有通过评估的 Alpha 实体对象。
+        """
+        if False:
+            yield
+        raise NotImplementedError("子类必须实现 evaluate_many_mp 方法")

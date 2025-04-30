@@ -116,6 +116,22 @@ yarl = ">=1.17.0,<2.0"
 speedups = ["Brotli ; platform_python_implementation == \"CPython\"", "aiodns (>=3.2.0) ; sys_platform == \"linux\" or sys_platform == \"darwin\"", "brotlicffi ; platform_python_implementation != \"CPython\""]
 
 [[package]]
+name = "aiomultiprocess"
+version = "0.9.1"
+description = "AsyncIO version of the standard multiprocessing module"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "aiomultiprocess-0.9.1-py3-none-any.whl", hash = "sha256:3a7b3bb3c38dbfb4d9d1194ece5934b6d32cf0280e8edbe64a7d215bba1322c6"},
+    {file = "aiomultiprocess-0.9.1.tar.gz", hash = "sha256:f0231dbe0291e15325d7896ebeae0002d95a4f2675426ca05eb35f24c60e495b"},
+]
+
+[package.extras]
+dev = ["attribution (==1.7.1)", "black (==24.4.0)", "coverage (==7.4.4)", "flake8 (==7.0.0)", "flake8-bugbear (==24.4.21)", "flit (==3.9.0)", "mypy (==1.9.0)", "usort (==1.0.8.post1)", "uvloop (==0.19.0) ; sys_platform != \"win32\""]
+docs = ["sphinx (==7.3.7)", "sphinx-mdinclude (==0.6.0)"]
+
+[[package]]
 name = "aiomysql"
 version = "0.2.0"
 description = "MySQL driver for asyncio."
@@ -1894,4 +1910,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "348e2aa3d0d10ae72801adf938cb8cb9c59a3461c5ef1f04fe9c2c3182ed6eed"
+content-hash = "f9f8774aade6dc21b3d30d4322f3c966c67168175125128c51ad83d2e6c57415"

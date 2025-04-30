@@ -218,18 +218,12 @@ class RecordSet(Base):
         Args:
             **kwargs: 其他关键字参数。
         """
-        if "content" in kwargs:
-            content: Optional[TableView] = kwargs.pop("content")
-            if content is None:
-                raise ValueError("content 不能为 None")
-            if isinstance(content, TableView):
-                self._content = cast(Any, content.model_dump(mode="json"))
-            elif isinstance(content, dict):
-                self._content = content
-            else:
-                raise TypeError("content 必须是 TableView 或 dict 类型")
+        content: Optional[TableView] = kwargs.pop("content", None)
 
         super().__init__(**kwargs)
+
+        if content is not None:
+            self._content = cast(Any, content.model_dump(mode="json"))
 
     @hybrid_property
     def content(self) -> Optional[TableView]:
@@ -254,6 +248,7 @@ class RecordSet(Base):
             self._content = None
         else:
             self._content = cast(Any, value.model_dump(mode="json"))
+
 
 class EvaluateRecord(Base):
     __tablename__ = "evaluate_records"
@@ -372,6 +367,11 @@ class EvaluateRecord(Base):
         JSON,
         nullable=True,
         comment="检查记录 (JSON)",  # 添加字段注释
+    )
+    score_results: MappedColumn[JSON] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="评分结果 (JSON)",  # 添加字段注释
     )
     evaluator: MappedColumn[str] = mapped_column(
         String(32),

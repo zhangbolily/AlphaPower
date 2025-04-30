@@ -32,14 +32,14 @@ class RecordSetsManager:
     async def get_record_local(
         self,
         alpha: Alpha,
-        record_type: RecordSetType,
+        set_type: RecordSetType,
         local_expire_time: Optional[timedelta] = None,
     ) -> pd.DataFrame:
         # ⚡️DEBUG: 记录函数入参
         await self.log.adebug(
             "开始获取本地记录集",
             alpha_id=alpha.alpha_id,
-            record_type=record_type,
+            set_type=set_type,
             emoji="🔍",
         )
         try:
@@ -49,7 +49,7 @@ class RecordSetsManager:
                 record_set: Optional[RecordSet] = await self.record_set_dal.find_one_by(
                     session=session,
                     alpha_id=alpha.alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     order_by=RecordSet.created_at.desc(),
                 )
             # ⚡️DEBUG: 记录查询结果
@@ -57,7 +57,7 @@ class RecordSetsManager:
                 "查询RecordSet结果",
                 record_set_id=getattr(record_set, "id", None),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="📦",
             )
 
@@ -65,11 +65,11 @@ class RecordSetsManager:
                 await self.log.aerror(
                     "未找到RecordSet",
                     alpha_id=alpha.alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     emoji="❌",
                 )
                 raise LookupError(
-                    f"未找到对应的RecordSet，alpha_id: {alpha.alpha_id}, record_type: {record_type}"
+                    f"未找到对应的RecordSet，alpha_id: {alpha.alpha_id}, set_type: {set_type}"
                 )
 
             if record_set.created_at is None:
@@ -77,11 +77,11 @@ class RecordSetsManager:
                     "RecordSet创建时间为空",
                     record_set_id=record_set.id,
                     alpha_id=alpha.alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     emoji="⚠️",
                 )
                 raise ValueError(
-                    f"RecordSet创建时间为空，alpha_id: {alpha.alpha_id}, record_type: {record_type}"
+                    f"RecordSet创建时间为空，alpha_id: {alpha.alpha_id}, set_type: {set_type}"
                 )
             if local_expire_time is not None:
                 now: pd.Timestamp = pd.Timestamp.now()
@@ -91,14 +91,14 @@ class RecordSetsManager:
                         "RecordSet已过期",
                         record_set_id=record_set.id,
                         alpha_id=alpha.alpha_id,
-                        record_type=record_type,
+                        set_type=set_type,
                         local_expire_time=local_expire_time,
                         created_at=record_set.created_at,
                         current_time=now,
                         emoji="⏳",
                     )
                     raise LookupError(
-                        f"RecordSet已过期，alpha_id: {alpha.alpha_id}, record_type: {record_type}"
+                        f"RecordSet已过期，alpha_id: {alpha.alpha_id}, set_type: {set_type}"
                     )
 
             if record_set.content is None:
@@ -106,11 +106,11 @@ class RecordSetsManager:
                     "RecordSet内容为空",
                     record_set_id=record_set.id,
                     alpha_id=alpha.alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     emoji="⚠️",
                 )
                 raise ValueError(
-                    f"RecordSet内容为空，alpha_id: {alpha.alpha_id}, record_type: {record_type}"
+                    f"RecordSet内容为空，alpha_id: {alpha.alpha_id}, set_type: {set_type}"
                 )
 
             record_set_df: pd.DataFrame = record_set.content.to_dataframe()
@@ -120,7 +120,7 @@ class RecordSetsManager:
                 shape=record_set_df.shape,
                 columns=record_set_df.columns.tolist(),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="🧾",
             )
             if record_set_df.empty:
@@ -128,18 +128,18 @@ class RecordSetsManager:
                     "RecordSet DataFrame为空",
                     record_set_id=record_set.id,
                     alpha_id=alpha.alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     emoji="🚫",
                 )
                 raise ValueError(
-                    f"RecordSet DataFrame为空，alpha_id: {alpha.alpha_id}, record_type: {record_type}"
+                    f"RecordSet DataFrame为空，alpha_id: {alpha.alpha_id}, set_type: {set_type}"
                 )
             # ⚡️INFO: 成功返回DataFrame
             await self.log.ainfo(
                 "成功获取本地记录集",
                 record_set_id=record_set.id,
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="✅",
             )
             return record_set_df
@@ -149,7 +149,7 @@ class RecordSetsManager:
                 "业务异常",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="⚠️",
             )
             raise
@@ -159,24 +159,24 @@ class RecordSetsManager:
                 "获取本地记录集发生未知异常",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 exc_info=True,
                 emoji="💥",
             )
             raise RuntimeError(
-                f"获取本地记录集失败，alpha_id: {alpha.alpha_id}, record_type: {record_type}，原因: {e}"
+                f"获取本地记录集失败，alpha_id: {alpha.alpha_id}, set_type: {set_type}，原因: {e}"
             ) from e
 
     async def fetch_and_save_record_sets(
         self,
         alpha: Alpha,
-        record_type: RecordSetType,
+        set_type: RecordSetType,
     ) -> pd.DataFrame:
         # ⚡️DEBUG: 记录函数入参
         await self.log.adebug(
             "开始从平台获取记录集",
             alpha_id=alpha.alpha_id,
-            record_type=record_type,
+            set_type=set_type,
             emoji="🔄",
         )
         try:
@@ -194,17 +194,17 @@ class RecordSetsManager:
                         await self.log.aerror(
                             "加载记录集超时",
                             alpha_id=alpha_id,
-                            record_type=record_type,
+                            set_type=set_type,
                             timeout=timeout,
                             emoji="⏰",
                         )
                         raise TimeoutError(
-                            f"加载记录集超时，alpha_id: {alpha_id}, record_type: {record_type}"
+                            f"加载记录集超时，alpha_id: {alpha_id}, set_type: {set_type}"
                         )
 
                     finished, record_sets_view, retry_after, _ = (
                         await client.alpha_fetch_record_sets(
-                            alpha_id=alpha_id, record_type=record_type
+                            alpha_id=alpha_id, record_type=set_type
                         )
                     )
 
@@ -212,7 +212,7 @@ class RecordSetsManager:
                         await self.log.ainfo(
                             "记录集数据加载中，等待重试",
                             alpha_id=alpha_id,
-                            record_type=record_type,
+                            set_type=set_type,
                             retry_after=retry_after,
                             emoji="⏳",
                         )
@@ -222,16 +222,16 @@ class RecordSetsManager:
                 await self.log.aerror(
                     "平台返回的记录集数据为 None",
                     alpha_id=alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     emoji="❌",
                 )
                 raise ValueError(
-                    f"平台返回的记录集数据为 None，alpha_id: {alpha_id}, record_type: {record_type}"
+                    f"平台返回的记录集数据为 None，alpha_id: {alpha_id}, set_type: {set_type}"
                 )
 
             record_set_entity: RecordSet = RecordSet(
                 alpha_id=alpha_id,
-                set_type=record_type,
+                set_type=set_type,
                 content=record_sets_view,
             )
 
@@ -242,7 +242,7 @@ class RecordSetsManager:
                 existing_record_set: Optional[RecordSet] = (
                     await self.record_set_dal.find_one_by(
                         alpha_id=alpha_id,
-                        set_type=record_type,
+                        set_type=set_type,
                         session=session,
                     )
                 )
@@ -255,7 +255,7 @@ class RecordSetsManager:
                     await self.log.ainfo(
                         "新建记录集数据",
                         alpha_id=alpha_id,
-                        record_type=record_type,
+                        set_type=set_type,
                         emoji="🆕",
                     )
                 else:
@@ -267,7 +267,7 @@ class RecordSetsManager:
                     await self.log.ainfo(
                         "更新已有记录集数据",
                         alpha_id=alpha_id,
-                        record_type=record_type,
+                        set_type=set_type,
                         emoji="♻️",
                     )
 
@@ -276,17 +276,17 @@ class RecordSetsManager:
                 await self.log.aerror(
                     "记录集数据转换为 DataFrame 失败或内容为空",
                     alpha_id=alpha_id,
-                    record_type=record_type,
+                    set_type=set_type,
                     emoji="❌",
                 )
                 raise ValueError(
-                    f"记录集数据转换为 DataFrame 失败或内容为空，alpha_id: {alpha_id}, record_type: {record_type}"
+                    f"记录集数据转换为 DataFrame 失败或内容为空，alpha_id: {alpha_id}, set_type: {set_type}"
                 )
 
             await self.log.adebug(
                 "成功从平台加载记录集数据",
                 alpha_id=alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 shape=record_set_df.shape,
                 columns=record_set_df.columns.tolist(),
                 emoji="✅",
@@ -297,7 +297,7 @@ class RecordSetsManager:
                 "获取记录集超时",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="⏰",
             )
             raise
@@ -306,7 +306,7 @@ class RecordSetsManager:
                 "获取记录集发生业务异常",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="⚠️",
             )
             raise
@@ -315,18 +315,18 @@ class RecordSetsManager:
                 "获取记录集发生未知异常",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 exc_info=True,
                 emoji="💥",
             )
             raise RuntimeError(
-                f"获取记录集失败，alpha_id: {alpha.alpha_id}, record_type: {record_type}，原因: {e}"
+                f"获取记录集失败，alpha_id: {alpha.alpha_id}, set_type: {set_type}，原因: {e}"
             ) from e
 
     async def get_record_sets(
         self,
         alpha: Alpha,
-        record_type: RecordSetType,
+        set_type: RecordSetType,
         allow_local: bool = True,
         local_expire_time: Optional[timedelta] = None,
     ) -> pd.DataFrame:
@@ -334,7 +334,7 @@ class RecordSetsManager:
         await self.log.adebug(
             "开始获取记录集",
             alpha_id=alpha.alpha_id,
-            record_type=record_type,
+            set_type=set_type,
             allow_local=allow_local,
             emoji="🚀",
         )
@@ -345,13 +345,13 @@ class RecordSetsManager:
                 try:
                     record_sets_df = await self.get_record_local(
                         alpha=alpha,
-                        record_type=record_type,
+                        set_type=set_type,
                         local_expire_time=local_expire_time,
                     )
                     await self.log.ainfo(
                         "优先使用本地记录集",
                         alpha_id=alpha.alpha_id,
-                        record_type=record_type,
+                        set_type=set_type,
                         emoji="📦",
                     )
                     return record_sets_df
@@ -359,19 +359,19 @@ class RecordSetsManager:
                     await self.log.awarning(
                         "获取本地记录集失败，尝试从平台获取",
                         alpha_id=alpha.alpha_id,
-                        record_type=record_type,
+                        set_type=set_type,
                         error=str(e),
                         emoji="🔄",
                     )
             # 本地不可用或未找到，尝试从平台获取
             record_sets_df = await self.fetch_and_save_record_sets(
                 alpha=alpha,
-                record_type=record_type,
+                set_type=set_type,
             )
             await self.log.ainfo(
                 "成功获取平台记录集",
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="🌐",
             )
             return record_sets_df
@@ -380,7 +380,7 @@ class RecordSetsManager:
                 "获取平台记录集超时",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="⏰",
             )
             raise
@@ -389,7 +389,7 @@ class RecordSetsManager:
                 "获取平台记录集发生业务异常",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="⚠️",
             )
             raise
@@ -398,17 +398,17 @@ class RecordSetsManager:
                 "获取记录集发生未知异常",
                 error=str(e),
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 exc_info=True,
                 emoji="💥",
             )
             raise RuntimeError(
-                f"获取记录集失败，alpha_id: {alpha.alpha_id}, record_type: {record_type}，原因: {e}"
+                f"获取记录集失败，alpha_id: {alpha.alpha_id}, set_type: {set_type}，原因: {e}"
             ) from e
         finally:
             await self.log.ainfo(
                 "获取记录集流程结束",
                 alpha_id=alpha.alpha_id,
-                record_type=record_type,
+                set_type=set_type,
                 emoji="✅",
             )

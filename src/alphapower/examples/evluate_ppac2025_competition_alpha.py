@@ -2,9 +2,10 @@ from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
 import os
-from typing import Any, AsyncGenerator, List, Optional
+from datetime import datetime
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
-from alphapower.client import BeforeAndAfterPerformanceView, WorldQuantClient
+from alphapower.client import BeforeAndAfterPerformanceView, WorldQuantClient, wq_client
 from alphapower.client.models import AlphaPropertiesPayload
 from alphapower.constants import (
     CorrelationType,
@@ -14,17 +15,37 @@ from alphapower.constants import (
     Region,
     Stage,
     Status,
+    SubmissionCheckResult,
+    SubmissionCheckType,
 )
+from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
 from alphapower.dal.base import DALFactory
+from alphapower.dal.evaluate import (
+    CheckRecordDAL,
+    CorrelationDAL,
+    EvaluateRecordDAL,
+    RecordSetDAL,
+)
 from alphapower.dal.session_manager import session_manager
-from alphapower.engine.evaluate.base_evaluate_stages import PerformanceDiffEvaluateStage
+from alphapower.engine.evaluate.base_alpha_fetcher import BaseAlphaFetcher
+from alphapower.engine.evaluate.base_evaluate_stages import (
+    CorrelationLocalEvaluateStage,
+    CorrelationPlatformEvaluateStage,
+    InSampleChecksEvaluateStage,
+    PerformanceDiffEvaluateStage,
+)
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
+from alphapower.engine.evaluate.correlation_calculator import (
+    CorrelationCalculator,
+)
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
+from alphapower.engine.evaluate.scoring_evaluate_stage import ScoringEvaluateStage
 from alphapower.entity import (
     Alpha,
     EvaluateRecord,
 )
 from alphapower.internal.logging import get_logger
+from alphapower.manager.record_sets_manager import RecordSetsManager
 
 # 获取日志记录器 (logger)
 log = get_logger(module_name=__name__)
@@ -135,30 +156,8 @@ class PPAC2025PerfDiffEvaluateStage(PerformanceDiffEvaluateStage):
 
 
 if __name__ == "__main__":
-    # 运行测试
-    from datetime import datetime
-    from typing import Dict, Set
 
-    from alphapower.client import wq_client
-    from alphapower.constants import SubmissionCheckResult, SubmissionCheckType
-    from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
-    from alphapower.dal.evaluate import (
-        CheckRecordDAL,
-        CorrelationDAL,
-        EvaluateRecordDAL,
-        RecordSetDAL,
-    )
-    from alphapower.engine.evaluate.base_alpha_fetcher import BaseAlphaFetcher
-    from alphapower.engine.evaluate.base_evaluate_stages import (
-        CorrelationLocalEvaluateStage,
-        CorrelationPlatformEvaluateStage,
-        InSampleChecksEvaluateStage,
-    )
-    from alphapower.engine.evaluate.correlation_calculator import (
-        CorrelationCalculator,
-    )
-
-    async def test() -> None:
+    async def main() -> None:
         """
         测试 PPAC2025Evaluator 的功能。
         """
@@ -217,9 +216,14 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 2, 21),
-                end_time=datetime(2025, 4, 24, 23, 59, 59),
+                start_time=datetime(2025, 3, 16),
+                end_time=datetime(2025, 3, 31, 23, 59, 59),
                 status=Status.UNSUBMITTED,
+            )
+
+            record_set_manager: RecordSetsManager = RecordSetsManager(
+                client=client,
+                record_set_dal=record_set_dal,
             )
 
             check_pass_result_map: Dict[
@@ -263,12 +267,17 @@ if __name__ == "__main__":
                 check_record_dal=check_record_dal,
                 client=client,
             )
+            scoring_stage: ScoringEvaluateStage = ScoringEvaluateStage(
+                next_stage=None,
+                record_sets_manager=record_set_manager,
+            )
 
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = (
                 perf_diff_stage  # TODO: 自相关性计算直接用本地的数据，否则太慢了
             )
             platform_self_correlation_stage.next_stage = perf_diff_stage
+            perf_diff_stage.next_stage = scoring_stage
 
             evaluator = BaseEvaluator(
                 name="ppac2025",
@@ -284,4 +293,4 @@ if __name__ == "__main__":
 
     os.environ["PYTHONASYNCIO_MAX_WORKERS"] = str(64)
 
-    asyncio.run(test())
+    asyncio.run(main())
