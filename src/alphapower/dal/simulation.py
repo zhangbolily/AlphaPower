@@ -35,7 +35,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             指定状态的所有任务列表。
         """
-        return await self.find_by(session=session, status=status)
+        return await self.deprecated_find_by(session=session, status=status)
 
     async def find_by_alpha_id(
         self, alpha_id: str, session: Optional[AsyncSession] = None
@@ -50,7 +50,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             与指定Alpha关联的所有任务列表。
         """
-        return await self.find_by(session=session, alpha_id=alpha_id)
+        return await self.deprecated_find_by(session=session, alpha_id=alpha_id)
 
     async def find_by_signature(
         self, signature: str, session: Optional[AsyncSession] = None
@@ -83,7 +83,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             所有待处理任务的列表。
         """
-        return await self.find_by(session=session, status=SimulationTaskStatus.PENDING)
+        return await self.deprecated_find_by(session=session, status=SimulationTaskStatus.PENDING)
 
     async def find_running_tasks(
         self, session: Optional[AsyncSession] = None
@@ -99,7 +99,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             所有正在运行任务的列表。
         """
-        return await self.find_by(session=session, status=SimulationTaskStatus.RUNNING)
+        return await self.deprecated_find_by(session=session, status=SimulationTaskStatus.RUNNING)
 
     async def find_high_priority_tasks(
         self, min_priority: int, session: Optional[AsyncSession] = None
@@ -138,7 +138,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             属于指定设置组的所有任务列表。
         """
-        return await self.find_by(session=session, settings_group_key=group_key)
+        return await self.deprecated_find_by(session=session, settings_group_key=group_key)
 
     async def find_tasks_by_date_range(
         self, start_date: str, end_date: str, session: Optional[AsyncSession] = None

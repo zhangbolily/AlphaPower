@@ -47,7 +47,7 @@ class CorrelationIndirectEstimator:
             alpha.alpha_id async for alpha in self.prod_alpha_stream
         ]
 
-        prod_correlations: List[Correlation] = await self.correlation_dal.find_by(
+        prod_correlations: List[Correlation] = await self.correlation_dal.deprecated_find_by(
             in_={
                 "alpha_id_a": prod_alpha_ids,
             },
@@ -55,7 +55,7 @@ class CorrelationIndirectEstimator:
         )
 
         prod_correlations.extend(
-            await self.correlation_dal.find_by(
+            await self.correlation_dal.deprecated_find_by(
                 in_={
                     "alpha_id_b": prod_alpha_ids,
                 },

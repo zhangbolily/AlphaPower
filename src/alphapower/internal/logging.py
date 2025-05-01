@@ -58,9 +58,10 @@ def get_logger(
         structlog.processors.format_exc_info,  # 格式化异常信息
         structlog.processors.CallsiteParameterAdder(  # 添加调用点信息
             parameters={
+                structlog.processors.CallsiteParameter.PROCESS,
+                structlog.processors.CallsiteParameter.PROCESS_NAME,
                 structlog.processors.CallsiteParameter.THREAD,
                 structlog.processors.CallsiteParameter.FUNC_NAME,
-                structlog.processors.CallsiteParameter.MODULE,
                 structlog.processors.CallsiteParameter.LINENO,
                 # structlog.processors.CallsiteParameter.PATHNAME, # 路径通常较长，暂不添加
             }
@@ -97,13 +98,14 @@ def get_logger(
             key_order=[
                 "datetime",
                 "level",
-                "logger",
-                "thread",
-                "module",
-                "func_name",
-                "lineno",
                 "emoji",
                 "event",
+                "process",
+                "process_name",
+                "thread",
+                "logger",
+                "func_name",
+                "lineno",
             ],
         ),
         foreign_pre_chain=shared_processors,

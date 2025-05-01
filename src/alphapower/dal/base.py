@@ -20,6 +20,7 @@ from typing import (
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import MappedColumn
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.expression import ColumnExpressionArgument, Delete, Select, Update
 from structlog.stdlib import BoundLogger
 from typing_extensions import Protocol
@@ -49,10 +50,32 @@ class BaseDAL(Generic[T]):
     def __init__(self, entity_type: Type[T], session: Optional[AsyncSession]) -> None:
         self.entity_type: Type[T] = entity_type
         self.session: Optional[AsyncSession] = session
-        self.log: BoundLogger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
-        self.log.info(
-            "初始化DAL实例", entity_type=self.entity_type.__name__, emoji="✅"
-        )
+        self._log: Optional[BoundLogger] = None
+
+    def __del__(self) -> None:
+        # 关闭会话
+        if self.session is not None:
+            self.session.sync_session.close()
+            self.session = None
+
+    @property
+    def log(self) -> BoundLogger:
+        if self._log is None:
+            self._log = get_logger(f"{__name__}.{self.__class__.__name__}")
+        return self._log
+
+    # 允许对象被 pickle，避免 logger 导致序列化失败
+    def __getstate__(self) -> dict:
+        # 拷贝对象状态，去除不可序列化的 _log
+        state = self.__dict__.copy()
+        if "_log" in state:
+            del state["_log"]
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        # 恢复对象状态，_log 重新懒加载
+        self.__dict__.update(state)
+        self._log = None
 
     def _actual_session(self, session: Optional[AsyncSession]) -> AsyncSession:
         actual_session: AsyncSession
@@ -244,7 +267,9 @@ class BaseDAL(Generic[T]):
             return []
 
         ids: List[int] = [entity.id for entity in entities]
-        existing_entities = await self.find_by(in_={"id": ids}, session=actual_session)
+        existing_entities = await self.deprecated_find_by(
+            in_={"id": ids}, session=actual_session
+        )
         existing_entities_map: Dict[Any, T] = {
             entity.id: entity for entity in existing_entities
         }
@@ -280,7 +305,7 @@ class BaseDAL(Generic[T]):
             return []
 
         unique_values: List[Any] = [getattr(entity, unique_key) for entity in entities]
-        existing_entities = await self.find_by(
+        existing_entities = await self.deprecated_find_by(
             in_={unique_key: unique_values}, session=actual_session
         )
         existing_entities_map: Dict[Any, T] = {
@@ -348,7 +373,7 @@ class BaseDAL(Generic[T]):
         result = await actual_session.execute(select(self.entity_type))
         return list(result.scalars().all())
 
-    async def find_by(
+    async def deprecated_find_by(
         self,
         session: Optional[AsyncSession] = None,
         in_: Optional[Dict[str, Any]] = None,
@@ -394,6 +419,91 @@ class BaseDAL(Generic[T]):
             return list(result.scalars().all())
         else:
             raise ValueError("没有提供任何过滤条件")
+
+    async def find_by(
+        self,
+        *args: ColumnElement,
+        session: Optional[AsyncSession] = None,
+        order_by: Optional[Union[str, List[str]]] = None,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        **kwargs: Union[str, int, float, bool],
+    ) -> List[T]:
+        # 综合条件查询，支持 ORM 表达式、字符串排序、分页、等值过滤
+        # args: SQLAlchemy 条件表达式（ColumnElement），如 User.name == "张三"
+        # order_by: 排序字段名或字段名列表（str 或 List[str]），如 "id" 或 ["id", "name"]
+        # offset: 跳过多少条记录
+        # limit: 返回记录数上限
+        # kwargs: 等值过滤条件，key 必须为 str，值为基本数据类型
+        log: BoundLogger = self.log
+        await log.adebug(
+            "find_by 查询入参",
+            args=args,
+            order_by=order_by,
+            offset=offset,
+            limit=limit,
+            kwargs=kwargs,
+            emoji="🔎",
+        )
+
+        actual_session: AsyncSession = self._actual_session(session)
+        query: Select = select(self.entity_type)
+        criteria: List[ColumnElement] = []
+
+        # 处理 args 作为 SQLAlchemy 条件表达式
+        for arg in args:
+            if isinstance(arg, ColumnElement):
+                criteria.append(arg)
+            else:
+                await log.awarning("无效的条件表达式", arg=arg, emoji="⚠️")
+
+        # 处理 kwargs 等值过滤
+        for key, value in kwargs.items():
+            if not isinstance(key, str):
+                await log.awarning("过滤条件字段名必须为字符串", field=key, emoji="⚠️")
+                continue
+            if hasattr(self.entity_type, key):
+                column = getattr(self.entity_type, key)
+                criteria.append(column == value)
+            else:
+                await log.awarning("无效的字段名", field=key, emoji="⚠️")
+
+        # 应用所有过滤条件
+        if criteria:
+            query = query.filter(*criteria)
+
+        # 排序
+        if order_by is not None:
+            if isinstance(order_by, list):
+                order_columns = []
+                for field in order_by:
+                    if hasattr(self.entity_type, field):
+                        order_columns.append(getattr(self.entity_type, field))
+                    else:
+                        await log.awarning("无效的排序字段名", field=field, emoji="⚠️")
+                if order_columns:
+                    query = query.order_by(*order_columns)
+            elif isinstance(order_by, str):
+                if hasattr(self.entity_type, order_by):
+                    query = query.order_by(getattr(self.entity_type, order_by))
+                else:
+                    await log.awarning("无效的排序字段名", field=order_by, emoji="⚠️")
+
+        # 分页
+        if offset is not None:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await actual_session.execute(query)
+        entities: List[T] = list(result.scalars().all())
+
+        await log.ainfo(
+            "find_by 查询完成",
+            result_count=len(entities),
+            emoji="✅",
+        )
+        return entities
 
     async def find_one_by(
         self,

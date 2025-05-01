@@ -55,7 +55,7 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             该作者创建的所有Alpha列表。
         """
-        return await self.find_by(session=session, author=author)
+        return await self.deprecated_find_by(session=session, author=author)
 
     async def find_by_status(
         self, status: Status, session: Optional[AsyncSession] = None
@@ -70,7 +70,7 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             指定状态的所有Alpha列表。
         """
-        return await self.find_by(session=session, status=status)
+        return await self.deprecated_find_by(session=session, status=status)
 
     async def find_by_stage(
         self, stage: Stage, session: Optional[AsyncSession] = None
@@ -85,7 +85,7 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             指定阶段的所有Alpha列表。
         """
-        return await self.find_by(session=session, stage=stage)
+        return await self.deprecated_find_by(session=session, stage=stage)
 
     async def find_favorites(
         self, author: str, session: Optional[AsyncSession] = None
@@ -100,7 +100,7 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             该作者收藏的所有Alpha列表。
         """
-        return await self.find_by(session=session, author=author, favorite=True)
+        return await self.deprecated_find_by(session=session, author=author, favorite=True)
 
     async def upsert(
         self,

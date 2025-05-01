@@ -60,7 +60,7 @@ class DatasetDAL(EntityDAL[Dataset]):
         Returns:
             符合条件的数据集列表。
         """
-        return await self.find_by(session=session, region=region.name)
+        return await self.deprecated_find_by(session=session, region=region.name)
 
     async def find_high_value_datasets(
         self, min_value: float, session: Optional[AsyncSession] = None
@@ -185,7 +185,7 @@ class CategoryDAL(EntityDAL[Category]):
         Returns:
             指定父分类的所有子分类列表。
         """
-        return await self.find_by(session=session, parent_id=parent_id)
+        return await self.deprecated_find_by(session=session, parent_id=parent_id)
 
 
 class DataFieldDAL(EntityDAL[DataField]):
@@ -225,7 +225,7 @@ class DataFieldDAL(EntityDAL[DataField]):
         Returns:
             属于指定数据集的所有字段列表。
         """
-        return await self.find_by(session=session, dataset_id=dataset_id)
+        return await self.deprecated_find_by(session=session, dataset_id=dataset_id)
 
     async def find_by_type(
         self, field_type: str, session: Optional[AsyncSession] = None
@@ -242,7 +242,7 @@ class DataFieldDAL(EntityDAL[DataField]):
         Returns:
             指定类型的所有字段列表。
         """
-        return await self.find_by(session=session, type=field_type)
+        return await self.deprecated_find_by(session=session, type=field_type)
 
     async def find_high_coverage_fields(
         self, min_coverage: float, session: Optional[AsyncSession] = None
@@ -287,7 +287,7 @@ class StatsDataDAL(EntityDAL[StatsData]):
         Returns:
             与指定数据集关联的所有统计数据列表。
         """
-        return await self.find_by(session=session, data_set_id=dataset_id)
+        return await self.deprecated_find_by(session=session, data_set_id=dataset_id)
 
     async def find_by_data_field_id(
         self, data_field_id: int, session: Optional[AsyncSession] = None
@@ -302,7 +302,7 @@ class StatsDataDAL(EntityDAL[StatsData]):
         Returns:
             与指定数据字段关联的所有统计数据列表。
         """
-        return await self.find_by(session=session, data_field_id=data_field_id)
+        return await self.deprecated_find_by(session=session, data_field_id=data_field_id)
 
 
 class ResearchPaperDAL(EntityDAL[ResearchPaper]):
@@ -327,7 +327,7 @@ class ResearchPaperDAL(EntityDAL[ResearchPaper]):
         Returns:
             指定类型的所有研究论文列表。
         """
-        return await self.find_by(session=session, type=paper_type)
+        return await self.deprecated_find_by(session=session, type=paper_type)
 
 
 class PyramidDAL(EntityDAL[Pyramid]):
@@ -354,7 +354,7 @@ class PyramidDAL(EntityDAL[Pyramid]):
         Returns:
             符合条件的金字塔列表。
         """
-        return await self.find_by(session=session, region=region.name)
+        return await self.deprecated_find_by(session=session, region=region.name)
 
     async def find_by_category(
         self, category_id: int, session: Optional[AsyncSession] = None
@@ -369,4 +369,4 @@ class PyramidDAL(EntityDAL[Pyramid]):
         Returns:
             与指定分类关联的所有金字塔列表。
         """
-        return await self.find_by(session=session, category_id=category_id)
+        return await self.deprecated_find_by(session=session, category_id=category_id)
