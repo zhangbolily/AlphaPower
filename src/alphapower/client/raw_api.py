@@ -23,8 +23,8 @@ from alphapower.constants import (
     ENDPOINT_DATA_SETS,
     ENDPOINT_OPERATORS,
     ENDPOINT_RECORD_SETS,
-    ENDPOINT_SELF_ALPHA_LIST,
     ENDPOINT_SIMULATION,
+    ENDPOINT_USER_SELF_ALPHAS,
     CorrelationType,
     RecordSetType,
 )
@@ -102,7 +102,7 @@ async def get_self_alphas(
     session: aiohttp.ClientSession, params: Optional[Dict[str, Any]] = None
 ) -> Tuple[SelfAlphaListView, RateLimit]:
 
-    url: str = f"{BASE_URL}/{ENDPOINT_SELF_ALPHA_LIST}"
+    url: str = f"{BASE_URL}/{ENDPOINT_USER_SELF_ALPHAS}"
     async with session.get(url, params=params) as response:
         response.raise_for_status()
         return SelfAlphaListView.model_validate(

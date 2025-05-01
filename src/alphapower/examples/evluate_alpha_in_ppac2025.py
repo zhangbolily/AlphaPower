@@ -8,7 +8,9 @@ from typing import AsyncGenerator, Dict, List, Set
 from alphapower.client import wq_client
 from alphapower.constants import (
     Database,
+    Delay,
     RefreshPolicy,
+    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -101,8 +103,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 16),
-                end_time=datetime(2025, 3, 31, 23, 59, 59),
-                status=Status.UNSUBMITTED,
+                end_time=datetime(2025, 4, 30, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -144,9 +145,15 @@ if __name__ == "__main__":
                 evaluate_record_dal=evaluate_record_dal,
             )
 
-            async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH, concurrency=48
-            ):
+            evaluate_result_stream = evaluator.evaluate_many(
+                policy=RefreshPolicy.FORCE_REFRESH,
+                concurrency=48,
+                status=Status.ACTIVE,
+                region=Region.USA,
+                delay=Delay.ONE,
+            )
+
+            async for alpha in evaluate_result_stream:
                 print(alpha)
 
     os.environ["PYTHONASYNCIO_MAX_WORKERS"] = str(64)

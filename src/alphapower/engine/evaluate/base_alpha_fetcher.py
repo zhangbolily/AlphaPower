@@ -15,7 +15,7 @@ from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, selec
 from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
-from alphapower.constants import AlphaType, Database, Delay, Region, Stage
+from alphapower.constants import AlphaType, Database, Delay, Region
 from alphapower.dal.alphas import AggregateDataDAL, AlphaDAL
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity import AggregateData, Alpha
@@ -94,7 +94,6 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         # 构建筛选条件列表
         # 注意：常量中的百分比值需要除以 100 转换为小数
         criteria: List[ColumnExpressionArgument] = [
-            Alpha.stage == Stage.IS,
             # Sample 相关条件 (通用)
             AggregateData.turnover
             > (constants.CONSULTANT_TURNOVER_MIN_PERCENT / 100.0),
@@ -187,7 +186,7 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
             criteria.append(Alpha.date_created <= self.end_time)
 
         for key, value in kwargs.items():
-            query = query.where(getattr(AggregateData, key) == value)
+            query = query.where(getattr(Alpha, key) == value)
 
         # 应用筛选条件到查询
         final_query: Select = query.where(and_(*criteria))
@@ -347,5 +346,4 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 error=e,
                 exc_info=True,
             )
-            raise  # 重新抛出异常
             raise  # 重新抛出异常

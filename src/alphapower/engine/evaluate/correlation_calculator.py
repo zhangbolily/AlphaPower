@@ -2,8 +2,9 @@ import asyncio
 from datetime import datetime
 from multiprocessing import Manager, Process
 from multiprocessing.managers import DictProxy
-from typing import AsyncGenerator, Dict, List, Optional  # 用于可选类型注解
+from typing import AsyncGenerator, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 from structlog.stdlib import BoundLogger
 
@@ -39,7 +40,7 @@ def process_target_calc_func(
 
         target_df = pd.DataFrame.from_dict(target_dict)
         others_df = {k: pd.DataFrame.from_dict(v) for k, v in others_dict.items()}
-        corr_dict = CorrelationCalculator._do_calculation( # pylint: disable=W0212
+        corr_dict = CorrelationCalculator._do_calculation(  # pylint: disable=W0212
             target=target_df,
             others=others_df,
             log=log,
@@ -313,7 +314,7 @@ class CorrelationCalculator:
             record_set_pnl: RecordSet = RecordSet(
                 alpha_id=alpha_id,
                 set_type=RecordSetType.PNL,
-                content=pnl_table_view.model_dump(),
+                content=pnl_table_view,
             )
 
             async with (
@@ -501,7 +502,7 @@ class CorrelationCalculator:
             pnl_df = pnl_df[pnl_df.index > four_years_ago]
 
         pnl_diff_df: pd.DataFrame = pnl_df - pnl_df.shift(1)
-        pnl_diff_df = pnl_diff_df.ffill()
+        pnl_diff_df = pnl_diff_df.ffill().fillna(0)
         pnl_diff_df = pnl_diff_df.sort_index(ascending=True)
 
         await self.log.adebug(
@@ -519,56 +520,115 @@ class CorrelationCalculator:
         log: BoundLogger,
         inner: bool = False,
     ) -> Dict[str, float]:
+        """
+        使用 numpy 实现相关性（correlation，相关系数）计算逻辑。
+
+        :param target: 目标 Alpha 的 pnl 差分数据
+        :param others: 其他 Alpha 的 pnl 差分数据，key 为 alpha_id
+        :param log: 日志对象 BoundLogger
+        :param inner: 是否为内相关性（inner correlation，内相关性）
+        :return: 相关性字典，key 为 alpha_id，value 为相关系数
+        """
         correlation_map: Dict[str, float] = {}
 
         if target is None:
             log.error(
-                event="Alpha 策略的 pnl 数据为 None, 无法计算自相关性",
+                event="目标 Alpha 策略的 pnl 数据为 None，无法计算相关性",
                 emoji="❌",
             )
             return {}
 
         start: datetime = datetime.now()
+        target_values: np.ndarray = target.values.squeeze()
+        target_index = target.index
+
+        log.debug(
+            event="开始相关性批量计算",
+            target_shape=target.shape,
+            others_count=len(others),
+            inner=inner,
+            emoji="🧮",
+        )
+
         for other_alpha_id, other_pnl_df in others.items():
             if other_alpha_id is None or other_pnl_df is None:
                 log.error(
-                    event="Alpha 策略的 pnl 数据为 None, 无法计算自相关性",
+                    event="其他 Alpha 策略的 pnl 数据为 None，无法计算相关性",
                     alpha_id=other_alpha_id,
                     emoji="❌",
                 )
-                raise ValueError("Alpha 策略的 pnl 数据为 None, 无法计算自相关性")
+                continue
 
-            correlation: float = 0.0
+            # 对齐索引，保证数据长度一致
             if inner:
-                # 计算内相关性
-                other_pnl_df = other_pnl_df[other_pnl_df.index.isin(target.index)]
-                inner_target: pd.DataFrame = target[
-                    target.index.isin(other_pnl_df.index)
-                ]
-                if other_pnl_df.empty or inner_target.empty:
+                # 内相关性：取交集索引
+                common_index = target_index.intersection(other_pnl_df.index)
+                if common_index.empty:
                     log.warning(
-                        event="内相关性计算时，其他 Alpha 策略的 pnl 数据为空",
+                        event="内相关性计算时，目标与其他 Alpha 策略的 pnl 索引无交集",
                         alpha_id=other_alpha_id,
                         emoji="⚠️",
                     )
                     continue
-
-                correlation = inner_target.corrwith(other_pnl_df, axis=0).iloc[0]
+                target_arr = target.loc[common_index].values.squeeze()
+                other_arr = other_pnl_df.loc[common_index].values.squeeze()
             else:
-                correlation = target.corrwith(other_pnl_df, axis=0).iloc[0]
+                # 外相关性：直接对齐索引
+                target_arr = target_values
+                other_arr = other_pnl_df.values.squeeze()
+                # 若长度不一致，取最短长度
+                min_len = min(len(target_arr), len(other_arr))
+                target_arr = target_arr[-min_len:]
+                other_arr = other_arr[-min_len:]
 
-            if pd.isna(correlation):
+            # 检查有效性
+            if target_arr.size == 0 or other_arr.size == 0:
                 log.warning(
-                    event="相关性计算结果为 NaN",
-                    other_alpha_id=other_alpha_id,
+                    event="相关性计算时，目标或其他 Alpha 策略的 pnl 数据为空",
+                    alpha_id=other_alpha_id,
                     emoji="⚠️",
                 )
                 continue
-            correlation_map[other_alpha_id] = correlation
+
+            # 计算皮尔逊相关系数（Pearson correlation coefficient，皮尔逊相关性）
+            try:
+                corr_matrix: np.ndarray = np.corrcoef(
+                    target_arr,
+                    other_arr,
+                    rowvar=False,
+                )
+                corr: float = corr_matrix[0, 1]
+            except Exception as e:
+                log.error(
+                    event="相关性计算异常",
+                    alpha_id=other_alpha_id,
+                    error=str(e),
+                    emoji="💥",
+                    exc_info=True,
+                )
+                continue
+
+            if np.isnan(corr):
+                log.warning(
+                    event="相关性计算结果为 NaN",
+                    alpha_id=other_alpha_id,
+                    emoji="⚠️",
+                )
+                continue
+
+            correlation_map[other_alpha_id] = corr
+
+            log.debug(
+                event="单个 Alpha 相关性计算完成",
+                alpha_id=other_alpha_id,
+                correlation=corr,
+                emoji="🔗",
+            )
 
         elapsed_time: float = (datetime.now() - start).total_seconds()
         log.info(
-            event="相关性计算任务耗时",
+            event="相关性批量计算完成",
+            total=len(correlation_map),
             elapsed_time=f"{elapsed_time:.2f}秒",
             emoji="✅",
         )
@@ -640,20 +700,25 @@ class CorrelationCalculator:
         inner: bool = False,
     ) -> Dict[Alpha, float]:
         """
-        计算自相关性。
+        计算自相关性（correlation，自相关系数）。
 
         :param alpha: Alpha 实例
-        :return: 自相关系数
+        :param force_refresh: 是否强制刷新 pnl 数据
+        :param inner: 是否为内相关性（inner correlation，内相关性）
+        :return: 自相关系数字典，key 为 Alpha 实例，value 为相关系数
         """
         await self.log.ainfo(
             event="开始计算 Alpha 的自相关性",
             alpha_id=alpha.alpha_id,
+            force_refresh=force_refresh,
+            inner=inner,
             emoji="🔄",
         )
 
         if not self._is_initialized:
             await self.log.aerror(
                 event="自相关性计算器未初始化",
+                alpha_id=alpha.alpha_id,
                 emoji="❌",
                 module=__name__,
             )
@@ -667,59 +732,96 @@ class CorrelationCalculator:
             await self.log.aerror(
                 event="Alpha 策略缺少 region 设置",
                 alpha_id=alpha.alpha_id,
+                error=str(e),
                 emoji="❌",
+                module=__name__,
+                exc_info=True,
             )
             raise ValueError("Alpha 策略缺少 region 设置") from e
 
         matched_region_alphas: List[Alpha] = self._region_to_alpha_map.get(region, [])
         matched_alpha_map: Dict[str, Alpha] = {
-            alpha.alpha_id: alpha for alpha in matched_region_alphas
+            a.alpha_id: a for a in matched_region_alphas
         }
 
         if not matched_region_alphas:
             await self.log.awarning(
                 event="没有找到同区域匹配的 OS 阶段 Alpha 策略",
-                region=region,
+                region=str(region),
                 alpha_id=alpha.alpha_id,
                 emoji="⚠️",
+                module=__name__,
             )
             return {}
 
-        target_pnl_diff_df: pd.DataFrame = await self._get_pnl_dataframe(
-            alpha_id=alpha.alpha_id,
-            force_refresh=force_refresh,
-            inner=inner,
-        )
+        try:
+            target_pnl_diff_df: pd.DataFrame = await self._get_pnl_dataframe(
+                alpha_id=alpha.alpha_id,
+                force_refresh=force_refresh,
+                inner=inner,
+            )
+        except Exception as e:
+            await self.log.aerror(
+                event="获取目标 Alpha 的 pnl 数据失败",
+                alpha_id=alpha.alpha_id,
+                error=str(e),
+                emoji="💥",
+                module=__name__,
+                exc_info=True,
+            )
+            raise
 
         pairwise_correlation: Dict[str, float] = {}
 
-        # 使用 Manager 创建共享字典
-        if self.multiprocess:
-            start_subprocess_time: datetime = datetime.now()
+        try:
+            if self.multiprocess:
+                start_subprocess_time: datetime = datetime.now()
+                # 使用异步线程池调用子进程计算
+                task = asyncio.to_thread(
+                    self._do_calculation_in_subprocess,
+                    target_pnl_diff_df,
+                    self.other_alphas_pnl_cache,
+                    inner,
+                )
+                pairwise_correlation = await task
 
-            task = asyncio.to_thread(
-                self._do_calculation_in_subprocess,
-                target_pnl_diff_df,
-                self.other_alphas_pnl_cache,
-                inner,
+                subprocess_elapsed_time: float = (
+                    datetime.now() - start_subprocess_time
+                ).total_seconds()
+                await self.log.ainfo(
+                    event="子进程相关性计算完成",
+                    alpha_id=alpha.alpha_id,
+                    elapsed_time=f"{subprocess_elapsed_time:.2f}秒",
+                    emoji="✅",
+                    module=__name__,
+                )
+            else:
+                pairwise_correlation = self._do_calculation(
+                    target=target_pnl_diff_df,
+                    others=self.other_alphas_pnl_cache,
+                    log=self.log,
+                    inner=inner,
+                )
+        except TimeoutError as te:
+            await self.log.aerror(
+                event="相关性计算超时",
+                alpha_id=alpha.alpha_id,
+                error=str(te),
+                emoji="⏰",
+                module=__name__,
+                exc_info=True,
             )
-            pairwise_correlation = await task
-
-            subprocess_elapsed_time: float = (
-                datetime.now() - start_subprocess_time
-            ).total_seconds()
-            await self.log.ainfo(
-                event="子进程计算完成",
-                elapsed_time=f"{subprocess_elapsed_time:.2f}秒",
-                emoji="✅",
+            raise
+        except Exception as e:
+            await self.log.acritical(
+                event="相关性计算发生严重异常",
+                alpha_id=alpha.alpha_id,
+                error=str(e),
+                emoji="💥",
+                module=__name__,
+                exc_info=True,
             )
-        else:
-            pairwise_correlation = self._do_calculation(
-                target=target_pnl_diff_df,
-                others=self.other_alphas_pnl_cache,
-                log=self.log,
-                inner=inner,
-            )
+            raise
 
         end_time: datetime = datetime.now()
         elapsed_time: float = (end_time - start_time).total_seconds()
@@ -728,12 +830,14 @@ class CorrelationCalculator:
         min_corr: float = min(pairwise_correlation.values(), default=0.0)
 
         await self.log.ainfo(
-            event="完成自相关性计算",
+            event="完成 Alpha 的自相关性计算",
             alpha_id=alpha.alpha_id,
             max_corr=max_corr,
             min_corr=min_corr,
+            result_count=len(pairwise_correlation),
             elapsed_time=f"{elapsed_time:.2f}秒",
             emoji="✅",
+            module=__name__,
         )
 
         result: Dict[Alpha, float] = {
@@ -741,6 +845,14 @@ class CorrelationCalculator:
             for alpha_id, correlation in pairwise_correlation.items()
             if alpha_id in matched_alpha_map
         }
+
+        await self.log.adebug(
+            event="自相关性计算结果详情",
+            alpha_id=alpha.alpha_id,
+            result_preview=dict(list(result.items())[:5]),
+            emoji="📊",
+            module=__name__,
+        )
 
         return result
 

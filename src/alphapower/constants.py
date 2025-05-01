@@ -63,7 +63,6 @@ DEFAULT_SIMULATION_RESPONSE: Final[Tuple[bool, str, float]] = (False, "", 0.0)
 # 认证和用户端点
 ENDPOINT_AUTHENTICATION: Final[str] = "authentication"  # 用户认证端点
 ENDPOINT_ALPHAS: Final[str] = "alphas"  # Alpha因子端点
-ENDPOINT_SELF_ALPHA_LIST: Final[str] = "users/self/alphas"  # 获取用户自己的Alpha列表
 
 # Alpha相关端点
 ENDPOINT_ALPHA_YEARLY_STATS: Final[Callable[[str], str]] = (
@@ -91,8 +90,10 @@ ENDPOINT_RECORD_SETS: Final[Callable[[RecordSetType, str], str]] = (
 
 # 模拟端点
 ENDPOINT_SIMULATION: Final[str] = "simulations"
+# 用户相关端点
+ENDPOINT_USER_SELF: Final[str] = "users/self/"  # 获取用户信息的端点
+ENDPOINT_USER_SELF_ALPHAS: Final[str] = urljoin(ENDPOINT_USER_SELF, "alphas")
 
-# 用户活动端点
 ENDPOINT_ACTIVITIES: Final[str] = "/users/self/activities/"
 ENDPOINT_ACTIVITIES_SIMULATIONS: Final[str] = urljoin(
     ENDPOINT_ACTIVITIES, "simulations"
@@ -101,6 +102,8 @@ ENDPOINT_ACTIVITIES_PYRAMID_ALPHAS: Final[str] = urljoin(
     ENDPOINT_ACTIVITIES, "pyramid-alphas"
 )
 ENDPOINT_ACTIVITIES_DIVERSITY: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "diversity")
+
+ENDPOINT_USER_SELF_CONSULTANT: Final[str] = urljoin(ENDPOINT_USER_SELF, "consultant")
 
 
 # 数据相关端点
@@ -111,6 +114,12 @@ ENDPOINT_OPERATORS: Final[str] = "operators"
 
 # 前后性能对比默认路径
 PATH_SELF_PERFORMANCE_COMPARE: Final[str] = "/users/self/"
+
+# TODO: 待实现的各种排行榜功能
+ENDPOINT_BOARD_GENIUS: Final[str] = "consultant/boards/genius"
+ENDPOINT_COMPETITION_BOARD: Final[Callable[[str], str]] = (
+    lambda competition_id: f"competitions/{competition_id}/boards/leader"
+)
 
 # -----------------------------------------------------------------------------
 # 用户角色相关常量

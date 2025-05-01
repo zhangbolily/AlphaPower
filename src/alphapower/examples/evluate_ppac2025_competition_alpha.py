@@ -217,8 +217,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 16),
-                end_time=datetime(2025, 3, 31, 23, 59, 59),
-                status=Status.UNSUBMITTED,
+                end_time=datetime(2025, 4, 30, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -287,7 +286,11 @@ if __name__ == "__main__":
             )
 
             async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH, concurrency=48
+                policy=RefreshPolicy.FORCE_REFRESH,
+                concurrency=48,
+                status=Status.UNSUBMITTED,
+                region=Region.USA,
+                delay=Delay.ONE,
             ):
                 print(alpha)
 

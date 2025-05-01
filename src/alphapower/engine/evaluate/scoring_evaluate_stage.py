@@ -32,7 +32,7 @@ class ScoringEvaluateStage(AbstractEvaluateStage):
     async def return_stability_score(
         self,
         alpha: Alpha,
-        daily_pnl_df: pd.DataFrame,
+        sharpe_df: pd.DataFrame,
         max_years: int = 5,
     ) -> List[ScoreResult]:
         """
@@ -43,20 +43,20 @@ class ScoringEvaluateStage(AbstractEvaluateStage):
             await self.log.adebug(
                 "return_stability_score: 入参（仅使用 pnl_daily_df）",
                 alpha=alpha,
-                pnl_daily_df_shape=daily_pnl_df.shape,
+                pnl_daily_df_shape=sharpe_df.shape,
                 max_years=max_years,
                 emoji="🧮",
             )
 
-            await self._validate_stability_score_inputs(alpha, daily_pnl_df)
-            daily_pnl_df = await self._truncate_zero_pnl(daily_pnl_df, alpha)
+            await self._validate_stability_score_inputs(alpha, sharpe_df)
+            sharpe_df = await self._truncate_nan_and_zero(sharpe_df, alpha)
             complete_years, max_years = await self._get_complete_years_and_max(
-                daily_pnl_df, alpha, max_years
+                sharpe_df, alpha, max_years
             )
-            await self._validate_date_range(daily_pnl_df, alpha)
+            await self._validate_date_range(sharpe_df, alpha)
 
             results: List[ScoreResult] = await self._calculate_stability_scores(
-                alpha, daily_pnl_df, complete_years, max_years
+                alpha, sharpe_df, complete_years, max_years
             )
 
             await self.log.adebug(
@@ -81,21 +81,21 @@ class ScoringEvaluateStage(AbstractEvaluateStage):
         """
         校验输入参数，确保数据完整性。
         """
-        if "pnl" not in daily_pnl_df.columns:
+        if "sharpe" not in daily_pnl_df.columns:
             await self.log.aerror(
-                "pnl_daily_df 缺少必要字段 pnl",
+                "pnl_daily_df 缺少必要字段 sharpe",
                 alpha=alpha,
                 columns_pnl_daily=list(daily_pnl_df.columns),
                 emoji="❌",
             )
-            raise ValueError("pnl_daily_df 缺少必要字段 pnl")
-        if daily_pnl_df["pnl"].isnull().all():
+            raise ValueError("pnl_daily_df 缺少必要字段 sharpe")
+        if daily_pnl_df["sharpe"].isnull().all():
             await self.log.aerror(
-                "pnl_daily_df 的 pnl 字段全为 null",
+                "pnl_daily_df 的 sharpe 字段全为 null",
                 alpha=alpha,
                 emoji="❌",
             )
-            raise ValueError("pnl_daily_df 的 pnl 字段全为 null")
+            raise ValueError("pnl_daily_df 的 sharpe 字段全为 null")
         if not alpha or not alpha.in_sample:
             await self.log.aerror(
                 "alpha 对象无效或 in_sample 字段为空",
@@ -111,32 +111,53 @@ class ScoringEvaluateStage(AbstractEvaluateStage):
             )
             raise ValueError("alpha 对象的 book_size 字段为空")
 
-    async def _truncate_zero_pnl(
-        self, daily_pnl_df: pd.DataFrame, alpha: Alpha
+    async def _truncate_nan_and_zero(
+        self, data: pd.DataFrame, alpha: Alpha
     ) -> pd.DataFrame:
         """
-        截断前置连续为 0 的 pnl 数据。
+        截断前置连续为 0 或 nan 的数据（truncate leading zeros and NaN rows，前置连续为 0 或 nan 的行全部去除）
+
+        参数:
+            data (pd.DataFrame): 输入数据，要求包含 'sharpe' 字段
+            alpha (Alpha): Alpha 实体对象
+
+        返回值:
+            pd.DataFrame: 截断后的 DataFrame
+
+        异常:
+            ValueError: 如果全部为 0 或 nan，抛出异常
+
+        说明:
+            只保留第一个非 0 且非 nan 之后（含该行）的数据，前置连续为 0 或 nan 的行全部去除。
         """
-        pnl_nonzero_idx: np.ndarray = np.flatnonzero(
-            daily_pnl_df["pnl"].to_numpy() != 0
+        sharpe_arr: np.ndarray = data["sharpe"].to_numpy()
+        # 判断 nan 或 0（np.isnan/sharpe_arr==0）
+        valid_mask: np.ndarray = (~np.isnan(sharpe_arr)) & (sharpe_arr != 0)
+        valid_indices: np.ndarray = np.flatnonzero(valid_mask)
+        await self.log.adebug(
+            "截断前置 nan 或 0 数据，入参",
+            alpha=alpha,
+            data_shape=data.shape,
+            sharpe_arr_preview=sharpe_arr[:10].tolist(),
+            emoji="🔍",
         )
-        if pnl_nonzero_idx.size > 0:
-            first_nonzero_idx: int = pnl_nonzero_idx[0]
-            new_df = daily_pnl_df.iloc[first_nonzero_idx:]
+        if valid_indices.size > 0:
+            first_valid_idx: int = valid_indices[0]
+            new_df: pd.DataFrame = data.iloc[first_valid_idx:]
             await self.log.adebug(
-                "已截断前置连续为 0 的 pnl 数据",
-                first_nonzero_idx=first_nonzero_idx,
+                "已截断前置连续为 nan 或 0 的 sharpe 数据",
+                first_valid_idx=first_valid_idx,
                 new_shape=new_df.shape,
                 emoji="✂️",
             )
             return new_df
         else:
             await self.log.awarning(
-                "pnl_daily_df 全部为 0，无法进行有效评分",
+                "pnl_daily_df 全部为 nan 或 0，无法进行有效评分",
                 alpha=alpha,
                 emoji="⚠️",
             )
-            raise ValueError("pnl_daily_df 全部为 0，无法进行有效评分")
+            raise ValueError("pnl_daily_df 全部为 nan 或 0，无法进行有效评分")
 
     async def _get_complete_years_and_max(
         self, daily_pnl_df: pd.DataFrame, alpha: Alpha, max_years: int
@@ -208,62 +229,90 @@ class ScoringEvaluateStage(AbstractEvaluateStage):
     async def _calculate_stability_scores(
         self,
         alpha: Alpha,
-        daily_pnl_df: pd.DataFrame,
+        sharpe_df: pd.DataFrame,
         complete_years: list[int],
         max_years: int,
     ) -> List[ScoreResult]:
         """
         按完整自然年滑动窗口计算稳定性得分。
+
+        参数:
+            alpha (Alpha): Alpha 实体对象
+            sharpe_df (pd.DataFrame): 仅包含 pnl 字段的 DataFrame
+            complete_years (list[int]): 完整自然年列表
+            max_years (int): 最大年数
+
+        返回值:
+            List[ScoreResult]: 每个窗口的稳定性得分结果列表
         """
         results: List[ScoreResult] = []
-        for i in range(1, max_years + 1):
-            if len(complete_years) < i:
-                await self.log.awarning(
-                    "完整自然年数量不足，跳过该窗口",
-                    complete_years=complete_years,
-                    i=i,
-                    emoji="⚠️",
-                )
-                continue
-            window_years: List[int] = complete_years[-i:]
-            window_start: pd.Timestamp = pd.Timestamp(f"{window_years[0]}-01-01")
-            window_end: pd.Timestamp = pd.Timestamp(f"{window_years[-1]}-12-31")
-            pnl_window: pd.DataFrame = daily_pnl_df.loc[window_start:window_end]
+        try:
+            await self.log.adebug(
+                "开始计算稳定性得分窗口",
+                alpha=alpha,
+                complete_years=complete_years,
+                max_years=max_years,
+                sharpe_df_shape=sharpe_df.shape,
+                emoji="🧮",
+            )
+            for i in range(1, max_years + 1):
+                if len(complete_years) < i:
+                    await self.log.awarning(
+                        "完整自然年数量不足，跳过该窗口",
+                        complete_years=complete_years,
+                        i=i,
+                        emoji="⚠️",
+                    )
+                    continue
+                window_years: List[int] = complete_years[-i:]
+                window_start: pd.Timestamp = pd.Timestamp(f"{window_years[0]}-01-01")
+                window_end: pd.Timestamp = pd.Timestamp(f"{window_years[-1]}-12-31")
+                data_window: pd.DataFrame = sharpe_df.loc[window_start:window_end]
 
-            if pnl_window.empty:
-                await self.log.awarning(
-                    "窗口内数据为空，跳过该窗口",
+                if data_window.empty:
+                    await self.log.awarning(
+                        "窗口内数据为空，跳过该窗口",
+                        window_start=str(window_start),
+                        window_end=str(window_end),
+                        window_years=window_years,
+                        emoji="⚠️",
+                    )
+                    continue
+
+                # 计算标准差（standard deviation，标准差越小，数据越稳定）
+                data_std: float = float(np.std(data_window["sharpe"].to_numpy()))
+                stability_score: float = 1 / (data_std + 1e-6)
+
+                results.append(
+                    ScoreResult(
+                        start_date=window_start,
+                        end_date=window_end,
+                        score=stability_score,
+                    )
+                )
+                await self.log.adebug(
+                    "窗口得分已计算",
                     window_start=str(window_start),
                     window_end=str(window_end),
                     window_years=window_years,
-                    emoji="⚠️",
+                    pnl_std=data_std,
+                    stability_score=stability_score,
+                    emoji="✅",
                 )
-                continue
-
-            pnl_diff: np.ndarray = (
-                pnl_window["pnl"].fillna(0).diff().dropna().to_numpy()
-            )
-            # 计算标准差（standard deviation，标准差越小，数据越稳定）
-            pnl_std: float = float(np.std(pnl_diff))
-            stability_score: float = 1 / (pnl_std + 1e-6)
-
-            results.append(
-                ScoreResult(
-                    start_date=window_start,
-                    end_date=window_end,
-                    score=stability_score,
-                )
-            )
             await self.log.adebug(
-                "窗口得分已计算",
-                window_start=str(window_start),
-                window_end=str(window_end),
-                window_years=window_years,
-                pnl_std=pnl_std,
-                stability_score=stability_score,
-                emoji="✅",
+                "全部窗口稳定性得分计算完成",
+                result_count=len(results),
+                emoji="🎯",
             )
-        return results
+            return results
+        except Exception as exc:
+            await self.log.aerror(
+                "稳定性得分窗口计算异常",
+                alpha=alpha,
+                error=str(exc),
+                emoji="💥",
+            )
+            raise RuntimeError("稳定性得分窗口计算异常") from exc
 
     async def _evaluate_stage(
         self,
@@ -285,73 +334,38 @@ class ScoringEvaluateStage(AbstractEvaluateStage):
                 emoji="🧮",
             )
 
-            yearly_stats_df: pd.DataFrame = (
-                await self.record_sets_manager.get_record_sets(
-                    alpha=alpha,
-                    set_type=RecordSetType.YEARLY_STATS,
-                    allow_local=True,
-                    local_expire_time=timedelta(days=30),
-                )
-            )
-
-            daily_pnl_df: pd.DataFrame = await self.record_sets_manager.get_record_sets(
+            sharpe_df: pd.DataFrame = await self.record_sets_manager.get_record_sets(
                 alpha=alpha,
-                set_type=RecordSetType.DAILY_PNL,
+                set_type=RecordSetType.SHARPE,
                 allow_local=True,
                 local_expire_time=timedelta(days=30),
             )
 
-            if yearly_stats_df.empty:
+            if sharpe_df.empty:
                 await self.log.aerror(
-                    "ScoringEvaluateStage: yearly_stats_df 为空",
+                    "ScoringEvaluateStage: sharpe_df 为空",
                     alpha=alpha,
                     emoji="❌",
                 )
-                raise ValueError("yearly_stats_df 为空")
+                raise ValueError("sharpe_df 为空")
 
-            if daily_pnl_df.empty:
-                await self.log.aerror(
-                    "ScoringEvaluateStage: daily_pnl_df 为空",
-                    alpha=alpha,
-                    emoji="❌",
-                )
-                raise ValueError("daily_pnl_df 为空")
-
-            # year 字段转为 datetime，设为索引，只保留必要字段
-            yearly_stats_df["year"] = pd.to_datetime(
-                yearly_stats_df["year"], format="%Y"
-            )
-            yearly_stats_df = yearly_stats_df.set_index("year")
-            # 只保留 returns 字段
-            if "returns" not in yearly_stats_df.columns:
-                await self.log.aerror(
-                    "ScoringEvaluateStage: yearly_stats_df 缺少 returns 字段",
-                    alpha=alpha,
-                    columns=list(yearly_stats_df.columns),
-                    emoji="❌",
-                )
-                raise ValueError("yearly_stats_df 缺少 returns 字段")
-            yearly_stats_df = yearly_stats_df[["returns"]]
-
-            daily_pnl_df["date"] = pd.to_datetime(
-                daily_pnl_df["date"], format="%Y-%m-%d"
-            )
-            daily_pnl_df = daily_pnl_df.set_index("date")
+            sharpe_df["date"] = pd.to_datetime(sharpe_df["date"], format="%Y-%m-%d")
+            sharpe_df = sharpe_df.set_index("date")
             # 只保留 pnl 字段
-            if "pnl" not in daily_pnl_df.columns:
+            if "sharpe" not in sharpe_df.columns:
                 await self.log.aerror(
-                    "ScoringEvaluateStage: daily_pnl_df 缺少 pnl 字段",
+                    "ScoringEvaluateStage: sharpe_df 缺少 sharpe 字段",
                     alpha=alpha,
-                    columns=list(daily_pnl_df.columns),
+                    columns=list(sharpe_df.columns),
                     emoji="❌",
                 )
-                raise ValueError("daily_pnl_df 缺少 pnl 字段")
-            daily_pnl_df = daily_pnl_df[["pnl"]]
+                raise ValueError("sharpe_df 缺少 sharpe 字段")
+            sharpe_df = sharpe_df[["sharpe"]]
 
             # 计算稳定性得分
             score_results: List[ScoreResult] = await self.return_stability_score(
                 alpha=alpha,
-                daily_pnl_df=daily_pnl_df,
+                sharpe_df=sharpe_df,
             )
 
             await self.log.adebug(
