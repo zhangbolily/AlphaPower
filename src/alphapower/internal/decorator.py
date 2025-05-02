@@ -18,9 +18,10 @@ def async_timed(func: F) -> F:
 
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        timed_function: str = func.__qualname__  # 确保获取到被装饰函数的名字
         await logger.adebug(
             "函数耗时统计开始",
-            func_name=func.__qualname__,
+            timed_function=timed_function,
             args=args,
             kwargs=kwargs,
             emoji="⏱️",
@@ -30,10 +31,9 @@ def async_timed(func: F) -> F:
         elapsed: float = time.perf_counter() - start_time
         await logger.ainfo(
             "函数耗时统计结束",
-            func_name=func.__qualname__,
-            elapsed=elapsed,
-            result=result,
-            emoji="✅",
+            timed_function=timed_function,
+            elapsed=f"{elapsed:.4f} seconds",
+            emoji="⏱️",
         )
         return result
 

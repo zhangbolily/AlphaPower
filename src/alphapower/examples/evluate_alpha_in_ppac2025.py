@@ -3,7 +3,7 @@ from __future__ import annotations  # 解决类型前向引用问题
 import asyncio
 import os
 from datetime import datetime
-from typing import AsyncGenerator, Dict, List, Set
+from typing import Any, AsyncGenerator, Dict, List, Set
 
 from alphapower.client import wq_client
 from alphapower.constants import (
@@ -32,15 +32,47 @@ from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.correlation_calculator import (
     CorrelationCalculator,
 )
+from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.engine.evaluate.scoring_evaluate_stage import ScoringEvaluateStage
 from alphapower.entity import (
     Alpha,
 )
+from alphapower.entity.evaluate import EvaluateRecord
 from alphapower.internal.logging import get_logger
 from alphapower.manager.record_sets_manager import RecordSetsManager
 
 # 获取日志记录器 (logger)
 log = get_logger(module_name=__name__)
+
+
+class FilterPPACStage(AbstractEvaluateStage):
+    """
+    过滤 PPAC 阶段的评估阶段。
+    """
+
+    def __init__(self, next_stage: AbstractEvaluateStage | None = None) -> None:
+        super().__init__(next_stage=next_stage)
+
+    async def _evaluate_stage(
+        self,
+        alpha: Alpha,
+        policy: RefreshPolicy,
+        record: EvaluateRecord,
+        **kwargs: Any,
+    ) -> bool:
+        """
+        评估 Alpha 策略是否符合 PPAC 条件。
+
+        参数:
+            alpha (Alpha): 要评估的 Alpha 策略。
+
+        返回:
+            bool: 如果符合条件，返回 True；否则返回 False。
+        """
+        for classification in alpha.classifications:
+            if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
+                return True
+        return False
 
 
 if __name__ == "__main__":
@@ -124,6 +156,10 @@ if __name__ == "__main__":
                 },
             }
 
+            filter_stage: FilterPPACStage = FilterPPACStage(
+                next_stage=None,
+            )
+
             in_sample_stage: InSampleChecksEvaluateStage = InSampleChecksEvaluateStage(
                 client=client,
                 next_stage=None,
@@ -136,12 +172,13 @@ if __name__ == "__main__":
                 record_sets_manager=record_set_manager,
             )
 
+            filter_stage.next_stage = in_sample_stage
             in_sample_stage.next_stage = scoring_stage
 
             evaluator = BaseEvaluator(
                 name="power_pool",
                 fetcher=fetcher,
-                evaluate_stage_chain=in_sample_stage,
+                evaluate_stage_chain=filter_stage,
                 evaluate_record_dal=evaluate_record_dal,
             )
 

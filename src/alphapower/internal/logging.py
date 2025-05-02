@@ -97,8 +97,8 @@ def get_logger(
         processor=structlog.processors.KeyValueRenderer(
             key_order=[
                 "datetime",
-                "level",
                 "emoji",
+                "level",
                 "event",
                 "process",
                 "process_name",
@@ -107,6 +107,7 @@ def get_logger(
                 "func_name",
                 "lineno",
             ],
+            drop_missing=True,
         ),
         foreign_pre_chain=shared_processors,
     )

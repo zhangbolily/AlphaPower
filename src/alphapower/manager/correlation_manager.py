@@ -136,7 +136,6 @@ class CorrelationManager(BaseProcessSafeClass):
             )
         await self.log.ainfo(
             "皮尔逊相关系数矩阵计算完成",
-            matrix=correlation_matrix,
             emoji="🎉",
         )
         return correlation_matrix
@@ -307,33 +306,36 @@ class CorrelationManager(BaseProcessSafeClass):
         return correlation_dict
 
     @staticmethod
-    def calc_min_max_corr_chunk(
-        corr_values: np.ndarray,
-        indices_chunk: List[Tuple[int, ...]],
-        submatrix_size: int,
+    def find_closest_to_zero_correlation_chunk(
+        corr_values: np.ndarray,  # 相关系数矩阵的 numpy 数组
+        indices_chunk: List[
+            Tuple[int, ...]
+        ],  # 组合索引的列表，每个元素为一个组合（元组）
+        submatrix_size: int,  # 子矩阵大小
     ) -> Tuple[Tuple[int, ...], float]:
-        # 计算一批组合中最大相关系数最小的组合
-        # 参数说明：
-        #   corr_values: 相关系数矩阵的 numpy 数组
-        #   indices_chunk: 组合索引的列表，每个元素为一个组合（元组）
-        #   submatrix_size: 子矩阵大小
-        min_max_corr: float = float("inf")
-        best_indices: Tuple[int, ...] = ()
+        # 在一批组合中寻找最大相关系数最接近 0 的组合
+        closest_to_zero_corr: float = float("inf")  # 最接近 0 的相关系数
+        optimal_indices: Tuple[int, ...] = ()  # 最优组合的索引
+
         for indices in indices_chunk:
             sub_corr: np.ndarray = corr_values[np.ix_(indices, indices)]
             # mask: 非对角线掩码，True 表示非对角元素
             mask: np.ndarray = ~np.eye(submatrix_size, dtype=bool)
-            non_diag_abs: np.ndarray = np.abs(sub_corr[mask])
+            non_diag_abs: np.ndarray = np.abs(sub_corr[mask])  # 非对角线元素的绝对值
             if non_diag_abs.size == 0:
-                max_corr = 0.0
+                max_corr = 0.0  # 如果没有非对角元素，最大相关系数为 0
             else:
-                max_corr = float(np.max(non_diag_abs))
-            if max_corr < min_max_corr:
-                min_max_corr = max_corr
-                best_indices = indices
-        return best_indices, min_max_corr
+                max_corr = float(np.max(non_diag_abs))  # 获取非对角元素的最大值
 
-    async def find_min_max_correlation_submatrix(
+            # 更新最优结果
+            if abs(max_corr) < abs(closest_to_zero_corr):
+                closest_to_zero_corr = max_corr
+                optimal_indices = indices
+
+        return optimal_indices, closest_to_zero_corr
+
+    @async_timed
+    async def find_least_relavant_submatrix(
         self,
         correlation_matrix: pd.DataFrame,  # 相关系数矩阵，元素类型为 float，行列索引为 T 类型
         submatrix_size: int,  # 子矩阵大小
@@ -341,10 +343,9 @@ class CorrelationManager(BaseProcessSafeClass):
         chunk_size: int = 1000,  # 每个子进程处理的组合数量
         max_workers: int = 4,  # 最大进程数
     ) -> Tuple[Set[T], float]:
-        # 在相关系数矩阵中寻找最大相关系数最小的指定大小子矩阵
-        # 优化：父进程将所有组合分片，每个子进程处理一批组合，提升多进程利用率
+        # 在相关系数矩阵中寻找最小相关性的子矩阵
         await self.log.adebug(
-            "开始寻找最大相关系数最小的子矩阵",
+            "开始寻找最小相关性的子矩阵",
             correlation_matrix_shape=correlation_matrix.shape,
             submatrix_size=submatrix_size,
             max_matrix_size=max_matrix_size,
@@ -374,19 +375,19 @@ class CorrelationManager(BaseProcessSafeClass):
                 "请缩小输入规模"
             )
 
-        all_indices: List[T] = list(correlation_matrix.index)
+        indices: List[T] = list(correlation_matrix.index)
         corr_values: np.ndarray = correlation_matrix.values  # 转为 numpy 数组，提升性能
-        index_to_pos: Dict[T, int] = {idx: pos for pos, idx in enumerate(all_indices)}
+        index_to_pos: Dict[T, int] = {idx: pos for pos, idx in enumerate(indices)}
         pos_to_index: Dict[int, T] = {pos: idx for idx, pos in index_to_pos.items()}
 
-        all_positions: List[int] = list(range(len(all_indices)))
+        all_positions: List[int] = list(range(len(indices)))
 
-        # 组合生成与分片
+        # 生成所有组合并分片
         combinations_iter = list(combinations(all_positions, submatrix_size))
         total_combinations: int = len(combinations_iter)
         await self.log.adebug(
             "穷举组合总数",
-            total=total_combinations,
+            total_combinations=total_combinations,
             emoji="🔢",
         )
         num_chunks: int = ceil(total_combinations / chunk_size)
@@ -402,8 +403,8 @@ class CorrelationManager(BaseProcessSafeClass):
             emoji="🧩",
         )
 
-        min_max_corr: float = float("inf")
-        best_indices: Set[T] = set()
+        closest_to_zero_corr: float = float("inf")
+        optimal_indices: Set[T] = set()
 
         # 使用 run_in_executor 实现异步多进程，分片任务
         loop = asyncio.get_running_loop()
@@ -411,7 +412,7 @@ class CorrelationManager(BaseProcessSafeClass):
             tasks = [
                 loop.run_in_executor(
                     executor,
-                    CorrelationManager.calc_min_max_corr_chunk,
+                    CorrelationManager.find_closest_to_zero_correlation_chunk,
                     corr_values,
                     chunk,
                     submatrix_size,
@@ -422,19 +423,20 @@ class CorrelationManager(BaseProcessSafeClass):
                 indices_tuple, max_corr = await fut
                 indices_set = {pos_to_index[pos] for pos in indices_tuple}
                 await self.log.adebug(
-                    "分片子矩阵相关系数分析",
+                    "分片子矩阵相关性分析完成",
                     indices=indices_set,
                     max_corr=max_corr,
                     emoji="🧩",
                 )
-                if max_corr < min_max_corr:
-                    min_max_corr = max_corr
-                    best_indices = indices_set
+                # 更新最优结果
+                if abs(max_corr) < abs(closest_to_zero_corr):
+                    closest_to_zero_corr = max_corr
+                    optimal_indices = indices_set
 
         await self.log.ainfo(
-            "子矩阵搜索完成",
-            best_indices=best_indices,
-            min_max_corr=min_max_corr,
+            "最小相关性子矩阵搜索完成",
+            optimal_indices=optimal_indices,
+            closest_to_zero_corr=closest_to_zero_corr,
             emoji="🏆",
         )
-        return best_indices, min_max_corr
+        return optimal_indices, closest_to_zero_corr

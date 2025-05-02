@@ -144,7 +144,7 @@ class TestCorrelationManagerProcessSafe:
 
         # 多进程加速查找最小/最大相关性子矩阵
         result: Tuple[Set[str], float] = (
-            await manager.find_min_max_correlation_submatrix(
+            await manager.find_least_relavant_submatrix(
                 test_correlation_matrix,
                 submatrix_size,
                 max_workers=16,
