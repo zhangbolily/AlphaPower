@@ -2,6 +2,7 @@
 日志模块
 """
 
+import abc
 import logging
 import os
 import sys
@@ -9,6 +10,7 @@ from logging.handlers import RotatingFileHandler
 from typing import Any, List, Mapping, MutableMapping
 
 import structlog
+from structlog.stdlib import BoundLogger
 
 from alphapower.settings import settings
 
@@ -136,3 +138,25 @@ def get_logger(
 
     # 返回 structlog 包装的日志记录器
     return structlog.get_logger(module_name)
+
+
+class LogBase(abc.ABC):
+    _log: BoundLogger
+
+    @property
+    def log(self) -> BoundLogger:
+        """
+        返回日志记录器实例。
+        """
+        if not hasattr(self, "_log"):
+            self._log = get_logger(
+                module_name=f"{self.__module__}.{self.__class__.__name__}"
+            )
+        return self._log
+
+    @log.setter
+    def log(self, value: BoundLogger) -> None:
+        """
+        设置日志记录器实例。
+        """
+        self._log = value

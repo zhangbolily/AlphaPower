@@ -34,7 +34,11 @@ class HttpXClient:
         self._backoff_factor: float = backoff_factor
         self._max_retry_after: float = max_retry_after
         self._headers: Dict[str, str] = headers or {}
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient = httpx.AsyncClient(
+            base_url=self._base_url,
+            timeout=self._timeout,
+            headers=self._headers,
+        )
 
         # 接口级本地速率限制参数，key 为 api_name，value 为 (RateLimit, 上次更新时间)
         self._rate_limit_map: Dict[str, tuple[RateLimit, float]] = {}
@@ -43,49 +47,10 @@ class HttpXClient:
         # 新增：保护 _client 的协程安全锁
         self._client_lock: asyncio.Lock = asyncio.Lock()
 
-    async def __aenter__(self) -> "HttpXClient":
-        """
-        协程安全地初始化 AsyncClient，防止并发场景下重复初始化
-        """
-        async with self._client_lock:
-            if self._client is None:
-                self._client = httpx.AsyncClient(
-                    base_url=self._base_url,
-                    timeout=self._timeout,
-                    headers=self._headers,
-                )
-                await self._log.ainfo(
-                    "HttpXClient 初始化完成", emoji="🚀", base_url=self._base_url
-                )
-            else:
-                await self._log.adebug(
-                    "HttpXClient 已存在，跳过初始化", emoji="⚠️", base_url=self._base_url
-                )
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: Optional[type],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[Any],
-    ) -> None:
-        """
-        协程安全地关闭 AsyncClient，防止并发场景下重复关闭
-        """
-        async with self._client_lock:
-            if self._client:
-                try:
-                    await self._client.aclose()
-                    await self._log.ainfo("HttpXClient 已销毁", emoji="🛑")
-                except Exception as e:
-                    await self._log.aerror(
-                        "HttpXClient 关闭异常", emoji="💥", error=str(e)
-                    )
-                self._client = None
-            else:
-                await self._log.adebug(
-                    "HttpXClient 已销毁或未初始化，跳过关闭", emoji="⚠️"
-                )
+    def __del__(self) -> None:
+        """析构函数，确保关闭 HttpXClient"""
+        if self._client:
+            asyncio.run(self._client.aclose())
 
     async def _wait_for_rate_limit(self, api_name: str) -> None:
         """
@@ -322,7 +287,7 @@ class HttpXClient:
         """
         if self._client is None:
             raise RuntimeError(
-                "HttpXClient 未初始化，请使用 async with 语法"
+                "HttpXClient 未初始化或已关闭，请检查代码逻辑"
             )  # 中文异常
         if not api_name:
             raise ValueError("必须传递 api_name 参数用于本地限流唯一标识")  # 中文异常
@@ -372,8 +337,10 @@ class HttpXClient:
                 await self._update_rate_limit_from_headers(api_name, dict(resp.headers))
 
                 # 判断响应状态码
-                if resp.status_code == 200:
-                    if response_json:
+                # 覆盖常见的 HTTP 成功状态码（200、201、202、204 等）
+                if resp.status_code in (200, 201, 202, 204):
+                    if response_json and resp.status_code != 204:
+                        # 204 No Content 无内容，不能反序列化 JSON
                         return await self._handle_response_json(resp, response_model)
                     else:
                         return resp

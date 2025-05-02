@@ -15,18 +15,19 @@ from alphapower.constants import (
     Status,
     SubmissionCheckResult,
     Switch,
+    TagType,
     UnitHandling,
     Universe,
 )
 
 
-class CompetitionRefView(BaseModel):
+class IdNameRefView(BaseModel):
     id: str
-    name: str
+    name: Optional[str]
 
 
-CompetitionRefViewListAdapter: TypeAdapter[List[CompetitionRefView]] = TypeAdapter(
-    List[CompetitionRefView],
+CompetitionRefViewListAdapter: TypeAdapter[List[IdNameRefView]] = TypeAdapter(
+    List[IdNameRefView],
 )
 
 
@@ -69,7 +70,7 @@ class SubmissionCheckView(BaseModel):
     limit: Optional[float] = None
     value: Optional[float] = None
     date: Optional[datetime] = None
-    competitions: Optional[List[CompetitionRefView]] = None
+    competitions: Optional[List[IdNameRefView]] = None
     themes: Optional[List[ThemeRefView]] = None
     message: Optional[str] = None
     year: Optional[int] = None
@@ -243,7 +244,7 @@ class AlphaView(BaseModel):
     train: Optional[AggregateDataView] = None
     test: Optional[AggregateDataView] = None
     prod: Optional[AggregateDataView] = None
-    competitions: Optional[List[CompetitionRefView]] = None
+    competitions: Optional[List[IdNameRefView]] = None
     themes: Optional[List[str]] = None
     pyramids: Optional[List[PyramidRefView]] = None
     team: Optional[str] = None
@@ -291,7 +292,7 @@ class AlphaDetailView(BaseModel):
     train: Optional["AlphaDetailView.Sample"] = None
     test: Optional["AlphaDetailView.Sample"] = None
     prod: Optional["AlphaDetailView.Sample"] = None
-    competitions: Optional[List[CompetitionRefView]] = None
+    competitions: Optional[List[IdNameRefView]] = None
     themes: Optional[List[str]] = None
     pyramids: Optional[List[PyramidRefView]] = None
     team: Optional[str] = None
@@ -409,3 +410,16 @@ class SelfAlphaListQueryParams(BaseModel):
         if self.date_created_lt is not None:
             params["dateCreated<"] = self.date_created_lt
         return params
+
+
+class CreateTagsPayload(BaseModel):
+    alphas: List[str]
+    name: str
+    type: TagType
+
+
+class ListTagAlphaView(BaseModel):
+    id: str
+    type: TagType
+    name: str
+    alphas: List[IdNameRefView]

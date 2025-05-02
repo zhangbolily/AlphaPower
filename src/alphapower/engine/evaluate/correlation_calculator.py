@@ -913,7 +913,7 @@ if __name__ == "__main__":
             ) as session:
                 alpha: Optional[Alpha] = await alpha_dal.find_one_by(
                     session=session,
-                    alpha_id="d1n2w6w",
+                    alpha_id="8NqbaZv",
                 )
 
             if alpha is None:

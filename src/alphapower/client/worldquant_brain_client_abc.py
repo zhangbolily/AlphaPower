@@ -1,34 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, List
 
 from alphapower.constants import UserPermission, UserRole
+from alphapower.view.alpha import CreateTagsPayload, ListTagAlphaView
 from alphapower.view.user import AuthenticationView
 
 
-class AbstractClient(ABC):
+class AbstractWorldQuantBrainClient(ABC):
     """
     Abstract base class for clients.
     """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """
-        Initialize the client with the given arguments.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
-    async def __aenter__(self) -> "AbstractClient":
-        """
-        Asynchronous context manager entry method.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
-    async def __aexit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
-        """
-        Asynchronous context manager exit method.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
     async def login(
@@ -47,13 +28,6 @@ class AbstractClient(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    async def close(self) -> None:
-        """
-        Close the client connection.
-        """
-        raise NotImplementedError("Subclasses must implement this method.")
-
-    @abstractmethod
     async def get_user_id(self) -> str:
         """
         Get the user ID of the logged-in user.
@@ -61,7 +35,7 @@ class AbstractClient(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    async def get_user_permissions(self) -> list[UserPermission]:
+    async def get_user_permissions(self) -> List[UserPermission]:
         """
         Get the permissions of the logged-in user.
         """
@@ -71,5 +45,12 @@ class AbstractClient(ABC):
     async def get_user_role(self) -> UserRole:
         """
         Get the role of the logged-in user.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def create_alpha_list(self, payload: CreateTagsPayload) -> ListTagAlphaView:
+        """
+        Create an alpha list with the given payload.
         """
         raise NotImplementedError("Subclasses must implement this method.")

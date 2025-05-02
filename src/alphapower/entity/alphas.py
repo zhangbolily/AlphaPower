@@ -46,9 +46,9 @@ from alphapower.constants import (
 from alphapower.view.alpha import (
     ClassificationRefView,
     ClassificationRefViewListAdapter,
-    CompetitionRefView,
     CompetitionRefViewListAdapter,
     ExpressionView,
+    IdNameRefView,
     PyramidRefView,
     PyramidRefViewListAdapter,
     StringListAdapter,
@@ -417,7 +417,7 @@ class Alpha(Base):
         classifications: Optional[List[ClassificationRefView]] = kwargs.pop(
             "classifications", None
         )
-        competitions: Optional[List[CompetitionRefView]] = kwargs.pop(
+        competitions: Optional[List[IdNameRefView]] = kwargs.pop(
             "competitions", None
         )
         tags = kwargs.pop("tags", None)
@@ -434,7 +434,7 @@ class Alpha(Base):
         self._selection_view_cache: Optional[ExpressionView] = None
         self._pyramids_view_cache: Optional[List[PyramidRefView]] = None
         self._classifications_view_cache: Optional[List[ClassificationRefView]] = None
-        self._competitions_view_cache: Optional[List[CompetitionRefView]] = None
+        self._competitions_view_cache: Optional[List[IdNameRefView]] = None
 
         if themes is not None:
             self._themes = StringListAdapter.dump_python(
@@ -640,7 +640,7 @@ class Alpha(Base):
             self._classifications_view_cache = value
 
     @hybrid_property
-    def competitions(self) -> List[CompetitionRefView]:
+    def competitions(self) -> List[IdNameRefView]:
 
         if self._competitions is None:
             return []
@@ -650,7 +650,7 @@ class Alpha(Base):
             and self._competitions_view_cache is not None
         ):
             return self._competitions_view_cache
-        competitions: List[CompetitionRefView] = (
+        competitions: List[IdNameRefView] = (
             CompetitionRefViewListAdapter.validate_python(self._competitions)
         )
         if competitions is None:
@@ -661,7 +661,7 @@ class Alpha(Base):
         return competitions
 
     @competitions.setter  # type: ignore[no-redef]
-    def competitions(self, value: Optional[List[CompetitionRefView]]) -> None:
+    def competitions(self, value: Optional[List[IdNameRefView]]) -> None:
 
         if value is None:
             self._competitions = None

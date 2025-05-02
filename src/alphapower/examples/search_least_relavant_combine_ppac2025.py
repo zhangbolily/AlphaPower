@@ -4,7 +4,8 @@ import pandas as pd
 from structlog.stdlib import BoundLogger
 
 from alphapower.client import wq_client
-from alphapower.constants import Database, RecordSetType
+from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
+from alphapower.constants import Database, RecordSetType, TagType
 from alphapower.dal import alpha_dal, evaluate_record_dal, record_set_dal
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity.alphas import Alpha
@@ -13,8 +14,14 @@ from alphapower.internal.decorator import async_timed
 from alphapower.internal.logging import get_logger
 from alphapower.manager.correlation_manager import CorrelationManager
 from alphapower.manager.record_sets_manager import RecordSetsManager
+from alphapower.settings import settings
+from alphapower.view.alpha import CreateTagsPayload, ListTagAlphaView
 
 logger: BoundLogger = get_logger(__name__)
+client: WorldQuantBrainClient = WorldQuantBrainClient(
+    username=settings.credential.username,
+    password=settings.credential.password,
+)
 
 
 @async_timed
@@ -38,10 +45,10 @@ async def main() -> None:
             Alpha.alpha_id.in_(alpha_ids),
             session=session,
         )
-    async with wq_client as client:
+    async with wq_client as legacy_client:
         # Get the record sets manager
         record_sets_manager = RecordSetsManager(
-            client=client,
+            client=legacy_client,
             record_set_dal=record_set_dal,
         )
         correlation_manager = CorrelationManager()
@@ -103,6 +110,21 @@ async def main() -> None:
         least_relevant_set_size=len(least_relevant_set),
         correlation=corr,
         emoji="🔍",
+    )
+
+    payload: CreateTagsPayload = CreateTagsPayload(
+        name="least_relevant_set",
+        type=TagType.LIST,
+        alphas=list(least_relevant_set),
+    )
+    list_tag_alpha_view: ListTagAlphaView = await client.create_alpha_list(
+        payload=payload,
+    )
+
+    await logger.ainfo(
+        "最不相关子矩阵已创建",
+        list_tag_alpha_view=list_tag_alpha_view.model_dump(mode="json"),
+        emoji="✅",
     )
 
 

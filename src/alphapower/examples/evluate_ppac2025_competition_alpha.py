@@ -217,7 +217,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 16),
-                end_time=datetime(2025, 4, 30, 23, 59, 59),
+                end_time=datetime(2025, 5, 2, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -287,13 +287,13 @@ if __name__ == "__main__":
 
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.FORCE_REFRESH,
-                concurrency=48,
+                concurrency=256,
                 status=Status.UNSUBMITTED,
                 region=Region.USA,
                 delay=Delay.ONE,
             ):
                 print(alpha)
 
-    os.environ["PYTHONASYNCIO_MAX_WORKERS"] = str(64)
+    os.environ["PYTHONASYNCIO_MAX_WORKERS"] = str(256)
 
     asyncio.run(main())

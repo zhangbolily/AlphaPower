@@ -1,6 +1,6 @@
 from __future__ import annotations  # 添加此行解决前向引用问题
 
-from enum import Enum, auto
+from enum import Enum
 from functools import lru_cache  # 添加缓存支持
 from typing import Callable, Dict, Final, List, Optional, Set, Tuple
 from urllib.parse import urljoin
@@ -105,6 +105,7 @@ ENDPOINT_ACTIVITIES_DIVERSITY: Final[str] = urljoin(ENDPOINT_ACTIVITIES, "divers
 
 ENDPOINT_USER_SELF_CONSULTANT: Final[str] = urljoin(ENDPOINT_USER_SELF, "consultant")
 
+ENDPOINT_TAGS: Final[str] = "tags"  # 标签端点
 
 # 数据相关端点
 ENDPOINT_DATA_CATEGORIES: Final[str] = "data-categories"
@@ -126,23 +127,25 @@ ENDPOINT_COMPETITION_BOARD: Final[Callable[[str], str]] = (
 # -----------------------------------------------------------------------------
 
 
-class UserRole(Enum):
+class UserRole(str, Enum):
 
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
     CONSULTANT = "ROLE_CONSULTANT"  # 顾问角色
     USER = "ROLE_USER"  # 普通用户角色
 
 
-class UserPermission(Enum):
-    DEFAULT = auto()
-    BEFORE_AND_AFTER_PERFORMANCE_V2 = auto()  # 提交前后性能对比检查
-    CONSULTANT = auto()  # 顾问角色
-    MULTI_SIMULATION = auto()  # 多模拟槽位
-    PROD_ALPHAS = auto()  # 生产环境相关性检查
-    REFERRAL = auto()  # 推荐
-    SUPER_ALPHA = auto()  # 超级Alpha
-    VISUALIZATION = auto()  # 可视化
-    WORKDAY = auto()  # 工作日
+class UserPermission(str, Enum):
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    BEFORE_AND_AFTER_PERFORMANCE_V2 = (
+        "BEFORE_AND_AFTER_PERFORMANCE_V2"  # 提交前后性能对比检查
+    )
+    CONSULTANT = "CONSULTANT"  # 顾问角色
+    MULTI_SIMULATION = "MULTI_SIMULATION"  # 多模拟槽位
+    PROD_ALPHAS = "PROD_ALPHAS"  # 生产环境相关性检查
+    REFERRAL = "REFERRAL"  # 推荐
+    SUPER_ALPHA = "SUPER_ALPHA"  # 超级Alpha
+    VISUALIZATION = "VISUALIZATION"  # 可视化
+    WORKDAY = "WORKDAY"  # 工作日
 
 
 # 用户角色常量 (兼容性保留，建议使用UserRole枚举)
@@ -394,6 +397,14 @@ class AlphaType(Enum):
     DEFAULT = "DEFAULT"
     REGULAR = "REGULAR"
     SUPER = "SUPER"
+
+
+class TagType(Enum):
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    TAG = "TAG"  # 标签类型
+    LIST = "LIST"  # 列表类型
+    CATEGORY = "CATEGORY"  # 分类类型
+    COLOR = "COLOR"  # 颜色类型
 
 
 class RegularLanguage(Enum):

@@ -7,6 +7,7 @@ from structlog.stdlib import BoundLogger
 from alphapower.internal.logging import get_logger
 
 F = TypeVar("F", bound=Callable[..., Coroutine[Any, Any, Any]])
+E = TypeVar("E", bound=Callable[..., Coroutine[Any, Any, Any]])
 
 logger: BoundLogger = get_logger(__name__)
 
@@ -38,3 +39,35 @@ def async_timed(func: F) -> F:
         return result
 
     return cast(F, wrapper)
+
+
+def async_exception_handler(func: E) -> E:
+    @functools.wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        function_name: str = func.__qualname__  # 获取被装饰函数的名字
+        try:
+            await logger.adebug(
+                "函数异常处理开始",
+                function_name=function_name,
+                args=args,
+                kwargs=kwargs,
+                emoji="⚠️",
+            )
+            return await func(*args, **kwargs)
+        except Exception as e:
+            await logger.aerror(
+                "函数执行时捕获到异常",
+                function_name=function_name,
+                exception=str(e),
+                emoji="❌",
+            )
+
+            raise e
+        finally:
+            await logger.ainfo(
+                "函数异常处理结束",
+                function_name=function_name,
+                emoji="⚠️",
+            )
+
+    return cast(E, wrapper)
