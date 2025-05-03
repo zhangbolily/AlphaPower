@@ -91,7 +91,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                 )
 
                 if not task_ids:  # 如果没有更多任务，提前退出
-                    pending_task_count: int = await dal.count(
+                    pending_task_count: int = await dal.deprecated_count(
                         status=SimulationTaskStatus.PENDING,
                         priority=priority,
                         notin_={

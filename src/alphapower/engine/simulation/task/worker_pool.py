@@ -11,6 +11,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime
+from re import Match
 from typing import (
     Any,
     Awaitable,
@@ -23,9 +24,14 @@ from typing import (
     Union,
 )
 
-from alphapower.client import SingleSimulationResultView, WorldQuantClient
+from alphapower.client import WorldQuantClient
+from alphapower.constants import Database, SimulationResultStatus, SimulationTaskStatus
+from alphapower.dal import simulation_task_dal
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import SimulationTask
+from alphapower.fixed_message import MESSAGE_USE_UNKNOWN_VARIABLE_REGEX
 from alphapower.internal.logging import get_logger
+from alphapower.view.simulation import SingleSimulationResultView
 
 from .scheduler_abc import AbstractScheduler
 from .worker import Worker
@@ -41,6 +47,103 @@ TaskCompleteCallback = Union[
     Callable[[SimulationTask, SingleSimulationResultView], None],
     Callable[[SimulationTask, SingleSimulationResultView], Awaitable[None]],
 ]
+
+
+async def fix_unknown_data_field_error(
+    task: SimulationTask,
+    result: SingleSimulationResultView,
+) -> None:
+    if result.status == SimulationResultStatus.CANCELLED:
+        async with (
+            session_manager.get_session(Database.SIMULATION) as session,
+            session.begin(),
+        ):
+            task.status = SimulationTaskStatus.PENDING
+            await simulation_task_dal.update(
+                task,
+                session=session,
+            )
+            await logger.ainfo(
+                event="重置任务状态",
+                task_id=task.id,
+                status=task.status,
+                message="已取消的任务，状态已重置为 PENDING",
+                emoji="🔄",
+            )
+
+    if task.status == SimulationTaskStatus.ERROR and result.message:
+        match: Optional[Match[str]] = MESSAGE_USE_UNKNOWN_VARIABLE_REGEX.search(
+            result.message
+        )
+        if match:
+            data_field_name: str = match.group("name")
+            # 记录未知数据字段的错误
+            await logger.aerror(
+                event="未知数据字段错误",
+                task_id=task.id,
+                data_field_name=data_field_name,
+                message="任务使用了未知数据字段",
+                emoji="❌",
+            )
+
+            async with session_manager.get_session(
+                Database.SIMULATION, readonly=True
+            ) as session:
+                # 需要批量更新将使用到此数据字段的待调度任务都重置为 NOT_SCHEDULABLE
+                count: int = await simulation_task_dal.count(
+                    SimulationTask.regular.contains(data_field_name),
+                    SimulationTask.status != SimulationTaskStatus.COMPLETE,
+                    session=session,
+                )
+
+                await logger.ainfo(
+                    event="批量更新待调度任务",
+                    count=count,
+                    data_field_name=data_field_name,
+                    message="将使用未知数据字段的待调度任务重置为 NOT_SCHEDULABLE",
+                    emoji="🔄",
+                )
+
+            batch_size: int = 100
+            total: int = 0
+            updated: int = -1
+
+            while updated != 0:
+                async with (
+                    session_manager.get_session(Database.SIMULATION) as session,
+                    session.begin(),
+                ):
+                    updated = await simulation_task_dal.update_by(
+                        SimulationTask.status.in_(
+                            [
+                                SimulationTaskStatus.PENDING,
+                                SimulationTaskStatus.ERROR,
+                            ]
+                        ),
+                        SimulationTask.regular.contains(data_field_name),
+                        update_fields={
+                            "status": SimulationTaskStatus.NOT_SCHEDULABLE,
+                        },
+                        limit=batch_size,
+                        session=session,
+                    )
+
+                await logger.ainfo(
+                    event="批量更新待调度任务",
+                    count=updated,
+                    data_field_name=data_field_name,
+                    message="将使用未知数据字段的待调度任务重置为 NOT_SCHEDULABLE",
+                    emoji="🔄",
+                )
+                total += updated
+
+            await logger.ainfo(
+                event="批量更新待调度任务完成",
+                total=total,
+                data_field_name=data_field_name,
+                message="所有使用未知数据字段的待调度任务已重置为 NOT_SCHEDULABLE",
+                emoji="✅",
+            )
 
 
 class WorkerPool(AbstractWorkerPool):
@@ -120,6 +223,8 @@ class WorkerPool(AbstractWorkerPool):
             worker: Worker = Worker(client, dry_run=self._dry_run)
             await worker.set_scheduler(self._scheduler)
             await worker.add_task_complete_callback(self._on_task_completed)
+            # FIXME: 修复线上问题，使用未知数据字段的错误
+            await worker.add_task_complete_callback(fix_unknown_data_field_error)
             await worker.add_heartbeat_callback(self._on_worker_heartbeat)
             # 记录工作者创建时间作为最后活跃时间
             self._worker_last_active[worker] = time.time()
@@ -174,6 +279,8 @@ class WorkerPool(AbstractWorkerPool):
         if current_time - self._last_status_log_time > 60:  # 每分钟记录一次状态
             self._last_status_log_time = current_time
             await self._log_pool_status()
+
+        # TODO: 新增一个临时逻辑，处理使用了未知数据字段的错误
 
         await logger.adebug(
             event="任务完成",

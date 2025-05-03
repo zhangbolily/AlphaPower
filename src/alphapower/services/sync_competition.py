@@ -158,7 +158,7 @@ async def competition_data_expire_check() -> bool:
         competition_dal: CompetitionDAL = DALFactory.create_dal(
             CompetitionDAL, session=session
         )
-        local_count: int = await competition_dal.count()
+        local_count: int = await competition_dal.deprecated_count()
 
     async with wq_client:
         result: CompetitionListView = await fetch_competitions(1, 1)

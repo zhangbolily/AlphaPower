@@ -574,6 +574,94 @@ class BaseDAL(Generic[T]):
         result = await actual_session.execute(query.limit(1))
         return result.scalars().first()
 
+    async def update_by(
+        self,
+        *args: ColumnElement,
+        update_fields: Dict[str, Any],
+        session: Optional[AsyncSession] = None,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        **kwargs: Union[str, int, float, bool],
+    ) -> int:
+        """
+        按条件批量更新实体对象，支持 update_fields 的 key 为字符串字段名或 SQLAlchemy 字段对象。
+
+        参数:
+            *args: SQLAlchemy 条件表达式（ColumnElement），如 User.name == "张三"
+            update_fields: 需要更新的字段及其新值，key 可为 str 或 ColumnElement
+            session: 可选的会话对象，若提供则优先使用
+            offset: 跳过多少条记录
+            limit: 返回记录数上限
+            **kwargs: 等值过滤条件，key 必须为 str，值为基本数据类型
+
+        返回:
+            实际更新的记录数量
+
+        异常:
+            ValueError: 如果 update_fields 为空或无效字段
+        """
+        log: BoundLogger = self.log
+        await log.adebug(
+            "update_by 入参",
+            args=args,
+            update_fields=update_fields,
+            offset=offset,
+            limit=limit,
+            kwargs=kwargs,
+            emoji="✏️",
+        )
+
+        if not update_fields:
+            await log.aerror("未提供任何需要更新的字段", emoji="❌")
+            raise ValueError("必须指定至少一个需要更新的字段")
+
+        actual_session: AsyncSession = self._actual_session(session)
+        query: Update = update(self.entity_type)
+        criteria: List[ColumnElement] = []
+
+        # 处理 args 作为 SQLAlchemy 条件表达式
+        for arg in args:
+            if isinstance(arg, ColumnElement):
+                criteria.append(arg)
+            else:
+                await log.awarning("无效的条件表达式", arg=arg, emoji="⚠️")
+
+        # 处理 kwargs 等值过滤
+        for key, value in kwargs.items():
+            if not isinstance(key, str):
+                await log.awarning("过滤条件字段名必须为字符串", field=key, emoji="⚠️")
+                continue
+            if hasattr(self.entity_type, key):
+                column = getattr(self.entity_type, key)
+                criteria.append(column == value)
+            else:
+                await log.awarning("无效的字段名", field=key, emoji="⚠️")
+
+        # 应用所有过滤条件
+        if criteria:
+            query = query.where(*criteria)
+
+        # 分页（SQLAlchemy Update 不直接支持 offset/limit，需谨慎使用）
+        if offset is not None or limit is not None:
+            await log.awarning(
+                "offset/limit 仅用于 select，批量 update 建议先查主键再分批更新",
+                offset=offset,
+                limit=limit,
+                emoji="⚠️",
+            )
+
+        query = query.values(**update_fields)
+        result = await actual_session.execute(query)
+        updated_count: int = result.rowcount or 0
+
+        await log.ainfo(
+            "批量更新完成",
+            updated_count=updated_count,
+            update_fields=list(update_fields.keys()),
+            emoji="✅",
+        )
+        return updated_count
+
     async def update_by_id(
         self, entity_id: int, session: Optional[AsyncSession] = None, **kwargs: Any
     ) -> Optional[T]:
@@ -783,7 +871,7 @@ class BaseDAL(Generic[T]):
             )
         return deleted_count
 
-    async def count(
+    async def deprecated_count(
         self,
         session: Optional[AsyncSession] = None,
         in_: Optional[Dict[str, Any]] = None,
@@ -827,6 +915,53 @@ class BaseDAL(Generic[T]):
             filter_conditions=kwargs,
             emoji="✅",
         )
+        return count
+
+    async def count(
+        self,
+        *args: ColumnElement,
+        session: Optional[AsyncSession] = None,
+        **kwargs: Union[str, int, float, bool],
+    ) -> int:
+        """
+        统计实体数量。
+
+        Args:
+            session: 可选的会话对象，若提供则优先使用。
+            *args: SQLAlchemy 条件表达式（ColumnElement），如 User.name == "张三"
+            **kwargs: 等值过滤条件，key 必须为 str，值为基本数据类型
+
+        Returns:
+            符合条件的实体数量。
+        """
+        actual_session: AsyncSession = self._actual_session(session)
+        query: Select = select(func.count()).select_from(self.entity_type)
+        criteria: List[ColumnElement] = []
+
+        # 处理 args 作为 SQLAlchemy 条件表达式
+        for arg in args:
+            if isinstance(arg, ColumnElement):
+                criteria.append(arg)
+            else:
+                self.log.warning("无效的条件表达式", arg=arg)
+
+        # 处理 kwargs 等值过滤
+        for key, value in kwargs.items():
+            if not isinstance(key, str):
+                self.log.warning("过滤条件字段名必须为字符串", field=key)
+                continue
+            if hasattr(self.entity_type, key):
+                column = getattr(self.entity_type, key)
+                criteria.append(column == value)
+            else:
+                self.log.warning("无效的字段名", field=key)
+
+        # 应用所有过滤条件
+        if criteria:
+            query = query.where(*criteria)
+
+        result = await actual_session.execute(query)
+        count = cast(int, result.scalar())
         return count
 
     def query(self) -> Select:
