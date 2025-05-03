@@ -7,14 +7,27 @@ from httpx import BasicAuth
 
 from alphapower.constants import (
     BASE_URL,
+    ENDPOINT_ALPHAS,
     ENDPOINT_AUTHENTICATION,
     ENDPOINT_TAGS,
+    ENDPOINT_USER_SELF_ALPHAS,
+    ENDPOINT_USER_SELF_TAGS,
     UserPermission,
     UserRole,
 )
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.logging import LogBase
-from alphapower.view.alpha import CreateTagsPayload, ListTagAlphaView
+from alphapower.view.alpha import (
+    AlphaDetailView,
+    AlphaPropertiesPayload,
+    CreateTagsPayload,
+    SelfTagListQuery,
+    SelfTagListView,
+    TagView,
+    UserAlphasQuery,
+    UserAlphasSummaryView,
+    UserAlphasView,
+)
 from alphapower.view.user import AuthenticationView
 
 from .httpx_client import HttpXClient
@@ -86,9 +99,13 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
 
                 # 再次检查，避免并发下重复刷新
                 if await self._session_expired():
-                    await self._login(
+                    auth_view: AuthenticationView = await self._login(
                         username=self._username,
                         password=self._password,
+                    )
+                    self._authentication_info = (
+                        datetime.now(),
+                        auth_view,
                     )
                     await self.log.ainfo(
                         "会话已刷新",
@@ -117,15 +134,22 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
                 await asyncio.sleep(60)
                 # 提前 5 分钟检查会话是否过期
                 if await self._session_expired(after=timedelta(minutes=5)):
-                    await self._login(
-                        username=self._username,
-                        password=self._password,
-                    )
-                    await self.log.ainfo(
-                        "会话已刷新",
-                        emoji="🔄",
-                        username=self._username,
-                    )
+                    async with self._http_client_lock:
+                        # 再次检查，避免并发下重复刷新
+                        if await self._session_expired(after=timedelta(minutes=5)):
+                            auth_view: AuthenticationView = await self._login(
+                                username=self._username,
+                                password=self._password,
+                            )
+                            self._authentication_info = (
+                                datetime.now(),
+                                auth_view,
+                            )
+                            await self.log.ainfo(
+                                "会话已刷新",
+                                emoji="🔄",
+                                username=self._username,
+                            )
         except asyncio.CancelledError:
             await self.log.ainfo(
                 "后台任务已取消",
@@ -172,17 +196,20 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             await self.log.ainfo(
                 "会话已过期",
                 emoji="⏳",
-                timestamp=timestamp,
+                timestamp=timestamp.isoformat(),
                 expiry=auth_info.token.expiry,
-                after=after,
+                after=str(after),
             )
             return True
         await self.log.ainfo(
             "会话未过期",
             emoji="🕒",
-            timestamp=timestamp,
+            timestamp=timestamp.isoformat(),
             expiry=auth_info.token.expiry,
-            after=after,
+            after=str(after),
+            expire_at=(
+                timestamp + timedelta(seconds=auth_info.token.expiry)
+            ).isoformat(),
         )
         return False
 
@@ -207,7 +234,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
                 method="GET",
                 url=ENDPOINT_AUTHENTICATION,
                 auth=auth,
-                api_name=WorldQuantBrainClient.get_authentication.__name__,
+                api_name=WorldQuantBrainClient.get_authentication.__qualname__,
                 response_model=AuthenticationView,
                 **kwargs,
             )
@@ -274,7 +301,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
                 method="POST",
                 url=ENDPOINT_AUTHENTICATION,
                 basic_auth=auth,
-                api_name=WorldQuantBrainClient.login.__name__,
+                api_name=WorldQuantBrainClient.login.__qualname__,
                 response_model=AuthenticationView,
                 **kwargs,
             )
@@ -375,7 +402,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             await http_client.request(
                 method="DELETE",
                 url=ENDPOINT_AUTHENTICATION,
-                api_name=WorldQuantBrainClient.logout.__name__,
+                api_name=WorldQuantBrainClient.logout.__qualname__,
                 response_model=None,
             )
 
@@ -402,7 +429,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         response: Any = await http_client.request(
             method="GET",
             url=ENDPOINT_AUTHENTICATION,
-            api_name=WorldQuantBrainClient.get_user_id.__name__,
+            api_name=WorldQuantBrainClient.get_user_id.__qualname__,
             response_model=AuthenticationView,
         )
 
@@ -440,7 +467,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         response: Any = await http_client.request(
             method="GET",
             url=ENDPOINT_AUTHENTICATION,
-            api_name=WorldQuantBrainClient.get_user_permissions.__name__,
+            api_name=WorldQuantBrainClient.get_user_permissions.__qualname__,
             response_model=AuthenticationView,
         )
 
@@ -478,7 +505,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         response: Any = await http_client.request(
             method="GET",
             url=ENDPOINT_AUTHENTICATION,
-            api_name=WorldQuantBrainClient.get_user_role.__name__,
+            api_name=WorldQuantBrainClient.get_user_role.__qualname__,
             response_model=AuthenticationView,
         )
 
@@ -507,39 +534,333 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         return role
 
     @async_exception_handler
-    async def create_alpha_list(self, payload: CreateTagsPayload) -> ListTagAlphaView:
+    async def create_alpha_list(self, payload: CreateTagsPayload) -> TagView:
         """
         创建 Alpha 列表。
         """
         await self.log.ainfo(
             "创建 Alpha 列表",
             emoji="📝",
-            payload=payload,
+            payload=payload.to_serializable_dict(),
         )
 
         http_client: HttpXClient = await self.http_client()
         response: Any = await http_client.request(
             method="POST",
             url=ENDPOINT_TAGS,
-            api_name=WorldQuantBrainClient.create_alpha_list.__name__,
-            json=payload.model_dump(mode="json"),
-            response_model=ListTagAlphaView,
+            api_name=WorldQuantBrainClient.create_alpha_list.__qualname__,
+            json=payload.to_serializable_dict(),
+            response_model=TagView,
         )
 
-        if not isinstance(response, ListTagAlphaView):
+        if not isinstance(response, TagView):
             await self.log.aerror(
                 "创建 Alpha 列表响应类型错误",
                 emoji="❌",
-                expected=ListTagAlphaView.__name__,
+                expected=TagView.__name__,
                 got=type(response).__name__,
             )
             raise TypeError(
-                f"期望返回类型为 {ListTagAlphaView.__name__}，实际为 {type(response).__name__}"
+                f"期望返回类型为 {TagView.__name__}，实际为 {type(response).__name__}"
             )
 
         await self.log.ainfo(
             "创建 Alpha 列表成功",
             emoji="✅",
             response=response,
+        )
+        return response
+
+    @async_exception_handler
+    async def delete_alpha_list(self, tag_id: str) -> None:
+        """
+        删除 Alpha 列表。
+        """
+        # INFO 日志：方法进入，参数输出
+        await self.log.ainfo(
+            "进入删除 Alpha 列表方法",
+            emoji="🗑️",
+            tag_id=tag_id,
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        # DEBUG 日志：请求参数详细输出
+        await self.log.adebug(
+            "准备发送 DELETE 请求删除 Alpha 列表",
+            emoji="📤",
+            url=f"{ENDPOINT_TAGS}/{tag_id}",
+            api_name=WorldQuantBrainClient.delete_alpha_list.__qualname__,
+        )
+
+        await http_client.request(
+            method="DELETE",
+            url=f"{ENDPOINT_TAGS}/{tag_id}",
+            api_name=WorldQuantBrainClient.delete_alpha_list.__qualname__,
+            response_model=None,
+        )
+
+        # INFO 日志：方法成功退出
+        await self.log.ainfo(
+            "删除 Alpha 列表成功",
+            emoji="✅",
+            tag_id=tag_id,
+        )
+
+    @async_exception_handler
+    async def fetch_user_tags(
+        self,
+        query: SelfTagListQuery,
+    ) -> SelfTagListView:
+        """
+        获取用户标签列表。
+        """
+        # INFO 日志：方法进入，参数输出
+        await self.log.ainfo(
+            "进入获取用户标签列表方法",
+            emoji="🔍",
+            query=query.to_params(),
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        # DEBUG 日志：请求参数详细输出
+        await self.log.adebug(
+            "准备发送 GET 请求获取用户标签列表",
+            emoji="📤",
+            url=ENDPOINT_USER_SELF_TAGS,
+            api_name=WorldQuantBrainClient.fetch_user_tags.__qualname__,
+            params=query.to_params(),
+        )
+
+        response: Any = await http_client.request(
+            method="GET",
+            url=ENDPOINT_USER_SELF_TAGS,
+            api_name=WorldQuantBrainClient.fetch_user_tags.__qualname__,
+            params=query.to_params(),
+            response_model=SelfTagListView,
+        )
+
+        # DEBUG 日志：响应类型输出
+        await self.log.adebug(
+            "收到 GET 响应",
+            emoji="📥",
+            response_type=type(response).__name__,
+        )
+
+        if not isinstance(response, SelfTagListView):
+            # ERROR 日志：类型错误
+            await self.log.aerror(
+                "获取用户标签列表响应类型错误",
+                emoji="❌",
+                expected=SelfTagListView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {SelfTagListView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        # INFO 日志：方法成功退出，不打印返回参数
+        await self.log.ainfo(
+            "获取用户标签列表成功",
+            emoji="✅",
+        )
+        # DEBUG 日志：返回参数详细输出
+        await self.log.adebug(
+            "返回的用户标签列表视图",
+            emoji="📜",
+            tag_list_ids=lambda: [tag.id for tag in response.results],
+        )
+        return response
+
+    @async_exception_handler
+    async def fetch_user_alphas_summary(self) -> UserAlphasSummaryView:
+        """
+        获取用户 Alpha 概要信息。
+        """
+        # INFO 日志：方法进入
+        await self.log.ainfo(
+            "进入获取用户 Alpha 概要信息方法",
+            emoji="🔍",
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        # DEBUG 日志：请求参数详细输出
+        await self.log.adebug(
+            "准备发送 GET 请求获取用户 Alpha 概要信息",
+            emoji="📤",
+            url=ENDPOINT_USER_SELF_ALPHAS,
+            api_name=WorldQuantBrainClient.fetch_user_alphas_summary.__qualname__,
+        )
+
+        response: Any = await http_client.request(
+            method="GET",
+            url=ENDPOINT_USER_SELF_ALPHAS,
+            api_name=WorldQuantBrainClient.fetch_user_alphas_summary.__qualname__,
+            response_model=UserAlphasSummaryView,
+        )
+
+        # DEBUG 日志：响应类型输出
+        await self.log.adebug(
+            "收到 GET 响应",
+            emoji="📥",
+            response_type=type(response).__name__,
+        )
+
+        if not isinstance(response, UserAlphasSummaryView):
+            # ERROR 日志：类型错误
+            await self.log.aerror(
+                "获取用户 Alpha 概要信息响应类型错误",
+                emoji="❌",
+                expected=UserAlphasSummaryView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {UserAlphasSummaryView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        # INFO 日志：方法成功退出，不打印返回参数
+        await self.log.ainfo(
+            "获取用户 Alpha 概要信息成功",
+            emoji="✅",
+        )
+
+        # DEBUG 日志：返回参数详细输出
+        await self.log.adebug(
+            "返回的用户 Alpha 概要视图",
+            emoji="📜",
+            response=response.model_dump(mode="json"),
+        )
+
+        return response
+
+    @async_exception_handler
+    async def fetch_user_alphas(self, query: UserAlphasQuery) -> UserAlphasView:
+        """
+        获取用户 Alpha 列表。
+        """
+        # INFO 日志：方法进入，参数输出
+        await self.log.ainfo(
+            "进入获取用户 Alpha 列表方法",
+            emoji="🔍",
+            query=query.to_params(),
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        # DEBUG 日志：请求参数详细输出
+        await self.log.adebug(
+            "准备发送 GET 请求获取用户 Alpha 列表",
+            emoji="📤",
+            url=ENDPOINT_USER_SELF_ALPHAS,
+            api_name=WorldQuantBrainClient.fetch_user_alphas.__qualname__,
+            params=query.to_params(),
+        )
+
+        response: Any = await http_client.request(
+            method="GET",
+            url=ENDPOINT_USER_SELF_ALPHAS,
+            api_name=WorldQuantBrainClient.fetch_user_alphas.__qualname__,
+            params=query.to_params(),
+            response_model=UserAlphasView,
+        )
+
+        # DEBUG 日志：响应类型输出
+        await self.log.adebug(
+            "收到 GET 响应",
+            emoji="📥",
+            response_type=type(response).__name__,
+        )
+
+        if not isinstance(response, UserAlphasView):
+            # ERROR 日志：类型错误
+            await self.log.aerror(
+                "获取用户 Alpha 列表响应类型错误",
+                emoji="❌",
+                expected=UserAlphasView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {UserAlphasView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        # INFO 日志：方法成功退出，不打印返回参数
+        await self.log.ainfo(
+            "获取用户 Alpha 列表成功",
+            emoji="✅",
+        )
+        # DEBUG 日志：返回参数详细输出
+        # 只打印 Alpha ID，避免输出无效信息
+        # 仅在 debug 级别日志时才生成 alpha_id 列表，避免无谓的计算开销
+        await self.log.adebug(
+            "返回的用户 Alpha 列表视图，仅输出 alpha_id",
+            emoji="📜",
+            alpha_ids=lambda: [alpha.id for alpha in response.results],
+        )
+        return response
+
+    @async_exception_handler
+    async def update_alpha_properties(
+        self,
+        alpha_id: str,
+        payload: AlphaPropertiesPayload,
+    ) -> AlphaDetailView:
+        """
+        更新 Alpha 属性。
+        """
+        # INFO 日志：方法进入，参数输出
+        await self.log.ainfo(
+            "进入更新 Alpha 属性方法",
+            emoji="📝",
+            alpha_id=alpha_id,
+            payload=payload.to_serializable_dict(),
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        # DEBUG 日志：请求参数详细输出
+        await self.log.adebug(
+            "准备发送 PATCH 请求更新 Alpha 属性",
+            emoji="📤",
+            url=f"{ENDPOINT_ALPHAS}/{alpha_id}",
+            api_name=WorldQuantBrainClient.update_alpha_properties.__qualname__,
+            payload_dict=payload.to_serializable_dict(),
+        )
+
+        response: Any = await http_client.request(
+            method="PATCH",
+            url=f"{ENDPOINT_ALPHAS}/{alpha_id}",
+            api_name=WorldQuantBrainClient.update_alpha_properties.__qualname__,
+            json=payload.to_serializable_dict(),
+            response_model=AlphaDetailView,
+        )
+
+        # DEBUG 日志：响应类型输出
+        await self.log.adebug(
+            "收到 PATCH 响应",
+            emoji="📥",
+            response_type=type(response).__name__,
+        )
+
+        if not isinstance(response, AlphaDetailView):
+            # ERROR 日志：类型错误
+            await self.log.aerror(
+                "更新 Alpha 属性响应类型错误",
+                emoji="❌",
+                expected=AlphaDetailView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {AlphaDetailView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        # INFO 日志：方法成功退出，不打印返回参数
+        await self.log.ainfo(
+            "更新 Alpha 属性成功",
+            emoji="✅",
+            alpha_id=alpha_id,
+        )
+        # DEBUG 日志：返回参数详细输出
+        await self.log.adebug(
+            "返回的 Alpha 详细视图",
+            emoji="📜",
+            response=response.model_dump(mode="json"),
+            alpha_id=alpha_id,
         )
         return response

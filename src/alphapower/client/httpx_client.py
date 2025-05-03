@@ -129,10 +129,6 @@ class HttpXClient:
                 headers=dict(headers),
             )
 
-    async def _handle_rate_limit(self, api_name: str) -> None:
-        """处理本地速率限制逻辑"""
-        await self._wait_for_rate_limit(api_name)
-
     async def _handle_http_error_response(
         self,
         resp: httpx.Response,
@@ -144,18 +140,33 @@ class HttpXClient:
         处理 HTTP 异常状态码响应
         返回：若需重试则返回 retry_after 秒，否则返回 None
         """
-        # 检查是否为可重试状态码
-        if resp.status_code in retry_on_status:
-            retry_after: float = (
-                retry_after_override
-                if retry_after_override is not None
-                else self._get_retry_after(resp)
-            )
+        status_code: int = resp.status_code
+        content_type: str = resp.headers.get("content-type", "").lower()
+        retry_after: float = (
+            retry_after_override
+            if retry_after_override is not None
+            else self._get_retry_after(resp)
+        )
+
+        await self._log.adebug(
+            "处理 HTTP 异常状态码响应入参",
+            emoji="🔍",
+            status_code=status_code,
+            url=url,
+            retry_on_status=retry_on_status,
+            retry_after_override=retry_after_override,
+            retry_after=retry_after,
+            content_type=content_type,
+        )
+
+        # 可重试状态码处理
+        if status_code in retry_on_status:
             if retry_after > self._max_retry_after:
                 await self._log.awarning(
-                    "重试等待时间过长，放弃重试",
+                    "重试等待时间超过最大限制，放弃重试",
                     emoji="⏳",
                     retry_after=retry_after,
+                    max_retry_after=self._max_retry_after,
                 )
                 try:
                     resp.raise_for_status()
@@ -163,39 +174,64 @@ class HttpXClient:
                     await self._log.aerror(
                         "HTTP 响应状态码异常",
                         emoji="🚨",
-                        status_code=resp.status_code,
+                        status_code=status_code,
                         url=url,
                         error=str(e),
+                        stack=traceback.format_exc(),
                     )
                     raise
                 return None
             await self._log.awarning(
                 "检测到限流或服务不可用，准备重试",
                 emoji="🔁",
-                status_code=resp.status_code,
+                status_code=status_code,
                 retry_after=retry_after,
             )
             return retry_after
+
+        # 非可重试状态码处理，详细打印错误内容
+        if "application/json" in content_type:
+            try:
+                json_data: Any = resp.json()
+                await self._log.aerror(
+                    "HTTP 响应状态码异常，返回 JSON 错误信息",
+                    emoji="🚨",
+                    status_code=status_code,
+                    url=url,
+                    json_data=json_data,
+                )
+            except Exception as e:
+                await self._log.aerror(
+                    "HTTP 响应状态码异常，JSON 解析失败",
+                    emoji="🚨",
+                    status_code=status_code,
+                    url=url,
+                    error=str(e),
+                    text=(
+                        resp.text[:200] + "..." if len(resp.text) > 200 else resp.text
+                    ),
+                )
         else:
             await self._log.aerror(
                 "HTTP 响应状态码异常",
                 emoji="🚨",
-                status_code=resp.status_code,
+                status_code=status_code,
                 url=url,
                 text=(resp.text[:200] + "..." if len(resp.text) > 200 else resp.text),
             )
-            try:
-                resp.raise_for_status()
-            except Exception as e:
-                await self._log.aerror(
-                    "HTTP 响应状态码异常",
-                    emoji="🚨",
-                    status_code=resp.status_code,
-                    url=url,
-                    error=str(e),
-                )
-                raise
-            return None
+        try:
+            resp.raise_for_status()
+        except Exception as e:
+            await self._log.aerror(
+                "HTTP 响应状态码异常",
+                emoji="🚨",
+                status_code=status_code,
+                url=url,
+                error=str(e),
+                stack=traceback.format_exc(),
+            )
+            raise
+        return None
 
     async def _handle_response_json(
         self,
@@ -299,7 +335,7 @@ class HttpXClient:
             merged_headers.update(headers)
 
         while retries <= self._max_retries:
-            await self._handle_rate_limit(api_name)
+            await self._wait_for_rate_limit(api_name)
             try:
                 await self._log.adebug(
                     "发起 HTTP 请求",

@@ -93,6 +93,7 @@ ENDPOINT_SIMULATION: Final[str] = "simulations"
 # 用户相关端点
 ENDPOINT_USER_SELF: Final[str] = "users/self/"  # 获取用户信息的端点
 ENDPOINT_USER_SELF_ALPHAS: Final[str] = urljoin(ENDPOINT_USER_SELF, "alphas")
+ENDPOINT_USER_SELF_TAGS: Final[str] = urljoin(ENDPOINT_USER_SELF, "tags")
 
 ENDPOINT_ACTIVITIES: Final[str] = "/users/self/activities/"
 ENDPOINT_ACTIVITIES_SIMULATIONS: Final[str] = urljoin(
@@ -680,6 +681,14 @@ class SimulationTaskStatus(Enum):
     NOT_SCHEDULABLE = "NOT_SCHEDULABLE"
     SCHEDULED = "SCHEDULED"
     RUNNING = "RUNNING"
+
+
+class UserAlphasOrderType(Enum):
+    DEFAULT = "DEFAULT"
+    DATE_CREATED_ASC = "dateCreated"
+    DATE_CREATED_DESC = "-dateCreated"
+    DATE_SUBMITTED_ASC = "dateSubmitted"
+    DATE_SUBMITTED_DESC = "-dateSubmitted"
 
 
 # -----------------------------------------------------------------------------

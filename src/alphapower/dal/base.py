@@ -903,15 +903,31 @@ class EntityDAL(BaseDAL[T]):
     entity_class: Type[T] = None  # type: ignore
 
     def __init__(self, session: Optional[AsyncSession] = None) -> None:
+        logger: BoundLogger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
         if self.entity_class is None:
-            logger = get_logger(f"alphapower.dal.{self.__class__.__name__}")
             logger.error(
-                "未定义实体类型", dal_class=self.__class__.__name__, emoji="❌"
+                "未定义实体类型",
+                dal_class=self.__class__.__qualname__,
+                emoji="❌",
             )
-            raise ValueError(f"子类 {self.__class__.__name__} 必须定义 entity_class")
+            raise ValueError(
+                f"子类 {self.__class__.__qualname__} 必须定义 entity_class"
+            )
         super().__init__(self.entity_class, session)
-        self.log.info(
-            "初始化实体 DAL 实例", entity_class=self.entity_class.__name__, emoji="✅"
+        # INFO 日志：对象初始化，输出关键参数
+        logger.info(
+            "实体 DAL 实例初始化完成",
+            dal_class=self.__class__.__qualname__,
+            entity_class=self.entity_class.__qualname__,
+            session_type=type(session).__name__ if session else "None",
+            emoji="✅",
+        )
+        # DEBUG 日志：详细参数
+        logger.debug(
+            "初始化参数详情",
+            entity_class=self.entity_class,
+            session=session,
+            emoji="🔧",
         )
 
     @classmethod

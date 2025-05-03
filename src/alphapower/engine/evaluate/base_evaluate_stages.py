@@ -396,7 +396,8 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                 )
 
                 for other_alpha, corr in pairwise_correlation.items():
-                    if corr >= max_corr:
+                    if corr >= self._threshold:
+                        # 需要比所有相关系数超过阈值的 Alpha Sharpe 有明显提升才可以提交
                         # 检查夏普率（Sharpe Ratio）不为 None，避免除法异常
                         if (
                             alpha.in_sample.sharpe is not None
@@ -404,16 +405,20 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                             and other_alpha.in_sample.sharpe != 0
                         ):
                             sharp_improvement: float = (
-                                alpha.in_sample.sharpe / other_alpha.in_sample.sharpe - 1
+                                alpha.in_sample.sharpe / other_alpha.in_sample.sharpe
+                                - 1
                             )
-                            if sharp_improvement >= 0.1:
-                                await self.log.ainfo(
-                                    "夏普率有显著提升",
-                                    emoji="✅",
+                            if sharp_improvement < 0.1:
+                                await self.log.awarning(
+                                    "夏普率提升幅度不足，无法提交",
+                                    emoji="❌",
                                     alpha_id=alpha.alpha_id,
+                                    other_alpha_id=other_alpha.alpha_id,
+                                    alpha_sharpe=alpha.in_sample.sharpe,
+                                    other_alpha_sharpe=other_alpha.in_sample.sharpe,
                                     sharp_improvement=sharp_improvement,
                                 )
-                                return True
+                                return False
                         else:
                             await self.log.awarning(
                                 "夏普率为空或为零，无法计算提升幅度",
@@ -423,7 +428,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                                 other_alpha_sharpe=other_alpha.in_sample.sharpe,
                             )
 
-                return False
+                return True
 
             await self.log.ainfo(
                 "自相关性检查通过",

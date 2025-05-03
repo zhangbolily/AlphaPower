@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field, TypeAdapter
 
@@ -19,6 +19,30 @@ from alphapower.constants import (
     UnitHandling,
     Universe,
 )
+
+
+class QueryBase(BaseModel):
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+
+    def to_params(self) -> Dict[str, Any]:
+        params: Dict[str, Any] = self.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
+            exclude_unset=True,
+        )
+        return params
+
+
+class PayloadBase(BaseModel):
+    # 将对象转换为可被官方 json 库序列化的字典对象
+    def to_serializable_dict(self) -> Dict[str, Any]:
+        return self.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_unset=True,
+        )
 
 
 class IdNameRefView(BaseModel):
@@ -363,7 +387,62 @@ class AlphaDetailView(BaseModel):
         )
 
 
+class UserAlphasSummaryView(BaseModel):
+    active: Optional[int] = None
+    decommissioned: Optional[int] = None
+    unsubmitted: Optional[int] = None
+
+
+class UserAlphasQuery(QueryBase):
+    competition: Optional[Any] = None
+    date_created_gt: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("dateCreated>", "date_created_gt"),
+        serialization_alias="dateCreated>",
+    )
+    date_created_lt: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("dateCreated<", "date_created_lt"),
+        serialization_alias="dateCreated<",
+    )
+    hidden: Optional[bool] = None
+    limit: Optional[int] = None
+    name: Optional[str] = None
+    offset: Optional[int] = None
+    order: Optional[str] = None
+    status_eq: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("status", "status_eq"),
+        serialization_alias="status",
+    )
+    status_ne: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("status//!", "status_ne"),
+        serialization_alias="status//!",
+    )
+
+    def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
+        params = super().model_dump(
+            **kwargs,
+        )
+        if self.hidden is not None:
+            params["hidden"] = "true" if self.hidden else "false"
+        if isinstance(self.competition, bool):
+            params["competition"] = "true" if self.competition else "false"
+        return params
+
+
+class UserAlphasView(BaseModel):
+    count: int
+    next: Optional[str]
+    previous: Optional[str]
+    results: List[AlphaView]
+
+
 class SelfAlphaListView(BaseModel):
+    """
+    已废弃（Deprecated）: 此类用于封装 Alpha 列表视图。
+    """
 
     count: int
     next: Optional[str]
@@ -372,6 +451,21 @@ class SelfAlphaListView(BaseModel):
 
 
 class SelfAlphaListQueryParams(BaseModel):
+    """
+    已废弃（Deprecated）: 此类用于封装 Alpha 列表查询参数。
+    Attributes:
+        hidden (Optional[bool]): 是否隐藏，True 表示隐藏，False 表示不隐藏。
+        limit (Optional[int]): 返回结果的最大数量。
+        offset (Optional[int]): 查询结果的偏移量。
+        order (Optional[str]): 排序方式。
+        status_eq (Optional[str]): 精确匹配的状态（status），支持别名 "status" 或 "status_eq"。
+        status_ne (Optional[str]): 不等于的状态（status），支持别名 "status//!" 或 "status_ne"。
+        date_created_gt (Optional[str]): 创建时间大于指定值，支持别名 "dateCreated>" 或 "date_created_gt"。
+        date_created_lt (Optional[str]): 创建时间小于指定值，支持别名 "dateCreated<" 或 "date_created_lt"。
+    Methods:
+        to_params() -> dict:
+            将当前对象的属性转换为用于请求的参数字典。
+    """
 
     hidden: Optional[bool] = None
     limit: Optional[int] = None
@@ -412,14 +506,37 @@ class SelfAlphaListQueryParams(BaseModel):
         return params
 
 
-class CreateTagsPayload(BaseModel):
+class CreateTagsPayload(PayloadBase):
     alphas: List[str]
     name: str
     type: TagType
 
 
-class ListTagAlphaView(BaseModel):
+class TagView(BaseModel):
     id: str
     type: TagType
     name: str
     alphas: List[IdNameRefView]
+
+
+class SelfTagListQuery(QueryBase):
+    pass
+
+
+class SelfTagListView(BaseModel):
+    count: int
+    next: Optional[str]
+    previous: Optional[str]
+    results: List[TagView]
+
+
+class AlphaPropertiesPayload(PayloadBase):
+
+    class Regular(BaseModel):
+        description: Optional[str] = None
+
+    color: Optional[Color] = None
+    name: Optional[str] = None
+    tags: List[str] = []  # tags 不能为 null
+    category: Optional[str] = None
+    regular: Regular = Regular()

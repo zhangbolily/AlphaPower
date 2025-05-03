@@ -2,7 +2,17 @@ from abc import ABC, abstractmethod
 from typing import Any, List
 
 from alphapower.constants import UserPermission, UserRole
-from alphapower.view.alpha import CreateTagsPayload, ListTagAlphaView
+from alphapower.view.alpha import (
+    AlphaDetailView,
+    AlphaPropertiesPayload,
+    CreateTagsPayload,
+    SelfTagListQuery,
+    SelfTagListView,
+    TagView,
+    UserAlphasQuery,
+    UserAlphasSummaryView,
+    UserAlphasView,
+)
 from alphapower.view.user import AuthenticationView
 
 
@@ -49,8 +59,48 @@ class AbstractWorldQuantBrainClient(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    async def create_alpha_list(self, payload: CreateTagsPayload) -> ListTagAlphaView:
+    async def create_alpha_list(self, payload: CreateTagsPayload) -> TagView:
         """
         Create an alpha list with the given payload.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def delete_alpha_list(self, tag_id: str) -> None:
+        """
+        Delete an alpha list with the given tag ID.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def fetch_user_tags(self, query: SelfTagListQuery) -> SelfTagListView:
+        """
+        Fetch the tags of the logged-in user.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def fetch_user_alphas_summary(self) -> UserAlphasSummaryView:
+        """
+        Fetch the summary of the alphas of the logged-in user.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def fetch_user_alphas(self, query: UserAlphasQuery) -> UserAlphasView:
+        """
+        Fetch the alphas of the logged-in user.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    # Alpha 对象操作
+    @abstractmethod
+    async def update_alpha_properties(
+        self,
+        alpha_id: str,
+        payload: AlphaPropertiesPayload,
+    ) -> AlphaDetailView:
+        """
+        Update the properties of an alpha with the given ID and payload.
         """
         raise NotImplementedError("Subclasses must implement this method.")

@@ -217,7 +217,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 16),
-                end_time=datetime(2025, 5, 2, 23, 59, 59),
+                end_time=datetime(2025, 5, 3, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
