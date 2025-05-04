@@ -22,9 +22,11 @@ class RateLimit(BaseModel):
         从响应头中解析 RateLimit 信息。
         如果没有相关字段，返回 None，调用方可感知无速率限制信息。
         """
-        limit_str: Optional[str] = headers.get("RateLimit-Limit", None)
-        remaining_str: Optional[str] = headers.get("RateLimit-Remaining", None)
-        reset_str: Optional[str] = headers.get("RateLimit-Reset", None)
+        lower_headers: Dict[str, str] = {k.lower(): v for k, v in headers.items()}
+
+        limit_str: Optional[str] = lower_headers.get("ratelimit-limit", None)
+        remaining_str: Optional[str] = lower_headers.get("ratelimit-remaining", None)
+        reset_str: Optional[str] = lower_headers.get("ratelimit-reset", None)
 
         # 精简日志，仅在调试模式下输出参数
         logger.debug(

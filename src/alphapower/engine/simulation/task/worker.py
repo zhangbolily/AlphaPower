@@ -208,8 +208,7 @@ class Worker(AbstractWorker):
             # 可以考虑设置一个默认错误状态或保持原状态
             task.status = SimulationTaskStatus.ERROR  # 假设有一个错误状态
         task.completed_at = datetime.now()
-        if task.status == SimulationTaskStatus.COMPLETE:
-            task.alpha_id = result.alpha
+        task.alpha_id = result.alpha
 
         async with (
             session_manager.get_session(Database.SIMULATION) as session,

@@ -345,18 +345,8 @@ class SessionManager:
             )
             raise
         finally:
-            if session.in_transaction() or session.in_nested_transaction():
-                await session.commit()
-                await self.log.ainfo(
-                    "存在未提交的会话，提交事务",
-                    database=db,
-                    session_id=session_id,
-                    readonly=readonly,
-                    emoji="✅",
-                )
-
             await session.close()
-            await self.log.adebug(
+            await self.log.ainfo(
                 "会话关闭",
                 database=db,
                 session_id=session_id,

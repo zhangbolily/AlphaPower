@@ -62,16 +62,20 @@ DEFAULT_SIMULATION_RESPONSE: Final[Tuple[bool, str, float]] = (False, "", 0.0)
 
 # 认证和用户端点
 ENDPOINT_AUTHENTICATION: Final[str] = "authentication"  # 用户认证端点
-ENDPOINT_ALPHAS: Final[str] = "alphas"  # Alpha因子端点
 
 # Alpha相关端点
+ENDPOINT_ALPHAS: Final[str] = "alphas"  # Alpha因子端点
+ENDPOINT_ALPHAS_CORRELATIONS: Final[Callable[[str, CorrelationType], str]] = (
+    lambda alpha_id, correlation_type: f"alphas/{alpha_id}/correlations/{correlation_type.value}"
+)
+
 ENDPOINT_ALPHA_YEARLY_STATS: Final[Callable[[str], str]] = (
     lambda alpha_id: f"alphas/{alpha_id}/recordsets/yearly-stats"
 )
 ENDPOINT_ALPHA_PNL: Final[Callable[[str], str]] = (
     lambda alpha_id: f"alphas/{alpha_id}/recordsets/pnl"
 )
-ENDPOINT_ALPHA_SELF_CORRELATIONS: Final[Callable[[str, str], str]] = (
+ENDPOINT_ALPHA_SELF_CORRELATIONS: Final[Callable[[str, str], str]] = (  # Deprecated
     lambda alpha_id, correlation_type: f"alphas/{alpha_id}/correlations/{correlation_type}"
 )
 ENDPOINT_COMPETITIONS: Final[str] = "competitions"  # 竞赛端点

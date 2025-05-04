@@ -78,6 +78,20 @@ class PPAC2025PerfDiffEvaluateStage(PerformanceDiffEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
+        if alpha.in_sample and alpha.in_sample.checks:
+            for check in alpha.in_sample.checks:
+                if check.name == SubmissionCheckType.MATCHES_PYRAMID.value:
+                    for pyramid in check.pyramids:
+                        if "MODEL" in pyramid.name or "ANALYST" in pyramid.name:
+                            # 如果因子在模型或分析中，评估失败
+                            await log.aerror(
+                                event="PPAC2025 评估失败，因子在模型或分析中",
+                                alpha_id=alpha.alpha_id,
+                                pyramid=pyramid.name,
+                                emoji="❌",
+                            )
+                            return False
+
         if alpha.regular is None or alpha.regular.operator_count is None:
             # 如果因子没有 regular 属性，评估失败
             await log.aerror(

@@ -47,46 +47,71 @@ class HttpXClient:
         # 新增：保护 _client 的协程安全锁
         self._client_lock: asyncio.Lock = asyncio.Lock()
 
-    def __del__(self) -> None:
-        """析构函数，确保关闭 HttpXClient"""
+    async def close(self) -> None:
+        """显式关闭 HttpXClient，确保资源释放"""
         if self._client:
-            asyncio.run(self._client.aclose())
+            async with self._client_lock:
+                await self._client.aclose()
+                self._client = None  # type: ignore
+                await self._log.ainfo(
+                    "HttpXClient 已关闭",
+                    emoji="🔒",
+                )
+
+    async def __aenter__(self) -> "HttpXClient":
+        """支持异步上下文管理"""
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        """退出上下文时关闭客户端"""
+        await self.close()
 
     async def _wait_for_rate_limit(self, api_name: str) -> None:
         """
-        针对接口名称的本地速率限制（rate limit）检查与等待。
+        针对接口名称的本地速率限制（rate limit，速率限制）检查与等待。
         仅当 RateLimit.available=True 时生效。
+        优化：避免长时间持有锁，若需等待则释放锁，等待结束后重入再检查。
         """
-        async with self._rate_limit_lock:
-            rate_limit_info: Optional[tuple[RateLimit, float]] = (
-                self._rate_limit_map.get(api_name)
-            )
-            if rate_limit_info is None:
-                return  # 没有本地限流信息，直接通过
+        while True:
+            async with self._rate_limit_lock:
+                rate_limit_info: Optional[tuple[RateLimit, float]] = (
+                    self._rate_limit_map.get(api_name)
+                )
+                if rate_limit_info is None:
+                    # 没有本地限流信息，直接通过
+                    return
 
-            rate_limit: RateLimit
-            last_update: float
-            rate_limit, last_update = rate_limit_info
+                rate_limit: RateLimit
+                last_update: float
+                rate_limit, last_update = rate_limit_info
 
-            if not getattr(rate_limit, "available", False):
-                return  # 限流信息不可用，跳过本地限流
+                if not getattr(rate_limit, "available", False):
+                    # 限流信息不可用，跳过本地限流
+                    return
 
-            now: float = time.time()
-            reset_time: float = last_update + rate_limit.reset
-            if rate_limit.remaining <= 0:
+                await self._log.ainfo(
+                    "检查接口本地速率限制",
+                    emoji="🔍",
+                    api_name=api_name,
+                    rate_limit_limit=rate_limit.limit,
+                    rate_limit_remaining=rate_limit.remaining,
+                    rate_limit_reset=rate_limit.reset,
+                )
+
+                now: float = time.time()
+                reset_time: float = last_update + rate_limit.reset
+                if rate_limit.remaining > 0:
+                    # 还有额度，直接通过
+                    return
+
                 wait_seconds: float = max(0.0, reset_time - now)
-                if wait_seconds > 0:
-                    await self._log.awarning(
-                        "接口本地速率限制额度已用尽，等待下一个周期",
-                        emoji="⏳",
-                        wait_seconds=wait_seconds,
-                        api_name=api_name,
-                        rate_limit_limit=rate_limit.limit,
-                        rate_limit_remaining=rate_limit.remaining,
-                        rate_limit_reset=rate_limit.reset,
-                    )
-                    await asyncio.sleep(wait_seconds)
-                    # 重置本地额度，避免负数
+                if wait_seconds <= 0:
+                    # 已到重置时间，重置额度
                     rate_limit.remaining = max(rate_limit.limit, 0)
                     self._rate_limit_map[api_name] = (rate_limit, time.time())
                     await self._log.ainfo(
@@ -97,6 +122,21 @@ class HttpXClient:
                         rate_limit_remaining=rate_limit.remaining,
                         rate_limit_reset=rate_limit.reset,
                     )
+                    return
+
+                # 需要等待，先释放锁再等待
+                await self._log.awarning(
+                    "接口本地速率限制额度已用尽，等待下一个周期",
+                    emoji="⏳",
+                    wait_seconds=wait_seconds,
+                    api_name=api_name,
+                    rate_limit_limit=rate_limit.limit,
+                    rate_limit_remaining=rate_limit.remaining,
+                    rate_limit_reset=rate_limit.reset,
+                )
+            # 锁已释放，等待限流窗口结束
+            await asyncio.sleep(wait_seconds)
+            # 等待后重入循环，重新检查限流状态
 
     async def _update_rate_limit_from_headers(
         self, api_name: str, headers: Dict[str, str]
@@ -106,9 +146,7 @@ class HttpXClient:
         响应头大小写不敏感，需全部转小写。
         """
         try:
-            # 兼容大小写，全部转小写
-            lower_headers: Dict[str, str] = {k.lower(): v for k, v in headers.items()}
-            rate_limit: Optional[RateLimit] = RateLimit.from_headers(lower_headers)
+            rate_limit: Optional[RateLimit] = RateLimit.from_headers(headers=headers)
             if rate_limit and rate_limit.available:
                 async with self._rate_limit_lock:
                     self._rate_limit_map[api_name] = (rate_limit, time.time())
@@ -126,7 +164,7 @@ class HttpXClient:
                 emoji="⚠️",
                 error=str(e),
                 api_name=api_name,
-                headers=dict(headers),
+                headers={k: v for k, v in headers.items()},
             )
 
     async def _handle_http_error_response(
@@ -134,19 +172,12 @@ class HttpXClient:
         resp: httpx.Response,
         url: str,
         retry_on_status: Tuple[int, ...],
-        retry_after_override: Optional[float],
-    ) -> Optional[float]:
+    ) -> None:
         """
         处理 HTTP 异常状态码响应
-        返回：若需重试则返回 retry_after 秒，否则返回 None
         """
         status_code: int = resp.status_code
         content_type: str = resp.headers.get("content-type", "").lower()
-        retry_after: float = (
-            retry_after_override
-            if retry_after_override is not None
-            else self._get_retry_after(resp)
-        )
 
         await self._log.adebug(
             "处理 HTTP 异常状态码响应入参",
@@ -154,40 +185,29 @@ class HttpXClient:
             status_code=status_code,
             url=url,
             retry_on_status=retry_on_status,
-            retry_after_override=retry_after_override,
-            retry_after=retry_after,
             content_type=content_type,
         )
 
         # 可重试状态码处理
         if status_code in retry_on_status:
-            if retry_after > self._max_retry_after:
-                await self._log.awarning(
-                    "重试等待时间超过最大限制，放弃重试",
-                    emoji="⏳",
-                    retry_after=retry_after,
-                    max_retry_after=self._max_retry_after,
-                )
-                try:
-                    resp.raise_for_status()
-                except Exception as e:
-                    await self._log.aerror(
-                        "HTTP 响应状态码异常",
-                        emoji="🚨",
-                        status_code=status_code,
-                        url=url,
-                        error=str(e),
-                        stack=traceback.format_exc(),
-                    )
-                    raise
-                return None
             await self._log.awarning(
                 "检测到限流或服务不可用，准备重试",
                 emoji="🔁",
                 status_code=status_code,
-                retry_after=retry_after,
             )
-            return retry_after
+            try:
+                resp.raise_for_status()
+            except Exception as e:
+                await self._log.aerror(
+                    "HTTP 响应状态码异常",
+                    emoji="🚨",
+                    status_code=status_code,
+                    url=url,
+                    error=str(e),
+                    stack=traceback.format_exc(),
+                )
+                raise
+            return
 
         # 非可重试状态码处理，详细打印错误内容
         if "application/json" in content_type:
@@ -231,7 +251,6 @@ class HttpXClient:
                 stack=traceback.format_exc(),
             )
             raise
-        return None
 
     async def _handle_response_json(
         self,
@@ -250,8 +269,7 @@ class HttpXClient:
         if response_model:
             try:
                 # 注意：model_validate 接收 dict，需先解析 JSON 字符串
-                json_obj: Any = resp.json()
-                obj: T = response_model.model_validate(json_obj)
+                obj: T = response_model.model_validate_json(resp.text)
                 await self._log.adebug(
                     "反序列化为模型成功",
                     emoji="✅",
@@ -263,7 +281,9 @@ class HttpXClient:
                     "模型反序列化失败",
                     emoji="❌",
                     error=str(e),
-                    data=((str(data)[:200] + "...") if len(str(data)) > 200 else data),
+                    data=(
+                        resp.text[:200] + "..." if len(resp.text) > 200 else resp.text
+                    ),
                 )
                 raise
         else:
@@ -313,13 +333,13 @@ class HttpXClient:
         retry_on_status: Tuple[int, ...] = tuple(RETRYABLE_HTTP_CODES),
         response_model: Optional[type[T]] = None,
         response_json: bool = True,
-        retry_after_override: Optional[float] = None,
         basic_auth: Optional[httpx.BasicAuth] = None,  # 新增 BasicAuth 参数
         **kwargs: Any,
-    ) -> Union[T, Any, httpx.Response]:
+    ) -> Tuple[Union[T, Any, httpx.Response], Optional[float]]:
         """
         通用异步请求方法，支持限流重试、超时重试、JSON 反序列化、接口级本地速率限制。
         支持 BasicAuth（基础认证）参数传递。
+        返回值：响应内容和 retry-after（若存在）。
         """
         if self._client is None:
             raise RuntimeError(
@@ -372,39 +392,26 @@ class HttpXClient:
                 )
                 await self._update_rate_limit_from_headers(api_name, dict(resp.headers))
 
+                # 提取 retry-after 值
+                retry_after: Optional[float] = self._get_retry_after(resp)
+
                 # 判断响应状态码
                 # 覆盖常见的 HTTP 成功状态码（200、201、202、204 等）
                 if resp.status_code in (200, 201, 202, 204):
                     if response_json and resp.status_code != 204:
                         # 204 No Content 无内容，不能反序列化 JSON
-                        return await self._handle_response_json(resp, response_model)
+                        return (
+                            await self._handle_response_json(resp, response_model),
+                            retry_after,
+                        )
                     else:
-                        return resp
+                        return resp, retry_after
                 else:
-                    retry_after: Optional[float] = (
-                        await self._handle_http_error_response(
-                            resp,
-                            url,
-                            retry_on_status,
-                            retry_after_override,
-                        )
+                    await self._handle_http_error_response(
+                        resp,
+                        url,
+                        retry_on_status,
                     )
-                    if retry_after is not None:
-                        await self._log.adebug(
-                            "重试等待时间",
-                            emoji="⏳",
-                            retry_after=retry_after,
-                            retries=retries,
-                        )
-                        await asyncio.sleep(retry_after)
-                        retries += 1
-                        await self._log.adebug(
-                            "重试次数增加",
-                            emoji="🔁",
-                            retries=retries,
-                        )
-                        continue
-                    # 如果未返回 retry_after，说明已抛出异常或无需重试
                     break
             except (httpx.TimeoutException, httpx.RequestError) as e:  # 修正异常类型
                 await self._handle_request_exception(e, retries)
@@ -441,7 +448,7 @@ class HttpXClient:
         raise RuntimeError("请求失败，未知原因")  # 中文异常
 
     @staticmethod
-    def _get_retry_after(resp: httpx.Response) -> float:
+    def _get_retry_after(resp: httpx.Response) -> Optional[float]:
         """
         从响应头中提取 Retry-After 字段
         """
@@ -455,6 +462,5 @@ class HttpXClient:
             try:
                 return float(retry_after)
             except Exception:
-                # 解析失败，返回默认值
-                return 0.0
-        return 0.0
+                return None
+        return None  # 返回 None 以表示没有可用的 retry-after 值

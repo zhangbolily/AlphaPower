@@ -3,15 +3,18 @@ import traceback
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Tuple
 
-from httpx import BasicAuth
+from httpx import BasicAuth, Response
 
+from alphapower.client.common_view import TableView
 from alphapower.constants import (
     BASE_URL,
     ENDPOINT_ALPHAS,
+    ENDPOINT_ALPHAS_CORRELATIONS,
     ENDPOINT_AUTHENTICATION,
     ENDPOINT_TAGS,
     ENDPOINT_USER_SELF_ALPHAS,
     ENDPOINT_USER_SELF_TAGS,
+    CorrelationType,
     UserPermission,
     UserRole,
 )
@@ -230,7 +233,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             kwargs=kwargs,
         )
         try:
-            result: Any = await self._http_client.request(
+            result, _ = await self._http_client.request(
                 method="GET",
                 url=ENDPOINT_AUTHENTICATION,
                 auth=auth,
@@ -297,7 +300,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             kwargs=kwargs,
         )
         try:
-            result: Any = await self._http_client.request(
+            result, _ = await self._http_client.request(
                 method="POST",
                 url=ENDPOINT_AUTHENTICATION,
                 basic_auth=auth,
@@ -426,7 +429,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         )
 
         http_client: HttpXClient = await self.http_client()
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="GET",
             url=ENDPOINT_AUTHENTICATION,
             api_name=WorldQuantBrainClient.get_user_id.__qualname__,
@@ -464,7 +467,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         )
 
         http_client: HttpXClient = await self.http_client()
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="GET",
             url=ENDPOINT_AUTHENTICATION,
             api_name=WorldQuantBrainClient.get_user_permissions.__qualname__,
@@ -502,7 +505,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         )
 
         http_client: HttpXClient = await self.http_client()
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="GET",
             url=ENDPOINT_AUTHENTICATION,
             api_name=WorldQuantBrainClient.get_user_role.__qualname__,
@@ -545,7 +548,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         )
 
         http_client: HttpXClient = await self.http_client()
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="POST",
             url=ENDPOINT_TAGS,
             api_name=WorldQuantBrainClient.create_alpha_list.__qualname__,
@@ -631,7 +634,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             params=query.to_params(),
         )
 
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="GET",
             url=ENDPOINT_USER_SELF_TAGS,
             api_name=WorldQuantBrainClient.fetch_user_tags.__qualname__,
@@ -691,7 +694,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             api_name=WorldQuantBrainClient.fetch_user_alphas_summary.__qualname__,
         )
 
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="GET",
             url=ENDPOINT_USER_SELF_ALPHAS,
             api_name=WorldQuantBrainClient.fetch_user_alphas_summary.__qualname__,
@@ -754,7 +757,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             params=query.to_params(),
         )
 
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="GET",
             url=ENDPOINT_USER_SELF_ALPHAS,
             api_name=WorldQuantBrainClient.fetch_user_alphas.__qualname__,
@@ -823,7 +826,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             payload_dict=payload.to_serializable_dict(),
         )
 
-        response: Any = await http_client.request(
+        response, _ = await http_client.request(
             method="PATCH",
             url=f"{ENDPOINT_ALPHAS}/{alpha_id}",
             api_name=WorldQuantBrainClient.update_alpha_properties.__qualname__,
@@ -862,5 +865,129 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             emoji="📜",
             response=response.model_dump(mode="json"),
             alpha_id=alpha_id,
+        )
+        return response
+
+    @async_exception_handler
+    async def fetch_alpha_correlation(
+        self,
+        alpha_id: str,
+        correlation_type: CorrelationType,
+        override_retry_after: Optional[float] = None,
+    ) -> TableView:
+        """
+        获取指定 Alpha 的相关性（correlation）数据。
+
+        参数:
+            alpha_id: Alpha 的唯一标识符
+            correlation_type: 相关性类型（CorrelationType，相关性类型）
+
+        返回:
+            TableView: 相关性数据表视图
+        """
+        # INFO 日志：方法进入，参数输出
+        await self.log.ainfo(
+            "进入获取 Alpha 相关性方法",
+            emoji="🔍",
+            alpha_id=alpha_id,
+            correlation_type=correlation_type,
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response: Any = None
+        retry_after: Optional[float] = -1
+
+        # DEBUG 日志：请求参数详细输出
+        await self.log.adebug(
+            "准备发送 GET 请求获取 Alpha 相关性",
+            emoji="📤",
+            url=ENDPOINT_ALPHAS_CORRELATIONS(alpha_id, correlation_type),
+            api_name=WorldQuantBrainClient.fetch_alpha_correlation.__qualname__,
+        )
+
+        while retry_after and retry_after != 0:
+            response, retry_after = await http_client.request(
+                method="GET",
+                url=ENDPOINT_ALPHAS_CORRELATIONS(alpha_id, correlation_type),
+                api_name=WorldQuantBrainClient.fetch_alpha_correlation.__qualname__,
+                response_json=False,
+            )
+
+            if retry_after and retry_after != 0:
+                retry_after = (
+                    retry_after
+                    if override_retry_after is None
+                    else max(override_retry_after, retry_after)
+                )
+
+                await self.log.ainfo(
+                    "请求需轮询等待完成",
+                    emoji="⏳",
+                    retry_after=retry_after,
+                    override_retry_after=override_retry_after,
+                    alpha_id=alpha_id,
+                    correlation_type=correlation_type,
+                )
+
+                await asyncio.sleep(retry_after)
+            elif isinstance(response, Response):
+                try:
+                    response = TableView.model_validate_json(response.text)
+                    await self.log.adebug(
+                        "响应已成功解析为 TableView",
+                        emoji="📥",
+                        response_type=type(response).__name__,
+                        alpha_id=alpha_id,
+                        correlation_type=correlation_type,
+                    )
+                except Exception as e:
+                    await self.log.aerror(
+                        "响应解析失败",
+                        emoji="❌",
+                        error=str(e),
+                        stack=traceback.format_exc(),
+                        alpha_id=alpha_id,
+                        correlation_type=correlation_type,
+                    )
+                    raise
+            else:
+                await self.log.aerror(
+                    "响应类型错误",
+                    emoji="❌",
+                    expected=Response.__name__,
+                    got=type(response).__name__,
+                    alpha_id=alpha_id,
+                    correlation_type=correlation_type,
+                )
+                raise TypeError(
+                    f"期望返回类型为 {Response.__name__}，实际为 {type(response).__name__}"
+                )
+
+        if not isinstance(response, TableView):
+            await self.log.aerror(
+                "获取 Alpha 相关性响应类型错误",
+                emoji="❌",
+                expected=TableView.__name__,
+                got=type(response).__name__,
+                alpha_id=alpha_id,
+                correlation_type=correlation_type,
+            )
+            raise TypeError(
+                f"期望返回类型为 {TableView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        # INFO 日志：方法成功退出
+        await self.log.ainfo(
+            "获取 Alpha 相关性成功",
+            emoji="✅",
+            alpha_id=alpha_id,
+            correlation_type=correlation_type,
+        )
+        # DEBUG 日志：返回参数详细输出，仅输出表格行数和列数
+        await self.log.adebug(
+            "返回的 TableView 相关性数据",
+            emoji="📊",
+            alpha_id=alpha_id,
+            correlation_type=correlation_type,
         )
         return response

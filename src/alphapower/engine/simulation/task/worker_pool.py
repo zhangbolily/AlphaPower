@@ -92,7 +92,12 @@ async def fix_unknown_data_field_error(
                 # 需要批量更新将使用到此数据字段的待调度任务都重置为 NOT_SCHEDULABLE
                 count: int = await simulation_task_dal.count(
                     SimulationTask.regular.contains(data_field_name),
-                    SimulationTask.status != SimulationTaskStatus.COMPLETE,
+                    SimulationTask.status.in_(
+                        [
+                            SimulationTaskStatus.PENDING,
+                            SimulationTaskStatus.ERROR,
+                        ]
+                    ),
                     session=session,
                 )
 

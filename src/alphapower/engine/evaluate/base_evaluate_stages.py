@@ -11,6 +11,7 @@ from alphapower.client import (
     TableView,
     WorldQuantClient,
 )
+from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
     CONSULTANT_MAX_PROD_CORRELATION,
     CONSULTANT_MAX_SELF_CORRELATION,
@@ -476,14 +477,14 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         correlation_type: CorrelationType,
         check_record_dal: CheckRecordDAL,
         correlation_dal: CorrelationDAL,
-        client: WorldQuantClient,
+        client: WorldQuantBrainClient,
     ) -> None:
 
         super().__init__(next_stage)
         self.correlation_type: CorrelationType = correlation_type
         self.check_record_dal: CheckRecordDAL = check_record_dal
         self.correlation_dal: CorrelationDAL = correlation_dal
-        self.client: WorldQuantClient = client
+        self.client: WorldQuantBrainClient = client
         self.log: BoundLogger = get_logger(
             f"{__name__}.{self.__class__.__name__}",
         )
@@ -717,93 +718,61 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
     async def _refresh_correlation_data(self, alpha: Alpha) -> Optional[TableView]:
         """
         刷新相关性数据，调用平台 API，支持重试机制
+
         参数:
             alpha: Alpha 实体对象
         返回:
             TableView | None
         """
+        await self.log.adebug(
+            "准备刷新相关性数据",
+            emoji="🔄",
+            alpha_id=alpha.alpha_id,
+            correlation_type=self.correlation_type,
+        )
         try:
-            retry_count: int = 0  # 重试计数器
-            max_retries: int = 3  # 最大重试次数
-            await self.log.adebug(
-                "开始刷新相关性数据",
-                emoji="🔄",
+            api_result: TableView = await self.client.fetch_alpha_correlation(
                 alpha_id=alpha.alpha_id,
-                max_retries=max_retries,
                 correlation_type=self.correlation_type,
+                override_retry_after=2.0,
             )
-            while retry_count < max_retries:
-                finished: bool
-                retry_after: Optional[float]
-                api_result: Optional[TableView]
-                finished, retry_after, api_result = (
-                    await self.client.alpha_correlation_check(
-                        alpha_id=alpha.alpha_id,
-                        corr_type=self.correlation_type,
-                    )
-                )
-                await self.log.adebug(
-                    "相关性检查 API 调用结果",
-                    emoji="📡",
-                    alpha_id=alpha.alpha_id,
-                    finished=finished,
-                    retry_after=retry_after,
-                    api_result_exists=api_result is not None,
-                    retry_count=retry_count,
-                )
-                if finished:
-                    if api_result:
-                        await self.log.ainfo(
-                            "相关性数据 API 获取成功",
-                            emoji="🎉",
-                            alpha_id=alpha.alpha_id,
-                            corr_type=self.correlation_type,
-                        )
-                        await self._save_correlation_data(
-                            corr_type=self.correlation_type,
-                            alpha=alpha,
-                            data=api_result,
-                        )
-                        return api_result
-                    else:
-                        await self.log.awarning(
-                            "相关性检查 API 声称完成，但未返回有效结果",
-                            emoji="❓",
-                            alpha_id=alpha.alpha_id,
-                            corr_type=self.correlation_type,
-                            retry_count=retry_count,
-                        )
-                        return None
-                elif retry_after and retry_after > 0:
-                    await self.log.adebug(
-                        "API 请求未完成，等待重试",
-                        emoji="⏳",
-                        alpha_id=alpha.alpha_id,
-                        retry_after=retry_after,
-                        retry_count=retry_count,
-                    )
-                    await asyncio.sleep(retry_after)
-                else:
-                    retry_count += 1
-                    await self.log.awarning(
-                        "相关性检查 API 返回异常状态：未完成且无重试时间，递增重试计数",
-                        emoji="⚠️",
-                        alpha_id=alpha.alpha_id,
-                        corr_type=self.correlation_type,
-                        retry_count=retry_count,
-                        max_retries=max_retries,
-                    )
-            await self.log.acritical(
-                "相关性检查 API 多次重试失败，程序即将放弃本次检查",
-                emoji="💥",
+            await self.log.ainfo(
+                "相关性数据刷新成功",
+                emoji="✅",
                 alpha_id=alpha.alpha_id,
+                correlation_type=self.correlation_type,
+                api_result_summary=str(api_result)[
+                    :80
+                ],  # 只输出前 80 字符，避免日志过长
+            )
+            await self._save_correlation_data(
                 corr_type=self.correlation_type,
-                max_retries=max_retries,
+                alpha=alpha,
+                data=api_result,
+            )
+            return api_result
+        except asyncio.TimeoutError as e:
+            await self.log.awarning(
+                "刷新相关性数据时发生超时异常",
+                emoji="⏳",
+                alpha_id=alpha.alpha_id,
+                correlation_type=self.correlation_type,
+                error=str(e),
+            )
+            return None
+        except ValueError as e:
+            await self.log.aerror(
+                "刷新相关性数据时发生数据解析异常",
+                emoji="📉",
+                alpha_id=alpha.alpha_id,
+                correlation_type=self.correlation_type,
+                error=str(e),
+                exc_info=True,
             )
             return None
         except Exception as e:
-            await self.log.aerror(
-                "刷新相关性数据时发生异常",
+            await self.log.acritical(
+                "刷新相关性数据时发生未知严重异常，程序可能无法继续",
                 emoji="💥",
                 alpha_id=alpha.alpha_id,
                 correlation_type=self.correlation_type,
