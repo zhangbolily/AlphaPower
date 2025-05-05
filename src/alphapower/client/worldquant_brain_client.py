@@ -51,7 +51,6 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
         self._password: str = password
         self._http_client: HttpXClient = HttpXClient(
             base_url=BASE_URL,
-            module_name=f"{self.__class__.__module__}.{self.__class__.__name__}",
         )
         self._authentication_info: Optional[Tuple[datetime, AuthenticationView]] = None
         self._http_client_lock: asyncio.Lock = asyncio.Lock()
