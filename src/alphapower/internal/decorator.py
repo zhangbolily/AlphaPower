@@ -44,11 +44,11 @@ def async_timed(func: F) -> F:
 def async_exception_handler(func: E) -> E:
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        function_name: str = func.__qualname__  # 获取被装饰函数的名字
+        decorated_func: str = func.__qualname__  # 获取被装饰函数的名字
         try:
             await logger.adebug(
                 "函数异常处理开始",
-                function_name=function_name,
+                decorated_func=decorated_func,
                 args=args,
                 kwargs=kwargs,
                 emoji="⚠️",
@@ -57,17 +57,19 @@ def async_exception_handler(func: E) -> E:
         except Exception as e:
             await logger.aerror(
                 "函数执行时捕获到异常",
-                function_name=function_name,
+                decorated_func=decorated_func,
                 exception=str(e),
                 emoji="❌",
             )
 
             raise e
         finally:
-            await logger.ainfo(
-                "函数异常处理结束",
-                function_name=function_name,
-                emoji="⚠️",
+            await logger.adebug(
+                "函数异常处理结束，没有捕获到异常",
+                decorated_func=decorated_func,
+                args=args,
+                kwargs=kwargs,
+                emoji="✅",
             )
 
     return cast(E, wrapper)

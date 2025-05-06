@@ -140,7 +140,7 @@ def get_logger(
     return structlog.get_logger(module_name)
 
 
-class LogBase(abc.ABC):
+class BaseLogger(abc.ABC):
     _log: BoundLogger
 
     @property

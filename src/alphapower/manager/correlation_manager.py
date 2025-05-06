@@ -12,8 +12,7 @@ from alphapower.dal import correlation_dal
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity.evaluate import Correlation
 from alphapower.internal.decorator import async_timed
-
-from .base import BaseProcessSafeClass
+from alphapower.internal.multiprocessing import BaseProcessSafeClass
 
 T = TypeVar("T")  # 泛型类型，代表 others 的 key 类型
 

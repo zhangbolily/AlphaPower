@@ -12,13 +12,13 @@ from alphapower.constants import (
     RETRYABLE_HTTP_CODES,
 )
 from alphapower.internal.decorator import async_exception_handler
-from alphapower.internal.logging import LogBase
+from alphapower.internal.logging import BaseLogger
 from alphapower.view.common import RateLimit
 
 T = TypeVar("T", bound=BaseModel)  # 泛型约束为 BaseModel 子类
 
 
-class HttpXClient(LogBase):
+class HttpXClient(BaseLogger):
     """HttpXClient 封装底层 HTTP 请求，支持限流重试、超时重试、JSON 反序列化、接口级本地速率限制等功能"""
 
     def __init__(

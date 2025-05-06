@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import AliasChoices, BaseModel, Field, TypeAdapter
 
 from alphapower.constants import (
+    AlphaType,
     Color,
     Delay,
     Grade,
@@ -395,30 +396,48 @@ class UserAlphasSummaryView(BaseModel):
 
 class UserAlphasQuery(QueryBase):
     competition: Optional[Any] = None
-    date_created_gt: Optional[str] = Field(
+    date_created_gt: Optional[datetime] = Field(
         default=None,
         validation_alias=AliasChoices("dateCreated>", "date_created_gt"),
         serialization_alias="dateCreated>",
     )
-    date_created_lt: Optional[str] = Field(
+    date_created_lt: Optional[datetime] = Field(
         default=None,
         validation_alias=AliasChoices("dateCreated<", "date_created_lt"),
         serialization_alias="dateCreated<",
+    )
+    date_submitted_gt: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("dateSubmitted>", "date_submitted_gt"),
+        serialization_alias="dateSubmitted>",
+    )
+    date_submitted_lt: Optional[datetime] = Field(
+        default=None,
+        validation_alias=AliasChoices("dateSubmitted<", "date_submitted_lt"),
+        serialization_alias="dateSubmitted<",
     )
     hidden: Optional[bool] = None
     limit: Optional[int] = None
     name: Optional[str] = None
     offset: Optional[int] = None
     order: Optional[str] = None
-    status_eq: Optional[str] = Field(
+    status_eq: Optional[Status] = Field(
         default=None,
         validation_alias=AliasChoices("status", "status_eq"),
         serialization_alias="status",
     )
-    status_ne: Optional[str] = Field(
+    status_ne: Optional[Status] = Field(
         default=None,
         validation_alias=AliasChoices("status//!", "status_ne"),
         serialization_alias="status//!",
+    )
+    tag: Optional[str] = None
+    type: Optional[AlphaType] = None
+
+    settings_universe: Optional[Universe] = Field(
+        default=None,
+        validation_alias=AliasChoices("settingsUniverse", "settings_universe"),
+        serialization_alias="settings.universe",
     )
 
     def model_dump(self, **kwargs: Any) -> Dict[str, Any]:

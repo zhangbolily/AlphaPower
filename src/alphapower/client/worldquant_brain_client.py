@@ -1,7 +1,7 @@
 import asyncio
 import traceback
 from datetime import datetime, timedelta
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from httpx import BasicAuth, Response
 
@@ -19,7 +19,8 @@ from alphapower.constants import (
     UserRole,
 )
 from alphapower.internal.decorator import async_exception_handler
-from alphapower.internal.logging import LogBase
+from alphapower.internal.logging import BaseLogger
+from alphapower.internal.multiprocessing import BaseProcessSafeFactory
 from alphapower.view.alpha import (
     AlphaDetailView,
     AlphaPropertiesPayload,
@@ -37,7 +38,7 @@ from .httpx_client import HttpXClient
 from .worldquant_brain_client_abc import AbstractWorldQuantBrainClient
 
 
-class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
+class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
     """
     Client for interacting with the WorldQuant Brain API.
     """
@@ -990,3 +991,39 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, LogBase):
             correlation_type=correlation_type,
         )
         return response
+
+
+class WorldQuantBrainClientFactory(
+    BaseProcessSafeFactory[AbstractWorldQuantBrainClient]
+):
+    """
+    工厂类，用于创建 WorldQuantBrainClient 实例。
+    """
+
+    def __init__(self, username: str, password: str, **kwargs: Any) -> None:
+        """
+        初始化工厂类。
+        """
+        super().__init__(**kwargs)
+        self._username = username
+        self._password = password
+
+    async def _dependency_factories(self) -> Dict[str, BaseProcessSafeFactory]:
+        """
+        返回依赖的工厂列表。
+        """
+        return {}
+
+    @async_exception_handler
+    async def _build(self, *args: Any, **kwargs: Any) -> AbstractWorldQuantBrainClient:
+        client: AbstractWorldQuantBrainClient = WorldQuantBrainClient(
+            username=self._username,
+            password=self._password,
+            **kwargs,
+        )
+        await self.log.ainfo(
+            "WorldQuantBrainClient 实例已成功创建",
+            emoji="✅",
+            username=self._username,
+        )
+        return client

@@ -15,6 +15,8 @@ __all__ = [
     "correlation_dal",
     "evaluate_record_dal",
     "simulation_task_dal",
+    "SessionManager",
+    "session_manager",
 ]
 
 from .alphas import AggregateDataDAL, AlphaDAL, CompetitionDAL
@@ -27,6 +29,7 @@ from .data import (
     StatsDataDAL,
 )
 from .evaluate import CheckRecordDAL, CorrelationDAL, EvaluateRecordDAL, RecordSetDAL
+from .session_manager import SessionManager, session_manager
 from .simulation import SimulationTaskDAL
 
 alpha_dal: AlphaDAL = AlphaDAL()

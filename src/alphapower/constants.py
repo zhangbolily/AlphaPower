@@ -30,6 +30,7 @@ ENV_TEST: Final[str] = "test"  # 测试环境标识符
 
 ALPHA_ID_LENGTH: Final[int] = 7  # Alpha ID的长度
 MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY: Final[int] = 10000  # 单个Alpha列表查询的最大数量
+MAX_PAGE_SIZE_IN_ALPHA_LIST_QUERY: Final[int] = 100  # Alpha列表查询的最大页面大小
 CORRELATION_CALCULATION_YEARS: Final[int] = 4  # 相关性计算的年份范围
 MIN_FORMULATED_PYRAMID_ALPHAS: Final[int] = 3  # 点亮金字塔Alpha的最小数量
 MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA: Final[int] = (
