@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, List, Optional, cast
 
 from sqlalchemy import ColumnExpressionArgument, Select, and_, case, func, select
-from sqlalchemy.orm import selectinload
 
 from alphapower import constants  # 导入常量模块
 from alphapower.constants import AlphaType, Database, Delay, Region
@@ -86,9 +85,6 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         query: Select = (
             select(Alpha)
             .join(Alpha.in_sample)  # 连接到 Alpha 的样本内数据
-            .options(
-                selectinload(Alpha.in_sample),  # 预加载样本内数据
-            )
         )
 
         # 构建筛选条件列表
@@ -219,14 +215,17 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
         Raises:
             Exception: 如果在数据库查询或流式处理过程中发生错误。
         """
-        await logger.ainfo("🚀 <= 开始执行 fetch_alphas", emoji="🚀", **kwargs)
+        await logger.ainfo(
+            "🚀 开始执行 fetch_alphas",
+            emoji="🚀",
+            filter_kwargs=kwargs,
+        )
         query: Select = await self._build_alpha_select_query(**kwargs)
         query_str = str(query)
-        log_query = query_str[:70] + "..." if len(query_str) > 70 else query_str
-        await logger.adebug(
-            "构建的 Alpha 查询",
-            query=log_query,
-            full_query_len=len(query_str),
+        await logger.ainfo(
+            "🔍 构建的 Alpha 查询",
+            emoji="🔍",
+            query=query_str,
         )
 
         try:
@@ -236,14 +235,16 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 ):
                     self._fetched_count += 1
                     await logger.adebug(
-                        "🔍 获取到 Alpha",
-                        emoji="🔍",
+                        "📥 获取到 Alpha",
+                        emoji="📥",
                         alpha_id=alpha.id,
+                        alpha_region=alpha.region.name,  # 输出区域信息
+                        alpha_delay=alpha.delay.name,  # 输出延迟信息
                         current_fetched_count=self._fetched_count,
                     )
                     yield alpha
             await logger.ainfo(
-                "✅ => fetch_alphas 执行完成",
+                "✅ fetch_alphas 执行完成",
                 emoji="✅",
                 total_fetched=self._fetched_count,
             )
@@ -252,7 +253,8 @@ class BaseAlphaFetcher(AbstractAlphaFetcher):
                 "❌ fetch_alphas 执行时发生错误",
                 emoji="❌",
                 error=str(e),  # 记录错误信息字符串
-                kwargs=kwargs,
+                filter_kwargs=kwargs,
+                fetched_count=self._fetched_count,  # 输出已获取数量
                 exc_info=True,  # 包含堆栈信息
             )
             raise  # 重新抛出异常，让上层处理

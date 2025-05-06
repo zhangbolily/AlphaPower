@@ -32,8 +32,12 @@
 - 总是复用测试数据，推荐用继承测试基类的方式复用
 
 文档规范：
-- 不要编写 docstring 类型的文档，会导致代码行数暴增
-- docstring 文档等待指令去编写
+- 不编写 docstring 文档，等待具体的文档编写指令
+
+异常处理规范：
+- 简单重复的异常处理使用 alphapower.internal.decorator 的 async_exception_handler 统一处理
+- 有比较复杂异常处理条件的，在方法内部去捕获异常处理
+- 一个方法内部按照流程和逻辑，分块处理异常，方便精准定位异常位置
 
 项目结构：
 - 数据实体定义在 src/alphapower/entity

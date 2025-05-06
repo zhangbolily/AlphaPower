@@ -10,9 +10,7 @@ from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
     CorrelationType,
     Database,
-    Delay,
     RefreshPolicy,
-    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -193,8 +191,8 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 16),
-                end_time=datetime(2025, 5, 3, 23, 59, 59),
+                start_time=datetime(2025, 3, 12),
+                end_time=datetime(2025, 5, 6, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -261,8 +259,6 @@ if __name__ == "__main__":
                 policy=RefreshPolicy.FORCE_REFRESH,
                 concurrency=256,
                 status=Status.UNSUBMITTED,
-                region=Region.USA,
-                delay=Delay.ONE,
             ):
                 print(alpha)
 
