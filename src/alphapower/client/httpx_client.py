@@ -105,6 +105,10 @@ class HttpXClient(BaseLogger):
             reset_time: float = last_update.timestamp() + rate_limit.reset
             if rate_limit.remaining > 0:
                 # 还有额度，直接通过
+                async with self._rate_limit_lock:
+                    rate_limit.remaining -= 1
+                    self._rate_limit_map[api_name] = (rate_limit, last_update)
+
                 await self.log.adebug(
                     "本地速率限制额度充足，直接通过",
                     emoji=LoggingEmoji.SUCCESS.value,
@@ -514,7 +518,7 @@ class HttpXClient(BaseLogger):
                 await self.log.aerror(
                     "异步重试次数已用尽",
                     emoji=LoggingEmoji.ERROR.value,
-                    status_code=resp.status_code,
+                    status_code=resp.status_code if resp else None,
                     remain_retries=remain_retries,
                 )
                 raise RuntimeError("异步重试次数已用尽")

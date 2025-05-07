@@ -11,7 +11,7 @@ import asyncio
 import signal
 import types
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import asyncclick as click  # 替换为 asyncclick
 import pytz
@@ -304,12 +304,22 @@ async def alphas_v1(
     )
 
     alpha_service: AbstractAlphaService = await alpha_service_factory()
-    await alpha_service.sync_alphas(
+
+    created_time_ranges: List[Tuple[datetime, datetime]] = []
+    if start_time and end_time:
+        current_start_time = start_time
+        while current_start_time < end_time:
+            next_start_time = current_start_time + timedelta(days=1)
+            current_end_time = min(next_start_time, end_time)
+            created_time_ranges.append((current_start_time, current_end_time))
+            current_start_time = next_start_time
+    
+    await alpha_service.sync_alphas_in_ranges(
         tz=pytz.timezone("US/Eastern"),
-        date_created_gt=start_time,
-        date_created_lt=end_time,
+        created_time_ranges=created_time_ranges,
         status_eq=status,
-        cocurrency=cocurrency,
+        increamental=increamental,
+        parallel=parallel,
         aggregate_data_only=aggregate_data_only,
     )
 

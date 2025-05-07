@@ -270,9 +270,18 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                             prod_view_map=prod_view_map,
                         )
                     else:
-                        await self.alpha_manager.bulk_save_alpha_to_db(
-                            alphas_view=alphas_view
-                        )
+                        batch_size = 1000
+                        for i in range(0, len(alphas_view), batch_size):
+                            batch = alphas_view[i:i + batch_size]
+                            await self.alpha_manager.bulk_save_alpha_to_db(
+                                alphas_view=batch
+                            )
+                            await self.log.ainfo(
+                                event="批量保存 alphas 数据",
+                                batch_size=len(batch),
+                                batch_index=i,
+                                emoji=LoggingEmoji.SAVE.value,
+                            )
                 except Exception as e:
                     await self.log.aerror(
                         event="同步失败",
