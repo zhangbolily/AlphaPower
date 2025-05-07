@@ -73,3 +73,37 @@ def async_exception_handler(func: E) -> E:
             )
 
     return cast(E, wrapper)
+
+
+def sync_exception_handler(func: E) -> E:
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        decorated_func: str = func.__qualname__  # 获取被装饰函数的名字
+        try:
+            logger.debug(
+                "函数异常处理开始",
+                decorated_func=decorated_func,
+                args=args,
+                kwargs=kwargs,
+                emoji="⚠️",
+            )
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(
+                "函数执行时捕获到异常",
+                decorated_func=decorated_func,
+                exception=str(e),
+                emoji="❌",
+            )
+
+            raise e
+        finally:
+            logger.debug(
+                "函数异常处理结束，没有捕获到异常",
+                decorated_func=decorated_func,
+                args=args,
+                kwargs=kwargs,
+                emoji="✅",
+            )
+
+    return cast(E, wrapper)

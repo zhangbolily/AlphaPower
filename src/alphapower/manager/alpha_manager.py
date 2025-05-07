@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from alphapower.client.worldquant_brain_client_abc import AbstractWorldQuantBrainClient
-from alphapower.constants import Color, Database, Grade, Status
-from alphapower.dal import alpha_dal
+from alphapower.constants import Color, Database, Grade, LoggingEmoji, Status
+from alphapower.dal import aggregate_data_dal, alpha_dal
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity.alphas import AggregateData, Alpha
 from alphapower.internal.decorator import async_exception_handler
@@ -26,11 +28,23 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         self._brain_client: Optional[AbstractWorldQuantBrainClient] = brain_client
 
     async def brain_client(self) -> AbstractWorldQuantBrainClient:
-        await self.log.ainfo("进入 brain_client 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"获取 {AbstractWorldQuantBrainClient.__name__} 实例",
+            message=f"进入 {self.brain_client.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         if self._brain_client is None:
-            await self.log.aerror("WorldQuant Brain client 未设置", emoji="❌")
-            raise ValueError("WorldQuant Brain client is not set.")
-        await self.log.ainfo("退出 brain_client 方法", emoji="⬅️")
+            await self.log.aerror(
+                event=f"{AbstractWorldQuantBrainClient.__name__} 实例未设置",
+                message=f"{self.brain_client.__qualname__} 方法中发现未设置客户端",
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError(f"{AbstractWorldQuantBrainClient.__name__} 实例未设置")
+        await self.log.ainfo(
+            event=f"获取 {AbstractWorldQuantBrainClient.__name__} 实例成功",
+            message=f"退出 {self.brain_client.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return self._brain_client
 
     @async_exception_handler
@@ -46,10 +60,13 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         **kwargs: Any,
     ) -> int:
         await self.log.ainfo(
-            "进入 fetch_alphas_total_count_from_platform 方法", emoji="➡️"
+            event="从平台获取 Alpha 总数",
+            message=f"进入 {self.fetch_alphas_total_count_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
         )
         await self.log.adebug(
-            "fetch_alphas_total_count_from_platform 入参",
+            event="方法入参",
+            message=f"{self.fetch_alphas_total_count_from_platform.__qualname__} 入参",
             competition=competition,
             date_created_gt=date_created_gt,
             date_created_lt=date_created_lt,
@@ -58,7 +75,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             status_eq=status_eq,
             status_ne=status_ne,
             kwargs=kwargs,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
         query: UserAlphasQuery = UserAlphasQuery(
             competition=competition,
@@ -82,10 +99,15 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         total: int = alphas_view.count
 
         await self.log.adebug(
-            "fetch_alphas_total_count_from_platform 出参", total=total, emoji="🐛"
+            event="方法出参",
+            message=f"{self.fetch_alphas_total_count_from_platform.__qualname__} 出参",
+            total=total,
+            emoji=LoggingEmoji.DEBUG.value,
         )
         await self.log.ainfo(
-            "退出 fetch_alphas_total_count_from_platform 方法", emoji="⬅️"
+            event="从平台获取 Alpha 总数成功",
+            message=f"退出 {self.fetch_alphas_total_count_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return total
 
@@ -104,9 +126,12 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         status_ne: Optional[Status],
         **kwargs: Any,
     ) -> List[AlphaView]:
-        await self.log.ainfo("进入 fetch_alphas_from_platform 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_alphas_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
-            "fetch_alphas_from_platform 入参",
+            event=f"{self.fetch_alphas_from_platform.__qualname__} 入参",
             competition=competition,
             date_created_gt=date_created_gt,
             date_created_lt=date_created_lt,
@@ -118,7 +143,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             status_eq=status_eq,
             status_ne=status_ne,
             kwargs=kwargs,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
         query: UserAlphasQuery = UserAlphasQuery(
             competition=competition,
@@ -139,60 +164,86 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         alphas: List[AlphaView] = alphas_view.results
 
         await self.log.adebug(
-            "fetch_alphas_from_platform 出参",
+            event=f"{self.fetch_alphas_from_platform.__qualname__} 出参",
             alpha_ids=[alpha.id for alpha in alphas],
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
-        await self.log.ainfo("退出 fetch_alphas_from_platform 方法", emoji="⬅️")
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_alphas_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return alphas
 
     @async_exception_handler
     async def fetch_first_alpha_from_platform(self) -> Optional[AlphaView]:
-        await self.log.ainfo("进入 fetch_first_alpha_from_platform 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_first_alpha_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         query: UserAlphasQuery = UserAlphasQuery(
             limit=1,
             offset=0,
             order="dataCreated",
         )
-        await self.log.adebug("构建查询参数", query=query, emoji="🛠️")
+        await self.log.adebug(
+            event="构建查询参数", query=query, emoji=LoggingEmoji.DEBUG.value
+        )
         brain_client: AbstractWorldQuantBrainClient = await self.brain_client()
         alphas_view: UserAlphasView = await brain_client.fetch_user_alphas(query=query)
         if alphas_view.count == 0:
-            await self.log.awarning("未找到任何 Alpha 数据", emoji="⚠️")
+            await self.log.awarning(
+                "未找到任何 Alpha 数据", emoji=LoggingEmoji.WARNING.value
+            )
             return None
         await self.log.adebug(
-            "fetch_first_alpha_from_platform 出参",
+            event=f"{self.fetch_first_alpha_from_platform.__qualname__} 出参",
             alpha_id=alphas_view.results[0].id,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
-        await self.log.ainfo("退出 fetch_first_alpha_from_platform 方法", emoji="⬅️")
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_first_alpha_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return alphas_view.results[0]
 
     @async_exception_handler
     async def fetch_last_alpha_from_platform(self) -> Optional[AlphaView]:
-        await self.log.ainfo("进入 fetch_last_alpha_from_platform 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_last_alpha_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         query: UserAlphasQuery = UserAlphasQuery(
             limit=1,
             offset=0,
             order="-dataCreated",
         )
-        await self.log.adebug("构建查询参数", query=query, emoji="🛠️")
+        await self.log.adebug(
+            event="构建查询参数", query=query, emoji=LoggingEmoji.DEBUG.value
+        )
         brain_client: AbstractWorldQuantBrainClient = await self.brain_client()
         alphas_view: UserAlphasView = await brain_client.fetch_user_alphas(query=query)
         if alphas_view.count == 0:
-            await self.log.awarning("未找到任何 Alpha 数据", emoji="⚠️")
+            await self.log.awarning(
+                "未找到任何 Alpha 数据", emoji=LoggingEmoji.WARNING.value
+            )
             return None
         await self.log.adebug(
-            "fetch_last_alpha_from_platform 出参",
+            event=f"{self.fetch_last_alpha_from_platform.__qualname__} 出参",
             alpha_id=alphas_view.results[0].id,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
-        await self.log.ainfo("退出 fetch_last_alpha_from_platform 方法", emoji="⬅️")
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_last_alpha_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return alphas_view.results[0]
 
     @async_exception_handler
     async def fetch_first_alpha_from_db(self) -> Optional[Alpha]:
-        await self.log.ainfo("进入 fetch_first_alpha_from_db 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_first_alpha_from_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         async with session_manager.get_session(
             Database.ALPHAS, readonly=True
         ) as session:
@@ -202,19 +253,27 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
                 session=session,
             )
         if len(alphas) == 0:
-            await self.log.awarning("数据库中未找到任何 Alpha 数据", emoji="⚠️")
+            await self.log.awarning(
+                "数据库中未找到任何 Alpha 数据", emoji=LoggingEmoji.WARNING.value
+            )
             return None
         await self.log.adebug(
-            "fetch_first_alpha_from_db 出参",
+            event=f"{self.fetch_first_alpha_from_db.__qualname__} 出参",
             alpha_id=alphas[0].alpha_id,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
-        await self.log.ainfo("退出 fetch_first_alpha_from_db 方法", emoji="⬅️")
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_first_alpha_from_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return alphas[0]
 
     @async_exception_handler
     async def fetch_last_alpha_from_db(self) -> Optional[Alpha]:
-        await self.log.ainfo("进入 fetch_last_alpha_from_db 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_last_alpha_from_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         async with session_manager.get_session(
             Database.ALPHAS, readonly=True
         ) as session:
@@ -224,26 +283,34 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
                 session=session,
             )
         if len(alphas) == 0:
-            await self.log.awarning("数据库中未找到任何 Alpha 数据", emoji="⚠️")
+            await self.log.awarning(
+                "数据库中未找到任何 Alpha 数据", emoji=LoggingEmoji.WARNING.value
+            )
             return None
         await self.log.adebug(
             "fetch_last_alpha_from_db 出参",
             alpha_id=alphas[0].alpha_id,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
-        await self.log.ainfo("退出 fetch_last_alpha_from_db 方法", emoji="⬅️")
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_last_alpha_from_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return alphas[0]
 
     @async_exception_handler
-    async def save_alphas_to_db(
+    async def bulk_save_alpha_to_db(
         self,
         alphas_view: List[AlphaView],
     ) -> None:
-        await self.log.ainfo("进入 save_alphas_to_db 方法", emoji="➡️")
+        await self.log.ainfo(
+            event=f"进入 {self.bulk_save_alpha_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
-            "save_alphas_to_db 入参",
+            event=f"{self.bulk_save_alpha_to_db.__qualname__} 入参",
             alpha_ids=[alpha.id for alpha in alphas_view],
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
         alphas: List[Alpha] = []
         for alpha_view in alphas_view:
@@ -252,9 +319,9 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             )
             alphas.append(alpha)
         await self.log.adebug(
-            "save_alphas_to_db 转换为实体对象",
+            event=f"{self.bulk_save_alpha_to_db.__qualname__} 转换为实体对象",
             alpha_ids=[alpha.alpha_id for alpha in alphas],
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
         async with (
             session_manager.get_session(Database.ALPHAS) as session,
@@ -265,50 +332,16 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
                 entities=alphas,
             )
             await session.commit()
-        await self.log.ainfo("退出 save_alphas_to_db 方法", emoji="⬅️")
+        await self.log.ainfo(
+            event=f"退出 {self.bulk_save_alpha_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
 
     @async_exception_handler
     async def build_alpha_entity_from_view(
         self,
         alpha_view: AlphaView,
     ) -> Alpha:
-
-        @async_exception_handler
-        async def build_aggregate_data_entity_from_view(
-            sample_data: Optional[AggregateDataView],
-        ) -> Optional[AggregateData]:
-            """
-            创建样本数据。
-
-            参数:
-            sample_data: 样本数据对象。
-
-            返回:
-            样本实体对象，或 None 如果样本数据为空。
-            """
-            if sample_data is None:
-                return None
-
-            aggregate_data: AggregateData = AggregateData(
-                pnl=sample_data.pnl,
-                book_size=sample_data.book_size,
-                long_count=sample_data.long_count,
-                short_count=sample_data.short_count,
-                turnover=sample_data.turnover,
-                returns=sample_data.returns,
-                drawdown=sample_data.drawdown,
-                margin=sample_data.margin,
-                sharpe=sample_data.sharpe,
-                fitness=sample_data.fitness,
-                self_correration=sample_data.self_correlation,
-                prod_correration=sample_data.prod_correlation,
-                os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,
-                pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,
-                start_date=sample_data.start_date,
-                checks=sample_data.checks,
-            )
-
-            return aggregate_data
 
         alpha: Alpha = Alpha(
             alpha_id=alpha_view.id,
@@ -345,13 +378,31 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             grade=alpha_view.grade if alpha_view.grade else Grade.DEFAULT,
             stage=alpha_view.stage,
             status=alpha_view.status,
-            in_sample=await build_aggregate_data_entity_from_view(alpha_view.in_sample),
-            out_sample=await build_aggregate_data_entity_from_view(
-                alpha_view.out_sample
+            in_sample=(
+                await self.build_aggregate_data_from_view(alpha_view.in_sample)
+                if alpha_view.in_sample
+                else None
             ),
-            train=await build_aggregate_data_entity_from_view(alpha_view.train),
-            test=await build_aggregate_data_entity_from_view(alpha_view.test),
-            prod=await build_aggregate_data_entity_from_view(alpha_view.prod),
+            out_sample=(
+                await self.build_aggregate_data_from_view(alpha_view.out_sample)
+                if alpha_view.out_sample
+                else None
+            ),
+            train=(
+                await self.build_aggregate_data_from_view(alpha_view.train)
+                if alpha_view.train
+                else None
+            ),
+            test=(
+                await self.build_aggregate_data_from_view(alpha_view.test)
+                if alpha_view.test
+                else None
+            ),
+            prod=(
+                await self.build_aggregate_data_from_view(alpha_view.prod)
+                if alpha_view.prod
+                else None
+            ),
             pyramids=alpha_view.pyramids,
             competitions=alpha_view.competitions,
             classifications=alpha_view.classifications,
@@ -359,6 +410,342 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             team=alpha_view.team,
         )
         return alpha
+
+    @async_exception_handler
+    async def build_aggregate_data_from_view(
+        self,
+        sample_data: AggregateDataView,
+        primary_id: Optional[int] = None,
+    ) -> AggregateData:
+        """
+        创建样本数据。
+
+        参数:
+        sample_data: 样本数据对象。
+
+        返回:
+        样本实体对象，或 None 如果样本数据为空。
+        """
+        if sample_data is None:
+            await self.log.aerror("样本数据为空", emoji=LoggingEmoji.ERROR.value)
+            raise ValueError("样本数据为空")
+
+        aggregate_data: AggregateData = AggregateData(
+            id=primary_id,
+            pnl=sample_data.pnl,
+            book_size=sample_data.book_size,
+            long_count=sample_data.long_count,
+            short_count=sample_data.short_count,
+            turnover=sample_data.turnover,
+            returns=sample_data.returns,
+            drawdown=sample_data.drawdown,
+            margin=sample_data.margin,
+            sharpe=sample_data.sharpe,
+            fitness=sample_data.fitness,
+            self_correration=sample_data.self_correlation,
+            prod_correration=sample_data.prod_correlation,
+            os_is_sharpe_ratio=sample_data.os_is_sharpe_ratio,
+            pre_close_sharpe_ratio=sample_data.pre_close_sharpe_ratio,
+            start_date=sample_data.start_date,
+            checks=sample_data.checks,
+        )
+
+        return aggregate_data
+
+    @async_exception_handler
+    async def _save_aggregate_data_to_db_in_session(
+        self,
+        session: AsyncSession,
+        alpha_id: str,
+        in_sample_view: Optional[AggregateDataView],
+        out_sample_view: Optional[AggregateDataView],
+        train_view: Optional[AggregateDataView],
+        test_view: Optional[AggregateDataView],
+        prod_view: Optional[AggregateDataView],
+    ) -> Dict[str, AggregateData]:
+        await self.log.ainfo(
+            event=f"进入 {self._save_aggregate_data_to_db_in_session.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self._save_aggregate_data_to_db_in_session.__qualname__} 入参",
+            alpha_id=alpha_id,
+            in_sample=(
+                in_sample_view.model_dump(mode="json") if in_sample_view else None
+            ),
+            out_sample=(
+                out_sample_view.model_dump(mode="json") if out_sample_view else None
+            ),
+            train=train_view.model_dump(mode="json") if train_view else None,
+            test=test_view.model_dump(mode="json") if test_view else None,
+            prod=prod_view.model_dump(mode="json") if prod_view else None,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        in_sample_id: Optional[int] = None
+        out_sample_id: Optional[int] = None
+        train_id: Optional[int] = None
+        test_id: Optional[int] = None
+        prod_id: Optional[int] = None
+
+        result: Dict[str, AggregateData] = {}
+
+        aggregate_data_id_map: Dict[str, Optional[int]] = (
+            await alpha_dal.get_aggregate_data_ids_by_alpha_id(
+                alpha_id=alpha_id, session=session
+            )
+        )
+        await self.log.adebug(
+            event="获取 AggregateData ID 映射",
+            aggregate_data_id_map=aggregate_data_id_map,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        in_sample_id = aggregate_data_id_map.get("in_sample_id", None)
+        out_sample_id = aggregate_data_id_map.get("out_sample_id", None)
+        train_id = aggregate_data_id_map.get("train_id", None)
+        test_id = aggregate_data_id_map.get("test_id", None)
+        prod_id = aggregate_data_id_map.get("prod_id", None)
+
+        if in_sample_view:
+            in_sample: AggregateData = await self.build_aggregate_data_from_view(
+                sample_data=in_sample_view, primary_id=in_sample_id
+            )
+            in_sample = await aggregate_data_dal.upsert(
+                session=session,
+                entity=in_sample,
+            )
+            result["in_sample"] = in_sample
+            await self.log.adebug(
+                event="更新 in_sample 数据",
+                in_sample_id=in_sample.id,
+                emoji=LoggingEmoji.DEBUG.value,
+            )
+
+        if out_sample_view:
+            out_sample: AggregateData = await self.build_aggregate_data_from_view(
+                sample_data=out_sample_view, primary_id=out_sample_id
+            )
+            out_sample = await aggregate_data_dal.upsert(
+                session=session,
+                entity=out_sample,
+            )
+            result["out_sample"] = out_sample
+            await self.log.adebug(
+                event="更新 out_sample 数据",
+                out_sample_id=out_sample.id,
+                emoji=LoggingEmoji.DEBUG.value,
+            )
+
+        if train_view:
+            train: AggregateData = await self.build_aggregate_data_from_view(
+                sample_data=train_view, primary_id=train_id
+            )
+            train = await aggregate_data_dal.upsert(
+                session=session,
+                entity=train,
+            )
+            result["train"] = train
+            await self.log.adebug(
+                event="更新 train 数据",
+                train_id=train.id,
+                emoji=LoggingEmoji.DEBUG.value,
+            )
+
+        if test_view:
+            test: AggregateData = await self.build_aggregate_data_from_view(
+                sample_data=test_view, primary_id=test_id
+            )
+            test = await aggregate_data_dal.upsert(
+                session=session,
+                entity=test,
+            )
+            result["test"] = test
+            await self.log.adebug(
+                event="更新 test 数据",
+                test_id=test.id,
+                emoji=LoggingEmoji.DEBUG.value,
+            )
+
+        if prod_view:
+            prod: AggregateData = await self.build_aggregate_data_from_view(
+                sample_data=prod_view, primary_id=prod_id
+            )
+            prod = await aggregate_data_dal.upsert(
+                session=session,
+                entity=prod,
+            )
+            result["prod"] = prod
+            await self.log.adebug(
+                event="更新 prod 数据",
+                prod_id=prod.id,
+                emoji=LoggingEmoji.DEBUG.value,
+            )
+
+        await self.log.ainfo(
+            event=f"保存 {AggregateData.__name__} 数据成功",
+            alpha_id=alpha_id,
+            in_sample_id=in_sample_id,
+            out_sample_id=out_sample_id,
+            train_id=train_id,
+            test_id=test_id,
+            prod_id=prod_id,
+            emoji=LoggingEmoji.FINISHED.value,
+        )
+
+        await self.log.adebug(
+            event=f"{self._save_aggregate_data_to_db_in_session.__qualname__} 出参",
+            result={key: value.__dict__ for key, value in result.items()},
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+        await self.log.ainfo(
+            event=f"退出 {self._save_aggregate_data_to_db_in_session.__qualname__} 方法",
+            keys=list(result.keys()),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return result
+
+    @async_exception_handler
+    async def save_aggregate_data_to_db(
+        self,
+        alpha_id: str,
+        in_sample_view: Optional[AggregateDataView],
+        out_sample_view: Optional[AggregateDataView],
+        train_view: Optional[AggregateDataView],
+        test_view: Optional[AggregateDataView],
+        prod_view: Optional[AggregateDataView],
+    ) -> Dict[str, AggregateData]:
+        await self.log.ainfo(
+            event=f"进入 {self.save_aggregate_data_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        result: Dict[str, AggregateData] = {}
+        async with (
+            session_manager.get_session(Database.ALPHAS) as session,
+            session.begin(),
+        ):
+            result = await self._save_aggregate_data_to_db_in_session(
+                session=session,
+                alpha_id=alpha_id,
+                in_sample_view=in_sample_view,
+                out_sample_view=out_sample_view,
+                train_view=train_view,
+                test_view=test_view,
+                prod_view=prod_view,
+            )
+
+        await self.log.adebug(
+            event=f"{self.save_aggregate_data_to_db.__qualname__} 出参",
+            result={key: value.__dict__ for key, value in result.items()},
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+        await self.log.ainfo(
+            event=f"退出 {self.save_aggregate_data_to_db.__qualname__} 方法",
+            keys=list(result.keys()),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return result
+
+    @async_exception_handler
+    async def bulk_save_aggregate_data_to_db(
+        self,
+        alpha_ids: List[str],
+        in_sample_view_map: Optional[Dict[str, AggregateDataView]],
+        out_sample_view_map: Optional[Dict[str, AggregateDataView]],
+        train_view_map: Optional[Dict[str, AggregateDataView]],
+        test_view_map: Optional[Dict[str, AggregateDataView]],
+        prod_view_map: Optional[Dict[str, AggregateDataView]],
+    ) -> Dict[str, Dict[str, AggregateData]]:
+        await self.log.ainfo(
+            event=f"进入 {self.bulk_save_aggregate_data_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self.bulk_save_aggregate_data_to_db.__qualname__} 入参",
+            alpha_ids=alpha_ids,
+            in_sample_view_map=in_sample_view_map,
+            out_sample_view_map=out_sample_view_map,
+            train_view_map=train_view_map,
+            test_view_map=test_view_map,
+            prod_view_map=prod_view_map,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        result: Dict[str, Dict[str, AggregateData]] = {}
+
+        async with (
+            session_manager.get_session(Database.ALPHAS) as session,
+            session.begin(),
+        ):
+            for alpha_id in alpha_ids:
+                aggregate_data_dict: Dict[str, AggregateData] = (
+                    await self._save_aggregate_data_to_db_in_session(
+                        session=session,
+                        alpha_id=alpha_id,
+                        in_sample_view=(
+                            in_sample_view_map.get(alpha_id, None)
+                            if in_sample_view_map
+                            else None
+                        ),
+                        out_sample_view=(
+                            out_sample_view_map.get(alpha_id, None)
+                            if out_sample_view_map
+                            else None
+                        ),
+                        train_view=(
+                            train_view_map.get(alpha_id, None)
+                            if train_view_map
+                            else None
+                        ),
+                        test_view=(
+                            test_view_map.get(alpha_id, None) if test_view_map else None
+                        ),
+                        prod_view=(
+                            prod_view_map.get(alpha_id, None) if prod_view_map else None
+                        ),
+                    )
+                )
+                result[alpha_id] = aggregate_data_dict
+                await self.log.adebug(
+                    event="批量保存数据",
+                    alpha_id=alpha_id,
+                    aggregate_data_dict={
+                        key: value.__dict__
+                        for key, value in aggregate_data_dict.items()
+                    },
+                    emoji=LoggingEmoji.DEBUG.value,
+                )
+
+        await self.log.ainfo(
+            event=f"批量保存 {AggregateData.__name__} 完成",
+            alpha_ids=alpha_ids,
+            in_sample_view_map=(
+                list(in_sample_view_map.keys()) if in_sample_view_map else None
+            ),
+            out_sample_view_map=(
+                list(out_sample_view_map.keys()) if out_sample_view_map else None
+            ),
+            train_view_map=list(train_view_map.keys()) if train_view_map else None,
+            test_view_map=list(test_view_map.keys()) if test_view_map else None,
+            prod_view_map=list(prod_view_map.keys()) if prod_view_map else None,
+            emoji=LoggingEmoji.FINISHED.value,
+        )
+
+        await self.log.adebug(
+            event=f"{self.bulk_save_aggregate_data_to_db.__qualname__} 出参",
+            result={
+                key: {k: v.__dict__ for k, v in value.items()}
+                for key, value in result.items()
+            },
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+        await self.log.ainfo(
+            event=f"退出 {self.bulk_save_aggregate_data_to_db.__qualname__} 方法",
+            keys=list(result.keys()),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return result
 
 
 class AlphaManagerFactory(BaseProcessSafeFactory[AbstractAlphaManager]):
@@ -382,7 +769,7 @@ class AlphaManagerFactory(BaseProcessSafeFactory[AbstractAlphaManager]):
         await self.log.adebug(
             f"{self._dependency_factories.__qualname__} 出参",
             factories=list(factories.keys()),
-            emoji="🔗",
+            emoji=LoggingEmoji.DEBUG.value,
         )
         return factories
 
@@ -390,27 +777,29 @@ class AlphaManagerFactory(BaseProcessSafeFactory[AbstractAlphaManager]):
     async def _build(self, *args: Any, **kwargs: Any) -> AbstractAlphaManager:
         await self.log.ainfo(
             f"进入 {self._build.__qualname__} 方法",
-            emoji="➡️",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
         )
         await self.log.adebug(
             f"{self._build.__qualname__} 入参",
             args=args,
             kwargs=kwargs,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
 
         if self.brain_client is None:
-            await self.log.aerror("WorldQuant Brain client 未设置", emoji="❌")
+            await self.log.aerror(
+                "WorldQuant Brain client 未设置", emoji=LoggingEmoji.ERROR.value
+            )
             raise ValueError("WorldQuant Brain client is not set.")
 
         manager: AbstractAlphaManager = AlphaManager(brain_client=self.brain_client)
         await self.log.adebug(
             f"{self._build.__qualname__} 出参",
             manager_type=type(manager).__name__,
-            emoji="🐛",
+            emoji=LoggingEmoji.DEBUG.value,
         )
         await self.log.ainfo(
             f"退出 {self._build.__qualname__} 方法",
-            emoji="⬅️",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return manager

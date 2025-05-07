@@ -3,7 +3,7 @@ Alpha数据访问层模块
 提供对Alpha模型及其相关实体的数据访问操作。
 """
 
-from typing import List, Optional, Type
+from typing import Dict, List, Optional, Type
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,11 +11,7 @@ from sqlalchemy.sql.expression import Select
 
 from alphapower.constants import Stage, Status
 from alphapower.dal.base import EntityDAL
-from alphapower.entity.alphas import (
-    AggregateData,
-    Alpha,
-    Competition,
-)
+from alphapower.entity.alphas import AggregateData, Alpha, Competition
 
 
 class AlphaDAL(EntityDAL[Alpha]):
@@ -100,7 +96,9 @@ class AlphaDAL(EntityDAL[Alpha]):
         Returns:
             该作者收藏的所有Alpha列表。
         """
-        return await self.deprecated_find_by(session=session, author=author, favorite=True)
+        return await self.deprecated_find_by(
+            session=session, author=author, favorite=True
+        )
 
     async def upsert(
         self,
@@ -228,6 +226,41 @@ class AlphaDAL(EntityDAL[Alpha]):
             new_entity.train.id = existing_entity.train_id
         if existing_entity.prod_id and new_entity.prod:
             new_entity.prod.id = existing_entity.prod_id
+
+    async def get_aggregate_data_ids_by_alpha_id(
+        self,
+        alpha_id: str,
+        session: Optional[AsyncSession] = None,
+    ) -> Dict[str, Optional[int]]:
+        """
+        获取指定 Alpha ID 的样本 ID。
+
+        Args:
+            alpha_id: Alpha 的唯一标识符。
+
+        Returns:
+            包含样本 ID 的字典，键为样本类型，值为样本 ID。
+        """
+        query: Select = select(
+            Alpha.in_sample_id,
+            Alpha.out_sample_id,
+            Alpha.train_id,
+            Alpha.test_id,
+            Alpha.prod_id,
+        ).where(Alpha.alpha_id == alpha_id)
+
+        actual_session: AsyncSession = self._actual_session(session=session)
+        result = await actual_session.execute(query)
+        row = result.fetchone()
+        if row:
+            return {
+                "in_sample_id": row[0],
+                "out_sample_id": row[1],
+                "train_id": row[2],
+                "test_id": row[3],
+                "prod_id": row[4],
+            }
+        return {}
 
 
 class CompetitionDAL(EntityDAL[Competition]):

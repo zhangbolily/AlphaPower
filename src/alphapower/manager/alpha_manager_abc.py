@@ -1,10 +1,10 @@
 import abc
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from alphapower.constants import Status
-from alphapower.entity.alphas import Alpha
-from alphapower.view.alpha import AlphaView
+from alphapower.entity.alphas import AggregateData, Alpha
+from alphapower.view.alpha import AggregateDataView, AlphaView
 
 
 class AbstractAlphaManager(abc.ABC):
@@ -117,7 +117,7 @@ class AbstractAlphaManager(abc.ABC):
         )
 
     @abc.abstractmethod
-    async def save_alphas_to_db(
+    async def bulk_save_alpha_to_db(
         self,
         alphas_view: List[AlphaView],
     ) -> None:
@@ -135,6 +135,53 @@ class AbstractAlphaManager(abc.ABC):
     ) -> Alpha:
         """
         Build an alpha entity from the view.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
+        )
+
+    @abc.abstractmethod
+    async def build_aggregate_data_from_view(
+        self,
+        sample_data: AggregateDataView,
+        primary_id: Optional[int] = None,
+    ) -> AggregateData:
+        """
+        Build aggregate data from the view.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
+        )
+
+    @abc.abstractmethod
+    async def save_aggregate_data_to_db(
+        self,
+        alpha_id: str,
+        in_sample_view: Optional[AggregateDataView],
+        out_sample_view: Optional[AggregateDataView],
+        train_view: Optional[AggregateDataView],
+        test_view: Optional[AggregateDataView],
+        prod_view: Optional[AggregateDataView],
+    ) -> Dict[str, AggregateData]:
+        """
+        Save aggregate data to the database.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
+        )
+
+    @abc.abstractmethod
+    async def bulk_save_aggregate_data_to_db(
+        self,
+        alpha_ids: List[str],
+        in_sample_view_map: Optional[Dict[str, AggregateDataView]],
+        out_sample_view_map: Optional[Dict[str, AggregateDataView]],
+        train_view_map: Optional[Dict[str, AggregateDataView]],
+        test_view_map: Optional[Dict[str, AggregateDataView]],
+        prod_view_map: Optional[Dict[str, AggregateDataView]],
+    ) -> Dict[str, Dict[str, AggregateData]]:
+        """
+        Save aggregate data to the database in bulk.
         """
         raise NotImplementedError(
             f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."

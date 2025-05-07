@@ -217,7 +217,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                     alphas_view: List[AlphaView] = [
                         alpha for page in await pages_stream for alpha in page
                     ]
-                    await self.alpha_manager.save_alphas_to_db(alphas_view=alphas_view)
+                    await self.alpha_manager.bulk_save_alpha_to_db(alphas_view=alphas_view)
                 except Exception as e:
                     await self.log.aerror(
                         event="同步失败",

@@ -141,8 +141,8 @@ if __name__ == "__main__":
 - 长度超过 80 的日志断行
 - event 字段打印日志事件摘要
 - message 字段打印日志详情
-- emoji 字段打印符合日志内容语义的 Emoji 表情
-  
+- emoji 字段打印符合日志内容语义的 Emoji 表情，常用的表情定义在 `alphapower.internal.constants.LoggingEmoji` 中
+
 ```python
 logger: BoundLogger = get_logger(__name__)
 example_obj: ExampleObjClass = ExampleObjClass()
@@ -156,19 +156,6 @@ async def async_log() -> None:
         example_obj=example_obj.__dict__, # 对象需要打印属性字典
         emoji="✅",
     )
-
-    # 常用的 emoji 定义
-    EMOJI_SUCCESS = "✅"  # 执行成功
-    EMOJI_WARNING = "⚠️"  # 警告
-    EMOJI_ERROR = "❌"  # 错误
-    EMOJI_CRITICAL = "🚨"  # 严重错误
-    EMOJI_INFO = "ℹ️"  # 信息
-    EMOJI_DEBUG = "🐛"  # 调试
-    EMOJI_SAVE = "💾"  # 保存相关
-    EMOJI_HTTP = "🌐"  # HTTP 相关
-    EMOJI_TIME = "⏰"  # 时间相关
-    EMOJI_DB = "🗄️"  # 数据库相关
-    EMOJI_FILE = "📁"  # 文件相关
 ```
 
 ### 日志级别
