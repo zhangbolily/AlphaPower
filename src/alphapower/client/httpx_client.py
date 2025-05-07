@@ -56,7 +56,7 @@ class HttpXClient(BaseLogger):
                 self._client = None  # type: ignore
                 await self.log.ainfo(
                     "HttpXClient 已关闭",
-                    emoji="🔒",
+                    emoji=LoggingEmoji.DISCONNECT.value,
                     base_url=self._base_url,
                     timeout=self._timeout,
                     max_retries=self._max_retries,
@@ -77,7 +77,7 @@ class HttpXClient(BaseLogger):
                     # 没有本地限流信息，直接通过
                     await self.log.adebug(
                         "未找到本地速率限制信息，直接通过",
-                        emoji="✅",
+                        emoji=LoggingEmoji.SUCCESS.value,
                         api_name=api_name,
                     )
                     return
@@ -87,14 +87,14 @@ class HttpXClient(BaseLogger):
                     # 限流信息不可用，跳过本地限流
                     await self.log.awarning(
                         "本地速率限制信息不可用，跳过限流",
-                        emoji="⚠️",
+                        emoji=LoggingEmoji.WARNING.value,
                         api_name=api_name,
                     )
                     return
 
             await self.log.ainfo(
                 "检查接口本地速率限制",
-                emoji="🔍",
+                emoji=LoggingEmoji.INFO.value,
                 api_name=api_name,
                 rate_limit_limit=rate_limit.limit,
                 rate_limit_remaining=rate_limit.remaining,
@@ -107,7 +107,7 @@ class HttpXClient(BaseLogger):
                 # 还有额度，直接通过
                 await self.log.adebug(
                     "本地速率限制额度充足，直接通过",
-                    emoji="✅",
+                    emoji=LoggingEmoji.SUCCESS.value,
                     api_name=api_name,
                     remaining_quota=rate_limit.remaining,
                 )
@@ -121,7 +121,7 @@ class HttpXClient(BaseLogger):
                     self._rate_limit_map[api_name] = (rate_limit, datetime.now())
                 await self.log.ainfo(
                     "接口本地速率限制额度已重置",
-                    emoji="🔄",
+                    emoji=LoggingEmoji.UPDATE.value,
                     api_name=api_name,
                     rate_limit_limit=rate_limit.limit,
                     rate_limit_remaining=rate_limit.remaining,
@@ -132,7 +132,7 @@ class HttpXClient(BaseLogger):
             # 需要等待，先输出日志再等待，等待期间不持有锁
             await self.log.awarning(
                 "接口本地速率限制额度已用尽，等待下一个周期",
-                emoji="⏳",
+                emoji=LoggingEmoji.WARNING.value,
                 wait_seconds=wait_seconds,
                 api_name=api_name,
                 rate_limit_limit=rate_limit.limit,
@@ -213,7 +213,7 @@ class HttpXClient(BaseLogger):
             resp: httpx.Response = await do_request()
             await self.log.adebug(
                 "收到 HTTP 响应",
-                emoji="📩",
+                emoji=LoggingEmoji.HTTP.value,
                 status_code=resp.status_code,
                 headers={k: v for k, v in dict(resp.headers).items()},
             )
@@ -231,7 +231,7 @@ class HttpXClient(BaseLogger):
         except Exception as e:
             await self.log.aerror(
                 "请求失败",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 error=str(e),
                 api_name=api_name,
                 method=method,
@@ -286,7 +286,7 @@ class HttpXClient(BaseLogger):
         if not ensured_resp:
             await self.log.aerror(
                 "请求响应状态码异常，未返回响应对象",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 api_name=api_name,
                 resp=resp,
                 status_code=resp.status_code,
@@ -321,7 +321,7 @@ class HttpXClient(BaseLogger):
         data: str = resp.text
         await self.log.adebug(
             "响应 JSON 内容",
-            emoji="📝",
+            emoji=LoggingEmoji.HTTP.value,
             data=((str(data)[:200] + "...") if len(str(data)) > 200 else data),
         )
         if response_model:
@@ -330,14 +330,14 @@ class HttpXClient(BaseLogger):
                 obj: T = response_model.model_validate_json(resp.text)
                 await self.log.adebug(
                     "反序列化为模型成功",
-                    emoji="✅",
+                    emoji=LoggingEmoji.SUCCESS.value,
                     model=response_model.__name__,
                 )
                 return obj
             except Exception as e:
                 await self.log.aerror(
                     "模型反序列化失败",
-                    emoji="❌",
+                    emoji=LoggingEmoji.ERROR.value,
                     error=str(e),
                     data=(
                         resp.text[:200] + "..." if len(resp.text) > 200 else resp.text
@@ -355,7 +355,7 @@ class HttpXClient(BaseLogger):
             except Exception as e:
                 await self.log.aerror(
                     "JSON 解析失败",
-                    emoji="❌",
+                    emoji=LoggingEmoji.ERROR.value,
                     error=str(e),
                     data=((str(data)[:200] + "...") if len(str(data)) > 200 else data),
                 )
@@ -391,7 +391,7 @@ class HttpXClient(BaseLogger):
                     self._rate_limit_map[api_name] = (rate_limit, datetime.now())
                 await self.log.adebug(
                     "更新接口本地速率限制信息",
-                    emoji="📊",
+                    emoji=LoggingEmoji.DEBUG.value,
                     api_name=api_name,
                     rate_limit_limit=rate_limit.limit,
                     rate_limit_remaining=rate_limit.remaining,
@@ -400,7 +400,7 @@ class HttpXClient(BaseLogger):
         except Exception as e:
             await self.log.awarning(
                 "解析速率限制响应头失败，跳过本地限流",
-                emoji="⚠️",
+                emoji=LoggingEmoji.WARNING.value,
                 error=str(e),
                 api_name=api_name,
                 headers={k: v for k, v in headers.items()},
@@ -419,7 +419,7 @@ class HttpXClient(BaseLogger):
         if remain_retries > MAX_RETRY_RECURSION_DEPTH:
             await self.log.aerror(
                 "递归重试次数超过最大限制，抛出异常",
-                emoji="❗",
+                emoji=LoggingEmoji.ERROR.value,
                 remain_retries=remain_retries,
                 max_retries=MAX_RETRY_RECURSION_DEPTH,
             )
@@ -463,7 +463,7 @@ class HttpXClient(BaseLogger):
             # 其他情况也要尝试返回 content 里面可能有错误关键信息
             await self.log.aerror(
                 "HTTP 响应状态码异常，返回非 JSON 错误信息",
-                emoji="🚨",
+                emoji=LoggingEmoji.ERROR.value,
                 status_code=resp.status_code,
                 url=str(resp.url),
                 text=resp.text,
@@ -474,7 +474,7 @@ class HttpXClient(BaseLogger):
             if remain_retries > 0:
                 await self.log.awarning(
                     "检测到可重试状态码，准备异步重试",
-                    emoji="🔁",
+                    emoji=LoggingEmoji.WARNING.value,
                     status_code=resp.status_code,
                     remain_retries=remain_retries,
                 )
@@ -502,7 +502,7 @@ class HttpXClient(BaseLogger):
                 except Exception as e:
                     await self.log.aerror(
                         "异步重试请求失败",
-                        emoji="❌",
+                        emoji=LoggingEmoji.ERROR.value,
                         error=str(e),
                         incomeing_resp_body=resp.text,
                         incomeing_resp_status_code=resp.status_code,
@@ -510,11 +510,19 @@ class HttpXClient(BaseLogger):
                         incomeing_resp_headers={k: v for k, v in resp.headers.items()},
                     )
                     raise
+            else:
+                await self.log.aerror(
+                    "异步重试次数已用尽",
+                    emoji=LoggingEmoji.ERROR.value,
+                    status_code=resp.status_code,
+                    remain_retries=remain_retries,
+                )
+                raise RuntimeError("异步重试次数已用尽")
 
         # 其他状态码，抛出异常
         await self.log.aerror(
             "请求响应状态码异常，未返回响应对象",
-            emoji="❌",
+            emoji=LoggingEmoji.ERROR.value,
             resp=resp,
             status_code=resp.status_code,
             retry_on_status=retry_on_status,
