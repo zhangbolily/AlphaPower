@@ -282,6 +282,7 @@ async def datafields(
     help="仅同步聚合数据，默认为 False",
 )
 @click.option("--parallel", default=5, type=int, help="并行数 默认为5")
+@click.option("--cocurrency", default=1, type=int, help="并发数 默认为1")
 async def alphas_v1(
     start_time: Optional[datetime],
     end_time: Optional[datetime],

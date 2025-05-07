@@ -22,7 +22,7 @@ class AbstractAlphaService(abc.ABC):
         name: Optional[str] = None,
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
-        concurrency: int = 1,
+        cocurrency: int = 1,
         aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:

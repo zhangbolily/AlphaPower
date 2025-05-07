@@ -43,7 +43,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
         name: Optional[str] = None,
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
-        concurrency: int = 1,
+        cocurrency: int = 1,
         aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -68,7 +68,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
             name=name,
             status_eq=status_eq,
             status_ne=status_ne,
-            concurrency=concurrency,
+            cocurrency=cocurrency,
             emoji=LoggingEmoji.DEBUG.value,
         )
 
@@ -232,11 +232,12 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                         range(page_count)
                     )
                     pages_stream: Awaitable = stream.map(
-                        page_param_stream, fetch_page, task_limit=concurrency
+                        page_param_stream, fetch_page, task_limit=cocurrency
                     )
-                    alphas_view: List[AlphaView] = [
-                        alpha for page in await pages_stream for alpha in page
-                    ]
+                    alphas_view: List[AlphaView] = []
+                    async with pages_stream.stream() as page_stream:  # type: ignore
+                        async for page_result in page_stream:
+                            alphas_view.extend(page_result)
 
                     if aggregate_data_only:
                         alpha_ids: List[str] = []

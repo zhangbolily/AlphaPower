@@ -328,9 +328,10 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             session_manager.get_session(Database.ALPHAS) as session,
             session.begin(),
         ):
-            await alpha_dal.bulk_create(
+            await alpha_dal.bulk_upsert_by_unique_key(
                 session=session,
                 entities=alphas,
+                unique_key="alpha_id",
             )
             await session.commit()
         await self.log.ainfo(

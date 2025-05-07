@@ -10,6 +10,7 @@ from alphapower.constants import (
     MAX_RETRY_RECURSION_DEPTH,
     RETRY_INITIAL_BACKOFF,
     RETRYABLE_HTTP_CODES,
+    LoggingEmoji,
 )
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.logging import BaseLogger
@@ -61,6 +62,7 @@ class HttpXClient(BaseLogger):
                     max_retries=self._max_retries,
                 )
 
+    @async_exception_handler
     async def _wait_for_rate_limit(self, api_name: str) -> None:
         """
         优化锁持有时间：只在访问 _rate_limit_map 时持有锁，等待期间释放锁，避免阻塞其他协程。
@@ -140,6 +142,31 @@ class HttpXClient(BaseLogger):
             await asyncio.sleep(wait_seconds)
             # 等待后重入循环，重新检查限流状态
 
+    async def _create_do_request_func(
+        self,
+        method: str,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        json: Optional[Any] = None,
+        headers: Optional[Dict[str, str]] = None,
+        basic_auth: Optional[httpx.BasicAuth] = None,  # 新增 BasicAuth 参数
+    ) -> Callable[..., Awaitable[httpx.Response]]:
+        """
+        创建请求函数，便于重试逻辑复用
+        """
+
+        async def do_request() -> httpx.Response:
+            return await self._client.request(
+                method=method,
+                url=url,
+                params=params,
+                json=json,
+                headers=headers,
+                auth=basic_auth,  # 使用 BasicAuth 参数
+            )
+
+        return do_request
+
     async def request(
         self,
         method: str,
@@ -170,38 +197,16 @@ class HttpXClient(BaseLogger):
         if headers:
             merged_headers.update(headers)
 
-        # 封装请求为可调用对象，便于重试逻辑复用
-        async def do_request() -> httpx.Response:
-            """
-            执行 HTTP 请求的局部函数，便于传递给重试函数
-            """
-            # ...参数准备与日志...
-            await self.log.adebug(
-                "发起 HTTP 请求",
-                emoji="🌐",
+        do_request: Callable[..., Awaitable[httpx.Response]] = (
+            await self._create_do_request_func(
                 method=method,
                 url=url,
-                api_name=api_name,
-                params=params,
-                json=json,
-                headers={k: v for k, v in merged_headers.items()},
-                basic_auth=bool(basic_auth),  # 记录是否使用 BasicAuth
-            )
-            request_kwargs: Dict[str, Any] = dict(
                 params=params,
                 json=json,
                 headers=merged_headers,
-                **kwargs,
+                basic_auth=basic_auth,  # 传递 BasicAuth 参数
             )
-            if basic_auth is not None:
-                request_kwargs["auth"] = basic_auth
-            # 实际发起请求
-            resp: httpx.Response = await self._client.request(
-                method,
-                url,
-                **request_kwargs,
-            )
-            return resp
+        )
 
         await self._wait_for_rate_limit(api_name)
         try:
@@ -291,13 +296,13 @@ class HttpXClient(BaseLogger):
             raise RuntimeError("请求响应状态码异常，未返回响应对象")
 
         retry_after: Optional[float] = await self._handle_response_headers(
-            resp=resp,
+            resp=ensured_resp,
             api_name=api_name,
         )
 
         if response_json:
             json_obj: Union[T, Any] = await self._handle_response_body(
-                resp=resp,
+                resp=ensured_resp,
                 response_model=response_model,
             )
 
@@ -426,12 +431,18 @@ class HttpXClient(BaseLogger):
 
         # 非成功状态码，尝试解析 JSON 错误信息
         content_type: str = resp.headers.get("content-type", "").lower()
+        await self.log.aerror(
+            event="HTTP 异常响应",
+            content_type=content_type,
+            status_code=resp.status_code,
+            emoji=LoggingEmoji.ERROR.value,
+        )
         if "application/json" in content_type:
             try:
                 json_data: Any = resp.json()
-                await self.log.adebug(
+                await self.log.aerror(
                     "HTTP 响应状态码异常，返回 JSON 错误信息",
-                    emoji="🚨",
+                    emoji=LoggingEmoji.ERROR.value,
                     status_code=resp.status_code,
                     url=str(resp.url),
                     json_data=json_data,
@@ -439,7 +450,7 @@ class HttpXClient(BaseLogger):
             except Exception as e:
                 await self.log.aerror(
                     "HTTP 响应状态码异常，JSON 解析失败",
-                    emoji="🚨",
+                    emoji=LoggingEmoji.ERROR.value,
                     status_code=resp.status_code,
                     url=str(resp.url),
                     error=str(e),
@@ -475,15 +486,19 @@ class HttpXClient(BaseLogger):
                         backoff_time * self._backoff_factor if backoff_time else 1
                     )
 
-                    return await self._handle_response_status(
-                        retried_resp,
-                        retry_on_status=retry_on_status,
-                        response_model=response_model,
-                        response_json=response_json,
-                        do_request_func=do_request_func,
-                        remain_retries=remain_retries - 1,
-                        backoff_time=next_backoff_time,
+                    ensured_resp: Optional[httpx.Response] = (
+                        await self._handle_response_status(
+                            retried_resp,
+                            retry_on_status=retry_on_status,
+                            response_model=response_model,
+                            response_json=response_json,
+                            do_request_func=do_request_func,
+                            remain_retries=remain_retries - 1,
+                            backoff_time=next_backoff_time,
+                        )
                     )
+
+                    return ensured_resp
                 except Exception as e:
                     await self.log.aerror(
                         "异步重试请求失败",
