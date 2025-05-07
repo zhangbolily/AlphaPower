@@ -1,11 +1,12 @@
 from datetime import datetime, tzinfo
-from typing import Any, AsyncIterable, Awaitable, List, Optional, Tuple
+from typing import Any, AsyncIterable, Awaitable, Dict, List, Optional, Tuple
 
 from aiostream import stream
 
 from alphapower.constants import (
     MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
     MAX_PAGE_SIZE_IN_ALPHA_LIST_QUERY,
+    LoggingEmoji,
     Status,
 )
 from alphapower.internal.decorator import async_exception_handler
@@ -15,7 +16,7 @@ from alphapower.internal.multiprocessing import (
 )
 from alphapower.manager.alpha_manager import AlphaManagerFactory
 from alphapower.manager.alpha_manager_abc import AbstractAlphaManager
-from alphapower.view.alpha import AlphaView
+from alphapower.view.alpha import AggregateDataView, AlphaView
 
 from .alpha_abc import AbstractAlphaService
 
@@ -34,15 +35,16 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
 
     async def sync_alphas(
         self,
-        competition: Optional[str],
-        date_created_gt: Optional[datetime],
-        date_created_lt: Optional[datetime],
         tz: tzinfo,
-        hidden: Optional[bool],
-        name: Optional[str],
-        status_eq: Optional[Status],
-        status_ne: Optional[Status],
+        competition: Optional[str] = None,
+        date_created_gt: Optional[datetime] = None,
+        date_created_lt: Optional[datetime] = None,
+        hidden: Optional[bool] = None,
+        name: Optional[str] = None,
+        status_eq: Optional[Status] = None,
+        status_ne: Optional[Status] = None,
         concurrency: int = 1,
+        aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -50,9 +52,14 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
         如果单次查询的 alphas_count 超过 MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY，
         则对时间范围进行二分查找，找到合适的区间进行同步。
         """
+        await self.log.ainfo(
+            event=f"进入 {self.sync_alphas.__qualname__}",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
         await self.log.adebug(
-            event="进入方法",
-            message=f"进入 {self.sync_alphas.__qualname__} 方法",
+            event=f"{self.sync_alphas.__qualname__} 入参",
+            method=self.sync_alphas.__qualname__,
             competition=competition,
             date_created_gt=date_created_gt,
             date_created_lt=date_created_lt,
@@ -62,16 +69,15 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
             status_eq=status_eq,
             status_ne=status_ne,
             concurrency=concurrency,
-            emoji="🔍",
+            emoji=LoggingEmoji.DEBUG.value,
         )
 
         await self.log.adebug(
             event="初始化时间范围",
-            message=(
-                f"初始化时间范围，competition={competition}, "
-                f"date_created_gt={date_created_gt}, date_created_lt={date_created_lt}"
-            ),
-            emoji="⏰",
+            competition=competition,
+            date_created_gt=date_created_gt,
+            date_created_lt=date_created_lt,
+            emoji=LoggingEmoji.DATETIME.value,
         )
 
         if not date_created_gt:
@@ -93,23 +99,19 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
         if date_created_gt >= date_created_lt:
             await self.log.aerror(
                 event="时间范围错误",
-                message=(
-                    f"开始时间 {date_created_gt} 大于等于结束时间 {date_created_lt}，"
-                    f"无法继续执行。"
-                ),
+                message="开始时间必须小于结束时间",
                 date_created_gt=date_created_gt,
                 date_created_lt=date_created_lt,
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
             )
             raise ValueError("开始时间必须小于结束时间")
 
         await self.log.ainfo(
             event="开始同步",
-            message=(
-                f"开始同步 alphas 数据，competition={competition}, "
-                f"date_created_gt={date_created_gt}, date_created_lt={date_created_lt}"
-            ),
-            emoji="🔄",
+            competition=competition,
+            date_created_gt=date_created_gt,
+            date_created_lt=date_created_lt,
+            emoji=LoggingEmoji.SYNC.value,
         )
 
         # 使用非递归方式进行时间范围的二分查找
@@ -130,28 +132,46 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                         **kwargs,
                     )
                 )
+
+                await self.log.ainfo(
+                    event="筛选条件查询数量",
+                    alphas_count=alphas_count,
+                    date_created_gt=current_gt,
+                    date_created_lt=current_lt,
+                    competition=competition,
+                    hidden=hidden,
+                    name=name,
+                    status_eq=status_eq,
+                    status_ne=status_ne,
+                    emoji=LoggingEmoji.INFO.value,
+                )
+
             except Exception as e:
                 await self.log.aerror(
                     event="查询失败",
-                    message=(
-                        f"查询时间范围 {current_gt} - {current_lt} 时发生错误：{e}\n"
-                        f"competition={competition}, hidden={hidden}, name={name}, "
-                        f"status_eq={status_eq}, status_ne={status_ne}"
-                    ),
+                    message="查询时间范围时发生错误",
                     date_created_gt=current_gt,
                     date_created_lt=current_lt,
-                    emoji="❌",
+                    competition=competition,
+                    hidden=hidden,
+                    name=name,
+                    status_eq=status_eq,
+                    status_ne=status_ne,
+                    error=str(e),
+                    emoji=LoggingEmoji.ERROR.value,
                 )
                 raise
 
             if alphas_count == 0:
                 await self.log.adebug(
                     event="无数据",
-                    message=(
-                        f"时间范围 {current_gt} - {current_lt} 内无 alphas 数据，"
-                        f"competition={competition}, hidden={hidden}, name={name}"
-                    ),
-                    emoji="ℹ️",
+                    message="时间范围内无 alphas 数据",
+                    date_created_gt=current_gt,
+                    date_created_lt=current_lt,
+                    competition=competition,
+                    hidden=hidden,
+                    name=name,
+                    emoji=LoggingEmoji.INFO.value,
                 )
                 continue
 
@@ -159,18 +179,18 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 if date_created_gt == datetime.min or date_created_lt == datetime.max:
                     # 如果时间范围已经是最小或最大，则无法进一步二分
                     await self.log.aerror(
-                        "时间范围过大",
-                        message=f"时间范围 {current_gt} - {current_lt} 超过限制，"
-                        f"且其他参数筛选结果数量为 {alphas_count}，超过限制数量 {MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY}，"
-                        f"无法进行时间范围二分减小筛选范围。",
+                        event="时间范围过大",
+                        message="时间范围超过限制，无法进一步二分",
+                        date_created_gt=current_gt,
+                        date_created_lt=current_lt,
                         competition=competition,
-                        date_created_gt=date_created_gt,
-                        date_created_lt=date_created_lt,
                         hidden=hidden,
                         name=name,
                         status_eq=status_eq,
                         status_ne=status_ne,
-                        emoji="❌",
+                        alphas_count=alphas_count,
+                        max_count=MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
+                        emoji=LoggingEmoji.ERROR.value,
                     )
                     raise ValueError(
                         f"时间范围 {date_created_gt} - {date_created_lt} 超过限制，"
@@ -217,62 +237,102 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                     alphas_view: List[AlphaView] = [
                         alpha for page in await pages_stream for alpha in page
                     ]
-                    await self.alpha_manager.bulk_save_alpha_to_db(alphas_view=alphas_view)
+
+                    if aggregate_data_only:
+                        alpha_ids: List[str] = []
+                        in_sample_view_map: Dict[str, Optional[AggregateDataView]] = {}
+                        out_sample_view_map: Dict[str, Optional[AggregateDataView]] = {}
+                        train_view_map: Dict[str, Optional[AggregateDataView]] = {}
+                        test_view_map: Dict[str, Optional[AggregateDataView]] = {}
+                        prod_view_map: Dict[str, Optional[AggregateDataView]] = {}
+
+                        for alpha in alphas_view:
+                            alpha_ids.append(alpha.id)
+                            in_sample_view_map[alpha.id] = alpha.in_sample
+                            out_sample_view_map[alpha.id] = alpha.out_sample
+                            train_view_map[alpha.id] = alpha.train
+                            test_view_map[alpha.id] = alpha.test
+                            prod_view_map[alpha.id] = alpha.prod
+
+                        await self.log.ainfo(
+                            event="同步样本聚合数据字段",
+                            alpha_ids=alpha_ids,
+                            emoji=LoggingEmoji.INFO.value,
+                        )
+
+                        await self.alpha_manager.bulk_save_aggregate_data_to_db(
+                            alpha_ids=alpha_ids,
+                            in_sample_view_map=in_sample_view_map,
+                            out_sample_view_map=out_sample_view_map,
+                            train_view_map=train_view_map,
+                            test_view_map=test_view_map,
+                            prod_view_map=prod_view_map,
+                        )
+                    else:
+                        await self.alpha_manager.bulk_save_alpha_to_db(
+                            alphas_view=alphas_view
+                        )
                 except Exception as e:
                     await self.log.aerror(
                         event="同步失败",
-                        message=(
-                            f"时间范围 {current_gt} - {current_lt} 同步时发生错误：{e}\n"
-                            f"competition={competition}, hidden={hidden}, name={name}, "
-                            f"status_eq={status_eq}, status_ne={status_ne}"
-                        ),
                         date_created_gt=current_gt,
                         date_created_lt=current_lt,
-                        emoji="❌",
+                        competition=competition,
+                        hidden=hidden,
+                        name=name,
+                        status_eq=status_eq,
+                        status_ne=status_ne,
+                        error=str(e),
+                        emoji=LoggingEmoji.ERROR.value,
                     )
                     raise
 
                 await self.log.ainfo(
                     event="同步完成",
-                    current_gt=current_gt,
-                    current_lt=current_lt,
+                    date_created_gt=current_gt,
+                    date_created_lt=current_lt,
                     alphas_count=alphas_count,
-                    alphas_view_count=len(alphas_view),
-                    emoji="✅",
+                    synced_count=len(alphas_view),
+                    emoji=LoggingEmoji.FINISHED.value,
                 )
 
         await self.log.ainfo(
-            event="方法执行完成",
-            qualname=self.sync_alphas.__qualname__,
-            competition=competition,
-            date_created_gt=date_created_gt,
-            date_created_lt=date_created_lt,
-            alphas_count=alphas_count,
-            emoji="✅",
+            event=f"退出 {self.sync_alphas.__qualname__}",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
 
     @async_exception_handler
     async def sync_alphas_in_ranges(
         self,
-        competition: Optional[str],
-        created_time_ranges: List[Tuple[datetime, datetime]],
         tz: tzinfo,
-        hidden: Optional[bool],
-        name: Optional[str],
-        status_eq: Optional[Status],
-        status_ne: Optional[Status],
+        competition: Optional[str] = None,
+        created_time_ranges: List[Tuple[datetime, datetime]] = [],
+        hidden: Optional[bool] = None,
+        name: Optional[str] = None,
+        status_eq: Optional[Status] = None,
+        status_ne: Optional[Status] = None,
+        aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
         """
         同步多个时间范围内的 alphas 数据。
         """
         await self.log.ainfo(
-            event="开始同步多个时间范围",
-            message="开始同步多个时间范围内的 alphas 数据",
-            qualname=self.sync_alphas_in_ranges.__qualname__,
+            event=f"进入 {self.sync_alphas_in_ranges.__qualname__}",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self.sync_alphas_in_ranges.__qualname__} 入参",
+            method=self.sync_alphas_in_ranges.__qualname__,
             competition=competition,
             created_time_ranges=created_time_ranges,
-            emoji="🔄",
+            tz=tz,
+            hidden=hidden,
+            name=name,
+            status_eq=status_eq,
+            status_ne=status_ne,
+            aggregate_data_only=aggregate_data_only,
+            emoji=LoggingEmoji.DEBUG.value,
         )
 
         # Implementation of the synchronization logic goes here.
@@ -286,16 +346,24 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 name=name,
                 status_eq=status_eq,
                 status_ne=status_ne,
+                aggregate_data_only=aggregate_data_only,
                 **kwargs,
             )
 
         await self.log.ainfo(
-            event="方法执行完成",
-            message=(
-                f"{self.sync_alphas_in_ranges.__qualname__} 方法执行完成，"
-                f"competition={competition}, 同步的时间范围数量={len(created_time_ranges)}"
-            ),
-            emoji="✅",
+            event="多个时间范围同步完成",
+            created_time_ranges=created_time_ranges,
+            competition=competition,
+            hidden=hidden,
+            name=name,
+            status_eq=status_eq,
+            status_ne=status_ne,
+            emoji=LoggingEmoji.FINISHED.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.sync_alphas_in_ranges.__qualname__}",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
 
 
@@ -304,25 +372,67 @@ class AlphaServiceFactory(BaseProcessSafeFactory[AbstractAlphaService]):
     Factory class for creating AlphaService instances.
     """
 
-    def __init__(self, alpha_manager_factory: AlphaManagerFactory) -> None:
+    def __init__(
+        self, alpha_manager_factory: AlphaManagerFactory, **kwargs: Any
+    ) -> None:
         """
         Initialize the factory with an AlphaManager instance.
         """
-        self.alpha_manager: Optional[AbstractAlphaManager] = None
-        self.alpha_manager_factory: AlphaManagerFactory = alpha_manager_factory
+        super().__init__(**kwargs)
+        self._alpha_manager: Optional[AbstractAlphaManager] = None
+        self._alpha_manager_factory: AlphaManagerFactory = alpha_manager_factory
 
-    async def _dependency_factories(self) -> dict[str, BaseProcessSafeFactory]:
-        return {"alpha_manager": self.alpha_manager_factory}
+    def __getstate__(self) -> Dict[str, Any]:
+        state: Dict[str, Any] = super().__getstate__()
+        state.pop("_alpha_manager", None)
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        self._alpha_manager = None
+
+    async def _dependency_factories(self) -> Dict[str, BaseProcessSafeFactory]:
+        await self.log.ainfo(
+            event=f"进入 {self._dependency_factories.__qualname__}",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        factories: Dict[str, BaseProcessSafeFactory[Any]] = {
+            "_alpha_manager": self._alpha_manager_factory
+        }
+        await self.log.ainfo(
+            event=f"退出 {self._dependency_factories.__qualname__}",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return factories
 
     async def _build(self, *args: Any, **kwargs: Any) -> AbstractAlphaService:
-        if self.alpha_manager is None:
+        await self.log.ainfo(
+            event=f"进入 {self._build.__qualname__}",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        if self._alpha_manager is None:
             await self.log.aerror(
-                f"{AbstractAlphaManager.__name__} 未初始化",
-                message=f"{AbstractAlphaManager.__name__} 依赖未注入，无法创建 {AbstractAlphaService.__name__} 实例",
-                emoji="❌",
+                event=f"{AbstractAlphaManager.__name__} 未初始化",
+                message=(
+                    f"{AbstractAlphaManager.__name__} 依赖未注入，"
+                    f"无法创建 {AbstractAlphaService.__name__} 实例"
+                ),
+                emoji=LoggingEmoji.ERROR.value,
             )
             raise ValueError(f"{AbstractAlphaManager.__name__} 未初始化")
 
-        service: AbstractAlphaService = AlphaService(alpha_manager=self.alpha_manager)
+        service: AbstractAlphaService = AlphaService(alpha_manager=self._alpha_manager)
 
+        await self.log.ainfo(
+            event=f"{AbstractAlphaService.__name__} 实例创建成功",
+            message=(
+                f"成功创建 {AbstractAlphaService.__name__} 实例，"
+                f"使用的 {AbstractAlphaManager.__name__} 工厂为 {self._alpha_manager_factory.__class__.__name__}"
+            ),
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+        await self.log.ainfo(
+            event=f"退出 {self._build.__qualname__}",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return service

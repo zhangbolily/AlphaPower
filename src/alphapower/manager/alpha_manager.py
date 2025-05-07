@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from alphapower.client.worldquant_brain_client import WorldQuantBrainClientFactory
 from alphapower.client.worldquant_brain_client_abc import AbstractWorldQuantBrainClient
 from alphapower.constants import Color, Database, Grade, LoggingEmoji, Status
 from alphapower.dal import aggregate_data_dal, alpha_dal
@@ -651,11 +652,11 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
     async def bulk_save_aggregate_data_to_db(
         self,
         alpha_ids: List[str],
-        in_sample_view_map: Optional[Dict[str, AggregateDataView]],
-        out_sample_view_map: Optional[Dict[str, AggregateDataView]],
-        train_view_map: Optional[Dict[str, AggregateDataView]],
-        test_view_map: Optional[Dict[str, AggregateDataView]],
-        prod_view_map: Optional[Dict[str, AggregateDataView]],
+        in_sample_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        out_sample_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        train_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        test_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        prod_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
     ) -> Dict[str, Dict[str, AggregateData]]:
         await self.log.ainfo(
             event=f"进入 {self.bulk_save_aggregate_data_to_db.__qualname__} 方法",
@@ -751,23 +752,35 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
 class AlphaManagerFactory(BaseProcessSafeFactory[AbstractAlphaManager]):
     def __init__(
         self,
-        brain_client_factory: BaseProcessSafeFactory,
+        brain_client_factory: WorldQuantBrainClientFactory,
         **kwargs: Any,
     ) -> None:
         """
         初始化工厂类。
         """
         super().__init__(**kwargs)
-        self.brain_client: Optional[AbstractWorldQuantBrainClient] = None
-        self.brain_client_factory: BaseProcessSafeFactory = brain_client_factory
+        self._brain_client: Optional[AbstractWorldQuantBrainClient] = None
+        self._brain_client_factory: WorldQuantBrainClientFactory = brain_client_factory
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state: Dict[str, Any] = super().__getstate__()
+        state.pop("_brain_client", None)
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        self._brain_client = None
 
     async def _dependency_factories(self) -> Dict[str, BaseProcessSafeFactory]:
         """
         返回依赖的工厂列表。
         """
-        factories = {"brain_client": self.brain_client_factory}
+        factories: Dict[str, BaseProcessSafeFactory] = {
+            "_brain_client": self._brain_client_factory
+        }
         await self.log.adebug(
-            f"{self._dependency_factories.__qualname__} 出参",
+            event=f"{self._dependency_factories.__qualname__} 出参",
+            message="依赖工厂列表生成成功",
             factories=list(factories.keys()),
             emoji=LoggingEmoji.DEBUG.value,
         )
@@ -776,30 +789,36 @@ class AlphaManagerFactory(BaseProcessSafeFactory[AbstractAlphaManager]):
     @async_exception_handler
     async def _build(self, *args: Any, **kwargs: Any) -> AbstractAlphaManager:
         await self.log.ainfo(
-            f"进入 {self._build.__qualname__} 方法",
+            event=f"进入 {self._build.__qualname__} 方法",
+            message="开始构建 AlphaManager 实例",
             emoji=LoggingEmoji.STEP_IN_FUNC.value,
         )
         await self.log.adebug(
-            f"{self._build.__qualname__} 入参",
+            event=f"{self._build.__qualname__} 入参",
+            message="构建方法参数",
             args=args,
             kwargs=kwargs,
             emoji=LoggingEmoji.DEBUG.value,
         )
 
-        if self.brain_client is None:
+        if self._brain_client is None:
             await self.log.aerror(
-                "WorldQuant Brain client 未设置", emoji=LoggingEmoji.ERROR.value
+                event="WorldQuant Brain client 未设置",
+                message="无法构建 AlphaManager 实例，缺少必要的客户端依赖",
+                emoji=LoggingEmoji.ERROR.value,
             )
             raise ValueError("WorldQuant Brain client is not set.")
 
-        manager: AbstractAlphaManager = AlphaManager(brain_client=self.brain_client)
+        manager: AbstractAlphaManager = AlphaManager(brain_client=self._brain_client)
         await self.log.adebug(
-            f"{self._build.__qualname__} 出参",
+            event=f"{self._build.__qualname__} 出参",
+            message="AlphaManager 实例构建成功",
             manager_type=type(manager).__name__,
             emoji=LoggingEmoji.DEBUG.value,
         )
         await self.log.ainfo(
-            f"退出 {self._build.__qualname__} 方法",
+            event=f"退出 {self._build.__qualname__} 方法",
+            message="完成 AlphaManager 实例构建",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return manager

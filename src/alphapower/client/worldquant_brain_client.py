@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from httpx import BasicAuth, Response
+from pydantic import Field
 
 from alphapower.client.common_view import TableView
 from alphapower.constants import (
@@ -999,14 +1000,16 @@ class WorldQuantBrainClientFactory(
     """
     工厂类，用于创建 WorldQuantBrainClient 实例。
     """
+    username: str = Field(default="")
+    password: str = Field(default="")
 
     def __init__(self, username: str, password: str, **kwargs: Any) -> None:
         """
         初始化工厂类。
         """
         super().__init__(**kwargs)
-        self._username = username
-        self._password = password
+        self.username: str = username
+        self.password: str = password
 
     async def _dependency_factories(self) -> Dict[str, BaseProcessSafeFactory]:
         """
@@ -1017,13 +1020,13 @@ class WorldQuantBrainClientFactory(
     @async_exception_handler
     async def _build(self, *args: Any, **kwargs: Any) -> AbstractWorldQuantBrainClient:
         client: AbstractWorldQuantBrainClient = WorldQuantBrainClient(
-            username=self._username,
-            password=self._password,
+            username=self.username,
+            password=self.password,
             **kwargs,
         )
         await self.log.ainfo(
             "WorldQuantBrainClient 实例已成功创建",
             emoji="✅",
-            username=self._username,
+            username=self.username,
         )
         return client

@@ -174,11 +174,11 @@ class AbstractAlphaManager(abc.ABC):
     async def bulk_save_aggregate_data_to_db(
         self,
         alpha_ids: List[str],
-        in_sample_view_map: Optional[Dict[str, AggregateDataView]],
-        out_sample_view_map: Optional[Dict[str, AggregateDataView]],
-        train_view_map: Optional[Dict[str, AggregateDataView]],
-        test_view_map: Optional[Dict[str, AggregateDataView]],
-        prod_view_map: Optional[Dict[str, AggregateDataView]],
+        in_sample_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        out_sample_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        train_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        test_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
+        prod_view_map: Optional[Dict[str, Optional[AggregateDataView]]],
     ) -> Dict[str, Dict[str, AggregateData]]:
         """
         Save aggregate data to the database in bulk.

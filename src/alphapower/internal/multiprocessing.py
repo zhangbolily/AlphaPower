@@ -2,16 +2,22 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, PrivateAttr
 from structlog.stdlib import BoundLogger
 
 from alphapower.internal.logging import get_logger
 
 
 # 进程安全、可序列化的基类，所有子类都应继承此类
-class BaseProcessSafeClass(ABC, BaseModel):
+class BaseProcessSafeClass(ABC):
     # 私有属性用于缓存日志对象，避免序列化时被 pickle
-    _log: Optional[BoundLogger] = PrivateAttr(default=None)
+    _log: Optional[BoundLogger] = None
+
+    def __init__(self, **kwargs: Any) -> None:
+        """
+        初始化方法，接收主进程中的基础变量。
+        """
+        super().__init__(**kwargs)
+        self._log = None
 
     # 懒加载日志对象，确保每个子进程独立获取
     @property
@@ -43,6 +49,7 @@ class BaseProcessSafeFactory(BaseProcessSafeClass, Generic[T]):
         """
         初始化工厂类，接收主进程中的基础变量。
         """
+        super().__init__(**kwargs)
         self._state: Dict[str, Any] = kwargs
         self._last_injected_pid: Optional[int] = None  # 记录上次注入依赖的进程 ID
 
@@ -97,7 +104,7 @@ class BaseProcessSafeFactory(BaseProcessSafeClass, Generic[T]):
                     )
 
                 dependency = await factory()  # 调用工厂方法构建依赖对象
-                self._state[name] = dependency
+                setattr(self, name, dependency)  # 将依赖对象注入当前实例
                 await self.log.adebug(
                     "成功注入依赖对象",
                     dependency_name=name,

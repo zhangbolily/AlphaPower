@@ -14,15 +14,16 @@ class AbstractAlphaService(abc.ABC):
     @abc.abstractmethod
     async def sync_alphas(
         self,
-        competition: Optional[str],
-        date_created_gt: Optional[datetime],
-        date_created_lt: Optional[datetime],
         tz: tzinfo,
-        hidden: Optional[bool],
-        name: Optional[str],
-        status_eq: Optional[Status],
-        status_ne: Optional[Status],
+        competition: Optional[str] = None,
+        date_created_gt: Optional[datetime] = None,
+        date_created_lt: Optional[datetime] = None,
+        hidden: Optional[bool] = None,
+        name: Optional[str] = None,
+        status_eq: Optional[Status] = None,
+        status_ne: Optional[Status] = None,
         concurrency: int = 1,
+        aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -33,13 +34,14 @@ class AbstractAlphaService(abc.ABC):
     @abc.abstractmethod
     async def sync_alphas_in_ranges(
         self,
-        competition: Optional[str],
-        created_time_ranges: List[Tuple[datetime, datetime]],
         tz: tzinfo,
-        hidden: Optional[bool],
-        name: Optional[str],
-        status_eq: Optional[Status],
-        status_ne: Optional[Status],
+        competition: Optional[str] = None,
+        created_time_ranges: List[Tuple[datetime, datetime]] = [],
+        hidden: Optional[bool] = None,
+        name: Optional[str] = None,
+        status_eq: Optional[Status] = None,
+        status_ne: Optional[Status] = None,
+        aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
         """

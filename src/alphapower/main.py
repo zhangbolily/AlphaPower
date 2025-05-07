@@ -14,17 +14,21 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import asyncclick as click  # 替换为 asyncclick
+import pytz
 
+from alphapower.client.worldquant_brain_client import WorldQuantBrainClientFactory
 from alphapower.constants import MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY, Status
 from alphapower.dal.session_manager import session_manager
 from alphapower.internal.logging import get_logger
 from alphapower.internal.utils import safe_async_run
+from alphapower.manager.alpha_manager import AlphaManagerFactory
+from alphapower.services.alpha import AlphaServiceFactory
+from alphapower.services.alpha_abc import AbstractAlphaService
 from alphapower.services.sync_alphas import AlphaSyncService
 from alphapower.services.sync_datafields import sync_datafields
 from alphapower.services.sync_datasets import sync_datasets
-from alphapower.services.task_worker_pool import (
-    task_start_worker_pool,
-)
+from alphapower.services.task_worker_pool import task_start_worker_pool
+from alphapower.settings import settings
 
 logger = get_logger(__name__)
 
@@ -257,6 +261,56 @@ async def datafields(
         parallel=parallel,
     )
     await logger.ainfo("数据字段同步完成。", emoji="✅")
+
+
+@sync.command()
+@click.option("--start-time", type=click.DateTime(), default=None, help="开始时间")
+@click.option("--end-time", type=click.DateTime(), default=None, help="结束时间")
+@click.option(
+    "--status",
+    default=None,
+    type=click.Choice(list(Status.__members__.keys())),
+    help="状态",
+)
+@click.option(
+    "--increamental", is_flag=True, default=False, help="增量同步，默认为全量同步"
+)
+@click.option(
+    "--aggregate-data-only",
+    is_flag=True,
+    default=False,
+    help="仅同步聚合数据，默认为 False",
+)
+@click.option("--parallel", default=5, type=int, help="并行数 默认为5")
+async def alphas_v1(
+    start_time: Optional[datetime],
+    end_time: Optional[datetime],
+    status: Optional[Status],
+    increamental: bool = False,
+    aggregate_data_only: bool = False,
+    parallel: int = 5,
+    cocurrency: int = 1,
+) -> None:
+    brain_client_factory: WorldQuantBrainClientFactory = WorldQuantBrainClientFactory(
+        username=settings.credential.username,
+        password=settings.credential.password,
+    )
+    alpha_manager_factory: AlphaManagerFactory = AlphaManagerFactory(
+        brain_client_factory=brain_client_factory,
+    )
+    alpha_service_factory: AlphaServiceFactory = AlphaServiceFactory(
+        alpha_manager_factory=alpha_manager_factory,
+    )
+
+    alpha_service: AbstractAlphaService = await alpha_service_factory()
+    await alpha_service.sync_alphas(
+        tz=pytz.timezone("US/Eastern"),
+        date_created_gt=start_time,
+        date_created_lt=end_time,
+        status_eq=status,
+        cocurrency=cocurrency,
+        aggregate_data_only=aggregate_data_only,
+    )
 
 
 @simulation.command()
