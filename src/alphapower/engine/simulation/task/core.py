@@ -18,17 +18,12 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from alphapower.client import SimulationSettingsView
-from alphapower.constants import (
-    AlphaType,
-)
+from alphapower.constants import AlphaType
 from alphapower.dal.simulation import SimulationTaskDAL
-from alphapower.entity import (
-    SimulationTask,
-    SimulationTaskStatus,
-)
+from alphapower.entity import SimulationTask, SimulationTaskStatus
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def get_task_signature(regular: str, settings: SimulationSettingsView) -> str:
@@ -151,7 +146,7 @@ async def create_simulation_tasks(
     """
     批量创建SimulationTask，并使用SimulationTaskDAL将其保存到数据库。
     """
-    dal = SimulationTaskDAL(session)
+    dal = SimulationTaskDAL()
     if len(regular) != len(settings) or len(regular) != len(priority):
         raise ValueError("regular、settings和priority的长度必须相同")
 
@@ -167,7 +162,7 @@ async def create_simulation_tasks(
         )
         for i in range(len(regular))
     ]
-    tasks = await dal.bulk_create(tasks)
+    tasks = await dal.bulk_create(tasks, session=session)
     return tasks
 
 

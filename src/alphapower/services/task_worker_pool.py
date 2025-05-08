@@ -18,6 +18,19 @@ from alphapower.internal.logging import get_logger
 logger: BoundLogger = get_logger(__name__)
 
 
+# 创建一个事件来控制优雅关闭
+shutdown_event: asyncio.Event = asyncio.Event()
+
+# 定义信号处理函数
+def handle_signal(sig: int, _: Optional[types.FrameType]) -> None:
+    # 信号处理为同步方法，使用同步日志接口
+    logger.info(
+        "收到信号，准备优雅关闭...",
+        emoji="🛑",
+        signal=sig,
+    )
+    shutdown_event.set()
+
 async def task_start_worker_pool(
     initial_workers: int = 1,
     dry_run: bool = False,
@@ -41,20 +54,8 @@ async def task_start_worker_pool(
     # TODO(Ball Chang): 优化日志格式，输出内容紧凑高效，日志级别配置合理
     """
 
-    # 创建一个事件来控制优雅关闭
-    shutdown_event: asyncio.Event = asyncio.Event()
     worker_pool: Optional[WorkerPool] = None
-
-    # 定义信号处理函数
-    def handle_signal(sig: int, _: Optional[types.FrameType]) -> None:
-        # 信号处理为同步方法，使用同步日志接口
-        logger.info(
-            "收到信号，准备优雅关闭...",
-            emoji="🛑",
-            signal=sig,
-        )
-        shutdown_event.set()
-
+    
     # 注册信号处理程序
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
