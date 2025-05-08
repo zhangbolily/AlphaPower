@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Any, List, Mapping, MutableMapping
+from typing import Any, List, Mapping, MutableMapping, Optional
 
 import structlog
 from structlog.stdlib import BoundLogger
@@ -141,14 +141,14 @@ def get_logger(
 
 
 class BaseLogger(abc.ABC):
-    _log: BoundLogger
+    _log: Optional[BoundLogger]
 
     @property
     def log(self) -> BoundLogger:
         """
         返回日志记录器实例。
         """
-        if not hasattr(self, "_log"):
+        if not hasattr(self, "_log") or self._log is None:
             self._log = get_logger(
                 module_name=f"{self.__module__}.{self.__class__.__name__}"
             )

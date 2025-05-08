@@ -1,30 +1,17 @@
 import os
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any, Dict, Generic, Optional, TypeVar
 
-from structlog.stdlib import BoundLogger
-
-from alphapower.internal.logging import get_logger
+from .logging import BaseLogger
 
 
 # 进程安全、可序列化的基类，所有子类都应继承此类
-class BaseProcessSafeClass(ABC):
-    # 私有属性用于缓存日志对象，避免序列化时被 pickle
-    _log: Optional[BoundLogger] = None
-
+class BaseProcessSafeClass(BaseLogger):
     def __init__(self, **kwargs: Any) -> None:
         """
         初始化方法，接收主进程中的基础变量。
         """
         super().__init__(**kwargs)
-        self._log = None
-
-    # 懒加载日志对象，确保每个子进程独立获取
-    @property
-    def log(self) -> BoundLogger:
-        if self._log is None:
-            self._log: BoundLogger = get_logger(f"{__name__}.{self.__class__.__name__}")
-        return self._log
 
     # 允许对象被 pickle，避免 logger 导致序列化失败
     def __getstate__(self) -> dict:

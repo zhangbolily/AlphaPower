@@ -321,6 +321,7 @@ async def alphas_v1(
         increamental=increamental,
         parallel=parallel,
         aggregate_data_only=aggregate_data_only,
+        cocurrency=cocurrency,
     )
 
 

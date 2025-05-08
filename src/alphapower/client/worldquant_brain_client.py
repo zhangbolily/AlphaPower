@@ -16,6 +16,7 @@ from alphapower.constants import (
     ENDPOINT_USER_SELF_ALPHAS,
     ENDPOINT_USER_SELF_TAGS,
     CorrelationType,
+    LoggingEmoji,
     UserPermission,
     UserRole,
 )
@@ -67,7 +68,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if self._http_client is None:
             await self.log.aerror(
                 "HTTP 客户端未初始化",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
             )
             raise ValueError("HTTP 客户端未初始化")
 
@@ -79,7 +80,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(self._http_client, HttpXClient):
             await self.log.aerror(
                 "HTTP 客户端类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=HttpXClient.__name__,
                 got=type(self._http_client).__name__,
             )
@@ -95,7 +96,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
                         self._refresh_task.cancel()
                         await self.log.ainfo(
                             "会话刷新任务已取消",
-                            emoji="🛑",
+                            emoji=LoggingEmoji.CANCELED.value,
                             username=self._username,
                         )
                         self._refresh_task = None
@@ -157,12 +158,12 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         except asyncio.CancelledError:
             await self.log.ainfo(
                 "后台任务已取消",
-                emoji="🛑",
+                emoji=LoggingEmoji.CANCELED.value,
             )
         except Exception as e:
             await self.log.aerror(
                 "后台任务刷新会话异常",
-                emoji="💥",
+                emoji=LoggingEmoji.ERROR.value,
                 error=str(e),
                 stack=traceback.format_exc(),
             )
@@ -178,7 +179,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(auth_info, AuthenticationView):
             await self.log.aerror(
                 "认证信息类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=AuthenticationView.__name__,
                 got=type(auth_info).__name__,
             )
@@ -187,7 +188,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(timestamp, datetime):
             await self.log.aerror(
                 "认证时间戳类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=datetime.__name__,
                 got=type(timestamp).__name__,
             )
@@ -199,7 +200,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         ):
             await self.log.ainfo(
                 "会话已过期",
-                emoji="⏳",
+                emoji=LoggingEmoji.EXPIRED.value,
                 timestamp=timestamp.isoformat(),
                 expiry=auth_info.token.expiry,
                 after=str(after),
@@ -207,7 +208,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             return True
         await self.log.ainfo(
             "会话未过期",
-            emoji="🕒",
+            emoji=LoggingEmoji.NOT_EXPIRED.value,
             timestamp=timestamp.isoformat(),
             expiry=auth_info.token.expiry,
             after=str(after),
@@ -229,7 +230,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         auth: BasicAuth = BasicAuth(username=username, password=password)
         await self.log.adebug(
             "准备发起认证请求",
-            emoji="🔑",
+            emoji=LoggingEmoji.AUTHORIZE.value,
             username=username,
             kwargs=kwargs,
         )
@@ -244,13 +245,13 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             )
             await self.log.adebug(
                 "认证请求返回结果",
-                emoji="📩",
+                emoji=LoggingEmoji.RESPONSE.value,
                 result_type=type(result).__name__,
             )
             if not isinstance(result, AuthenticationView):
                 await self.log.aerror(
                     "认证响应类型错误",
-                    emoji="❌",
+                    emoji=LoggingEmoji.ERROR.value,
                     expected=AuthenticationView.__name__,
                     got=type(result).__name__,
                 )
@@ -259,7 +260,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
                 )
             await self.log.ainfo(
                 "认证成功",
-                emoji="✅",
+                emoji=LoggingEmoji.SUCCESS.value,
                 username=username,
             )
             return result
@@ -267,7 +268,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             # 类型错误单独处理，便于定位模型反序列化问题
             await self.log.aerror(
                 "认证响应类型异常",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 username=username,
                 error=str(e),
                 stack=traceback.format_exc(),
@@ -277,7 +278,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             # 其他异常统一处理，堆栈信息已在 httpx_client 内部详细记录
             await self.log.aerror(
                 "认证请求异常",
-                emoji="💥",
+                emoji=LoggingEmoji.ERROR.value,
                 username=username,
                 error=str(e),
                 stack=traceback.format_exc(),
@@ -296,7 +297,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         auth: BasicAuth = BasicAuth(username=username, password=password)
         await self.log.adebug(
             "准备发起登录请求",
-            emoji="🔑",
+            emoji=LoggingEmoji.AUTHORIZE.value,
             username=username,
             kwargs=kwargs,
         )
@@ -311,13 +312,13 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             )
             await self.log.adebug(
                 "登录请求返回结果",
-                emoji="📩",
+                emoji=LoggingEmoji.RESPONSE.value,
                 result_type=type(result).__name__,
             )
             if not isinstance(result, AuthenticationView):
                 await self.log.aerror(
                     "登录响应类型错误",
-                    emoji="❌",
+                    emoji=LoggingEmoji.ERROR.value,
                     expected=AuthenticationView.__name__,
                     got=type(result).__name__,
                 )
@@ -326,14 +327,14 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
                 )
             await self.log.ainfo(
                 "登录成功",
-                emoji="✅",
+                emoji=LoggingEmoji.SUCCESS.value,
                 username=username,
             )
             return result
         except Exception as e:
             await self.log.aerror(
                 "登录请求异常",
-                emoji="💥",
+                emoji=LoggingEmoji.ERROR.value,
                 username=username,
                 error=str(e),
                 stack=traceback.format_exc(),
@@ -352,7 +353,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         """
         await self.log.adebug(
             "准备协程安全地登录",
-            emoji="🔑",
+            emoji=LoggingEmoji.AUTHORIZE.value,
             username=username,
             kwargs=kwargs,
         )
@@ -371,7 +372,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
 
             await self.log.ainfo(
                 "登录时间记录，认证信息已更新",
-                emoji="🕒",
+                emoji=LoggingEmoji.SUCCESS.value,
                 timestamp=self._authentication_info[0],
                 username=username,
             )
@@ -397,7 +398,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
                 except asyncio.CancelledError:
                     await self.log.ainfo(
                         "会话刷新任务已取消",
-                        emoji="🛑",
+                        emoji=LoggingEmoji.CANCELED.value,
                         username=self._username,
                     )
                 self._refresh_task = None
@@ -414,7 +415,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             self._stop_event.set()
             await self.log.ainfo(
                 "认证信息已清除，注销流程完成",
-                emoji="✅",
+                emoji=LoggingEmoji.FINISHED.value,
                 username=self._username,
             )
 
@@ -425,7 +426,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         """
         await self.log.ainfo(
             "获取用户 ID",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
             username=self._username,
         )
 
@@ -440,7 +441,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(response, AuthenticationView):
             await self.log.aerror(
                 "获取用户 ID 响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=AuthenticationView.__name__,
                 got=type(response).__name__,
             )
@@ -451,7 +452,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         user_id: str = response.user.id
         await self.log.ainfo(
             "获取用户 ID 成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             user_id=user_id,
         )
         return user_id
@@ -463,7 +464,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         """
         await self.log.ainfo(
             "获取用户权限",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
             username=self._username,
         )
 
@@ -478,7 +479,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(response, AuthenticationView):
             await self.log.aerror(
                 "获取用户权限响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=AuthenticationView.__name__,
                 got=type(response).__name__,
             )
@@ -489,7 +490,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         permissions: List[UserPermission] = response.permissions
         await self.log.ainfo(
             "获取用户权限成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             permissions=permissions,
         )
         return permissions
@@ -501,7 +502,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         """
         await self.log.ainfo(
             "获取用户角色",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
             username=self._username,
         )
 
@@ -516,7 +517,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(response, AuthenticationView):
             await self.log.aerror(
                 "获取用户角色响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=AuthenticationView.__name__,
                 got=type(response).__name__,
             )
@@ -532,7 +533,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
 
         await self.log.ainfo(
             "获取用户角色成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             role=role,
         )
         return role
@@ -544,7 +545,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         """
         await self.log.ainfo(
             "创建 Alpha 列表",
-            emoji="📝",
+            emoji=LoggingEmoji.CREATE.value,
             payload=payload.to_serializable_dict(),
         )
 
@@ -560,7 +561,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(response, TagView):
             await self.log.aerror(
                 "创建 Alpha 列表响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=TagView.__name__,
                 got=type(response).__name__,
             )
@@ -570,7 +571,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
 
         await self.log.ainfo(
             "创建 Alpha 列表成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             response=response,
         )
         return response
@@ -583,7 +584,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法进入，参数输出
         await self.log.ainfo(
             "进入删除 Alpha 列表方法",
-            emoji="🗑️",
+            emoji=LoggingEmoji.INFO.value,
             tag_id=tag_id,
         )
 
@@ -591,7 +592,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # DEBUG 日志：请求参数详细输出
         await self.log.adebug(
             "准备发送 DELETE 请求删除 Alpha 列表",
-            emoji="📤",
+            emoji=LoggingEmoji.DEBUG.value,
             url=f"{ENDPOINT_TAGS}/{tag_id}",
             api_name=WorldQuantBrainClient.delete_alpha_list.__qualname__,
         )
@@ -606,7 +607,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法成功退出
         await self.log.ainfo(
             "删除 Alpha 列表成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             tag_id=tag_id,
         )
 
@@ -621,7 +622,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法进入，参数输出
         await self.log.ainfo(
             "进入获取用户标签列表方法",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
             query=query.to_params(),
         )
 
@@ -654,7 +655,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             # ERROR 日志：类型错误
             await self.log.aerror(
                 "获取用户标签列表响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=SelfTagListView.__name__,
                 got=type(response).__name__,
             )
@@ -665,7 +666,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法成功退出，不打印返回参数
         await self.log.ainfo(
             "获取用户标签列表成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
         )
         # DEBUG 日志：返回参数详细输出
         await self.log.adebug(
@@ -683,7 +684,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法进入
         await self.log.ainfo(
             "进入获取用户 Alpha 概要信息方法",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
         )
 
         http_client: HttpXClient = await self.http_client()
@@ -713,7 +714,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             # ERROR 日志：类型错误
             await self.log.aerror(
                 "获取用户 Alpha 概要信息响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=UserAlphasSummaryView.__name__,
                 got=type(response).__name__,
             )
@@ -724,7 +725,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法成功退出，不打印返回参数
         await self.log.ainfo(
             "获取用户 Alpha 概要信息成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
         )
 
         # DEBUG 日志：返回参数详细输出
@@ -744,7 +745,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法进入，参数输出
         await self.log.ainfo(
             "进入获取用户 Alpha 列表方法",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
             query=query.to_params(),
         )
 
@@ -777,7 +778,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             # ERROR 日志：类型错误
             await self.log.aerror(
                 "获取用户 Alpha 列表响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=UserAlphasView.__name__,
                 got=type(response).__name__,
             )
@@ -788,7 +789,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法成功退出，不打印返回参数
         await self.log.ainfo(
             "获取用户 Alpha 列表成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
         )
         # DEBUG 日志：返回参数详细输出
         # 只打印 Alpha ID，避免输出无效信息
@@ -846,7 +847,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             # ERROR 日志：类型错误
             await self.log.aerror(
                 "更新 Alpha 属性响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=AlphaDetailView.__name__,
                 got=type(response).__name__,
             )
@@ -857,7 +858,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法成功退出，不打印返回参数
         await self.log.ainfo(
             "更新 Alpha 属性成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             alpha_id=alpha_id,
         )
         # DEBUG 日志：返回参数详细输出
@@ -889,7 +890,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法进入，参数输出
         await self.log.ainfo(
             "进入获取 Alpha 相关性方法",
-            emoji="🔍",
+            emoji=LoggingEmoji.INFO.value,
             alpha_id=alpha_id,
             correlation_type=correlation_type,
         )
@@ -923,7 +924,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
 
                 await self.log.ainfo(
                     "请求需轮询等待完成",
-                    emoji="⏳",
+                    emoji=LoggingEmoji.EXPIRED.value,
                     retry_after=retry_after,
                     override_retry_after=override_retry_after,
                     alpha_id=alpha_id,
@@ -944,7 +945,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
                 except Exception as e:
                     await self.log.aerror(
                         "响应解析失败",
-                        emoji="❌",
+                        emoji=LoggingEmoji.ERROR.value,
                         error=str(e),
                         stack=traceback.format_exc(),
                         alpha_id=alpha_id,
@@ -954,7 +955,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             else:
                 await self.log.aerror(
                     "响应类型错误",
-                    emoji="❌",
+                    emoji=LoggingEmoji.ERROR.value,
                     expected=Response.__name__,
                     got=type(response).__name__,
                     alpha_id=alpha_id,
@@ -967,7 +968,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         if not isinstance(response, TableView):
             await self.log.aerror(
                 "获取 Alpha 相关性响应类型错误",
-                emoji="❌",
+                emoji=LoggingEmoji.ERROR.value,
                 expected=TableView.__name__,
                 got=type(response).__name__,
                 alpha_id=alpha_id,
@@ -980,7 +981,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         # INFO 日志：方法成功退出
         await self.log.ainfo(
             "获取 Alpha 相关性成功",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             alpha_id=alpha_id,
             correlation_type=correlation_type,
         )
@@ -1000,6 +1001,7 @@ class WorldQuantBrainClientFactory(
     """
     工厂类，用于创建 WorldQuantBrainClient 实例。
     """
+
     username: str = Field(default="")
     password: str = Field(default="")
 
@@ -1026,7 +1028,7 @@ class WorldQuantBrainClientFactory(
         )
         await self.log.ainfo(
             "WorldQuantBrainClient 实例已成功创建",
-            emoji="✅",
+            emoji=LoggingEmoji.SUCCESS.value,
             username=self.username,
         )
         return client

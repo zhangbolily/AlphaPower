@@ -83,7 +83,6 @@ class PyramidRefView(BaseModel):
     name: str
     multiplier: float
 
-
 PyramidRefViewListAdapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
     List[PyramidRefView],
 )
@@ -270,7 +269,7 @@ class AlphaView(BaseModel):
     test: Optional[AggregateDataView] = None
     prod: Optional[AggregateDataView] = None
     competitions: Optional[List[IdNameRefView]] = None
-    themes: Optional[List[str]] = None
+    themes: Optional[List[ThemeRefView]] = None
     pyramids: Optional[List[PyramidRefView]] = None
     team: Optional[str] = None
 

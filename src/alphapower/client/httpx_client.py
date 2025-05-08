@@ -19,13 +19,21 @@ from alphapower.view.common import RateLimit
 T = TypeVar("T", bound=BaseModel)  # 泛型约束为 BaseModel 子类
 
 
+class RetrayableError(Exception):
+    """可重试异常类"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 class HttpXClient(BaseLogger):
     """HttpXClient 封装底层 HTTP 请求，支持限流重试、超时重试、JSON 反序列化、接口级本地速率限制等功能"""
 
     def __init__(
         self,
         base_url: str,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         max_retries: int = 3,
         backoff_factor: float = 1.5,
         headers: Optional[Dict[str, str]] = None,
@@ -73,32 +81,31 @@ class HttpXClient(BaseLogger):
                 rate_limit_info: Optional[tuple[RateLimit, datetime]] = (
                     self._rate_limit_map.get(api_name)
                 )
-                if rate_limit_info is None:
-                    # 没有本地限流信息，直接通过
-                    await self.log.adebug(
-                        "未找到本地速率限制信息，直接通过",
-                        emoji=LoggingEmoji.SUCCESS.value,
-                        api_name=api_name,
-                    )
-                    return
 
-                rate_limit, last_update = rate_limit_info
-                if not getattr(rate_limit, "available", False):
-                    # 限流信息不可用，跳过本地限流
-                    await self.log.awarning(
-                        "本地速率限制信息不可用，跳过限流",
-                        emoji=LoggingEmoji.WARNING.value,
-                        api_name=api_name,
-                    )
-                    return
+            if rate_limit_info is None:
+                # 没有本地限流信息，直接通过
+                await self.log.adebug(
+                    "未找到本地速率限制信息，直接通过",
+                    emoji=LoggingEmoji.SUCCESS.value,
+                    api_name=api_name,
+                )
+                return
+
+            rate_limit, last_update = rate_limit_info
+            if not getattr(rate_limit, "available", False):
+                # 限流信息不可用，跳过本地限流
+                await self.log.awarning(
+                    "本地速率限制信息不可用，跳过限流",
+                    emoji=LoggingEmoji.WARNING.value,
+                    api_name=api_name,
+                )
+                return
 
             await self.log.ainfo(
                 "检查接口本地速率限制",
                 emoji=LoggingEmoji.INFO.value,
                 api_name=api_name,
-                rate_limit_limit=rate_limit.limit,
-                rate_limit_remaining=rate_limit.remaining,
-                rate_limit_reset=rate_limit.reset,
+                rate_limit=rate_limit.model_dump(mode="json"),
             )
 
             now: float = time.time()
@@ -113,7 +120,7 @@ class HttpXClient(BaseLogger):
                     "本地速率限制额度充足，直接通过",
                     emoji=LoggingEmoji.SUCCESS.value,
                     api_name=api_name,
-                    remaining_quota=rate_limit.remaining,
+                    rate_limit=rate_limit.model_dump(mode="json"),
                 )
                 return
 
@@ -127,9 +134,7 @@ class HttpXClient(BaseLogger):
                     "接口本地速率限制额度已重置",
                     emoji=LoggingEmoji.UPDATE.value,
                     api_name=api_name,
-                    rate_limit_limit=rate_limit.limit,
-                    rate_limit_remaining=rate_limit.remaining,
-                    rate_limit_reset=rate_limit.reset,
+                    rate_limit=rate_limit.model_dump(mode="json"),
                 )
                 return
 
@@ -139,9 +144,7 @@ class HttpXClient(BaseLogger):
                 emoji=LoggingEmoji.WARNING.value,
                 wait_seconds=wait_seconds,
                 api_name=api_name,
-                rate_limit_limit=rate_limit.limit,
-                rate_limit_remaining=rate_limit.remaining,
-                rate_limit_reset=rate_limit.reset,
+                rate_limit=rate_limit.model_dump(mode="json"),
             )
             await asyncio.sleep(wait_seconds)
             # 等待后重入循环，重新检查限流状态
@@ -160,14 +163,76 @@ class HttpXClient(BaseLogger):
         """
 
         async def do_request() -> httpx.Response:
-            return await self._client.request(
+            await self.log.ainfo(
+                event="进入 do_request 函数",
+                emoji=LoggingEmoji.STEP_IN_FUNC.value,
                 method=method,
                 url=url,
-                params=params,
-                json=json,
-                headers=headers,
-                auth=basic_auth,  # 使用 BasicAuth 参数
             )
+
+            if self._client is None:
+                raise RuntimeError("HttpXClient 未初始化或已关闭，请检查代码逻辑")
+
+            try:
+                response: httpx.Response = await self._client.request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json,
+                    headers=headers,
+                    auth=basic_auth,  # 使用 BasicAuth 参数
+                )
+                return response
+            except (
+                httpx.ConnectError,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.PoolTimeout,
+            ) as e:
+                error_type = e.__class__.__name__
+                error_message = str(e)
+                log_message = {
+                    "连接错误": "连接错误",
+                    "ReadTimeout": "请求超时",
+                    "WriteTimeout": "请求写入超时",
+                }.get(error_type, "请求失败")
+
+                await self.log.aerror(
+                    log_message,
+                    emoji=LoggingEmoji.ERROR.value,
+                    exception=error_type,
+                    error=error_message,
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json,
+                    headers={k: v for k, v in headers.items()} if headers else {},
+                )
+                raise RetrayableError(log_message) from e
+            except Exception as e:
+                await self.log.aerror(
+                    "请求失败",
+                    emoji=LoggingEmoji.ERROR.value,
+                    exception=e.__class__.__name__,
+                    error=str(e),
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json,
+                    headers={k: v for k, v in headers.items()} if headers else {},
+                )
+                raise
+            finally:
+                await self.log.ainfo(
+                    event="退出 do_request 函数",
+                    emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+                    resp_code=response.status_code if "response" in locals() else None,
+                    resp_content_type=(
+                        response.headers.get("content-type")
+                        if "response" in locals()
+                        else None
+                    ),
+                )
 
         return do_request
 
@@ -185,11 +250,13 @@ class HttpXClient(BaseLogger):
         basic_auth: Optional[httpx.BasicAuth] = None,  # 新增 BasicAuth 参数
         **kwargs: Any,
     ) -> Tuple[Union[T, Any, httpx.Response], Optional[float]]:
-        """
-        通用异步请求方法，支持限流重试、超时重试、JSON 反序列化、接口级本地速率限制。
-        支持 BasicAuth（基础认证）参数传递。
-        返回值：响应内容和 retry-after（若存在）。
-        """
+        await self.log.ainfo(
+            event=f"进入 {self.request.__qualname__} 函数",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+            method=method,
+            url=url,
+        )
+
         if self._client is None:
             raise RuntimeError(
                 "HttpXClient 未初始化或已关闭，请检查代码逻辑"
@@ -213,38 +280,79 @@ class HttpXClient(BaseLogger):
         )
 
         await self._wait_for_rate_limit(api_name)
-        try:
-            resp: httpx.Response = await do_request()
-            await self.log.adebug(
-                "收到 HTTP 响应",
-                emoji=LoggingEmoji.HTTP.value,
-                status_code=resp.status_code,
-                headers={k: v for k, v in dict(resp.headers).items()},
-            )
+        remain_retries: int = self._max_retries
+        while remain_retries:
+            try:
+                resp: httpx.Response = await do_request()
+                await self.log.adebug(
+                    "收到 HTTP 响应",
+                    emoji=LoggingEmoji.HTTP.value,
+                    status_code=resp.status_code,
+                    headers={k: v for k, v in dict(resp.headers).items()},
+                )
 
-            handled_resp, retry_after = await self._handle_response(
-                resp=resp,
-                api_name=api_name,
-                retry_on_status=retry_on_status,
-                response_model=response_model,
-                response_json=response_json,
-                do_request_func=do_request,
-            )
+                handled_resp, retry_after = await self._handle_response(
+                    resp=resp,
+                    api_name=api_name,
+                    retry_on_status=retry_on_status,
+                    response_model=response_model,
+                    response_json=response_json,
+                    do_request_func=do_request,
+                )
 
-            return handled_resp, retry_after
-        except Exception as e:
-            await self.log.aerror(
-                "请求失败",
-                emoji=LoggingEmoji.ERROR.value,
-                error=str(e),
-                api_name=api_name,
-                method=method,
-                url=url,
-                params=params,
-                json=json,
-                headers={k: v for k, v in merged_headers.items()},
-            )
-            raise e
+                return handled_resp, retry_after
+            except RetrayableError as e:
+                remain_retries -= 1
+                await self.log.aerror(
+                    "可重试错误",
+                    emoji=LoggingEmoji.ERROR.value,
+                    error=str(e),
+                    api_name=api_name,
+                    remain_retries=remain_retries,
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json,
+                    headers={k: v for k, v in merged_headers.items()},
+                )
+                continue
+            except Exception as e:
+                await self.log.aerror(
+                    "请求失败",
+                    emoji=LoggingEmoji.ERROR.value,
+                    error=str(e),
+                    api_name=api_name,
+                    method=method,
+                    url=url,
+                    params=params,
+                    json=json,
+                    headers={k: v for k, v in merged_headers.items()},
+                )
+                raise e
+            finally:
+                await self.log.ainfo(
+                    event=f"退出 {self.request.__qualname__} 函数",
+                    emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+                    resp_code=resp.status_code if "resp" in locals() else None,
+                    resp_content_type=(
+                        resp.headers.get("content-type") if "resp" in locals() else None
+                    ),
+                )
+
+        await self.log.aerror(
+            "请求失败，所有重试次数已用尽",
+            emoji=LoggingEmoji.ERROR.value,
+            api_name=api_name,
+            method=method,
+            url=url,
+            params=params,
+            json=json,
+            headers={k: v for k, v in merged_headers.items()} if merged_headers else {},
+            retry_on_status=retry_on_status,
+            response_model=response_model,
+            response_json=response_json,
+        )
+        raise RuntimeError("请求失败，所有重试次数已用尽")  # 中文异常
 
     @staticmethod
     def _get_retry_after(resp: httpx.Response) -> Optional[float]:
@@ -342,6 +450,9 @@ class HttpXClient(BaseLogger):
                 await self.log.aerror(
                     "模型反序列化失败",
                     emoji=LoggingEmoji.ERROR.value,
+                    response_model=response_model.__name__,
+                    content_type=resp.headers.get("content-type"),
+                    content_length=resp.headers.get("content-length"),
                     error=str(e),
                     data=(
                         resp.text[:200] + "..." if len(resp.text) > 200 else resp.text
@@ -475,7 +586,7 @@ class HttpXClient(BaseLogger):
 
         # 可重试状态码，递归异步重试
         if resp.status_code in retry_on_status:
-            if remain_retries > 0:
+            while remain_retries > 0:
                 await self.log.awarning(
                     "检测到可重试状态码，准备异步重试",
                     emoji=LoggingEmoji.WARNING.value,
@@ -503,6 +614,20 @@ class HttpXClient(BaseLogger):
                     )
 
                     return ensured_resp
+                except RetrayableError as e:
+                    await self.log.aerror(
+                        "可重试错误",
+                        emoji=LoggingEmoji.ERROR.value,
+                        error=str(e),
+                        incomeing_resp_body=resp.text,
+                        incomeing_resp_status_code=resp.status_code,
+                        incomeing_resp_url=str(resp.url),
+                        incomeing_resp_headers={k: v for k, v in resp.headers.items()},
+                    )
+                    # 继续尝试重试请求
+                    backoff_time = next_backoff_time
+                    remain_retries -= 1
+                    continue
                 except Exception as e:
                     await self.log.aerror(
                         "异步重试请求失败",

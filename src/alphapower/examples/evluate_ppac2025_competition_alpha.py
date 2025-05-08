@@ -32,15 +32,10 @@ from alphapower.engine.evaluate.base_evaluate_stages import (
     InSampleChecksEvaluateStage,
 )
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
-from alphapower.engine.evaluate.correlation_calculator import (
-    CorrelationCalculator,
-)
+from alphapower.engine.evaluate.correlation_calculator import CorrelationCalculator
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.engine.evaluate.scoring_evaluate_stage import ScoringEvaluateStage
-from alphapower.entity import (
-    Alpha,
-    EvaluateRecord,
-)
+from alphapower.entity import Alpha, EvaluateRecord
 from alphapower.internal.logging import get_logger
 from alphapower.manager.record_sets_manager import RecordSetsManager
 from alphapower.settings import settings
@@ -203,12 +198,12 @@ if __name__ == "__main__":
             check_pass_result_map: Dict[
                 SubmissionCheckType, Set[SubmissionCheckResult]
             ] = {
-                SubmissionCheckType.MATCHES_COMPETITION: {
-                    SubmissionCheckResult.PASS,
+                SubmissionCheckType.SUB_UNIVERSE_SHARPE: {
+                    SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
                 },
-                SubmissionCheckType.CONCENTRATED_WEIGHT: {
-                    SubmissionCheckResult.PASS,
+                SubmissionCheckType.IS_LADDER_SHARPE: {
+                    SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
                 },
             }

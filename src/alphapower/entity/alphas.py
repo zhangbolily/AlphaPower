@@ -54,6 +54,8 @@ from alphapower.view.alpha import (
     StringListAdapter,
     SubmissionCheckView,
     SubmissionCheckViewListAdapter,
+    ThemeRefView,
+    ThemeRefViewListAdapter,
 )
 
 # pylint: disable=E1136
@@ -417,9 +419,7 @@ class Alpha(Base):
         classifications: Optional[List[ClassificationRefView]] = kwargs.pop(
             "classifications", None
         )
-        competitions: Optional[List[IdNameRefView]] = kwargs.pop(
-            "competitions", None
-        )
+        competitions: Optional[List[IdNameRefView]] = kwargs.pop("competitions", None)
         tags = kwargs.pop("tags", None)
 
         super().__init__(**kwargs)
@@ -476,18 +476,20 @@ class Alpha(Base):
             self._competitions_view_cache = competitions
 
     @hybrid_property
-    def themes(self) -> List[str]:
+    def themes(self) -> List[ThemeRefView]:
         if self._themes is None:
             return []
-        themes: List[str] = StringListAdapter.validate_python(self._themes)
+        themes: List[ThemeRefView] = ThemeRefViewListAdapter.validate_python(
+            self._themes
+        )
         return themes
 
     @themes.setter  # type: ignore[no-redef]
-    def themes(self, value: Optional[List[str]]) -> None:
+    def themes(self, value: Optional[List[ThemeRefView]]) -> None:
         if value is None:
             self._themes = None
         else:
-            self._themes = StringListAdapter.dump_python(
+            self._themes = ThemeRefViewListAdapter.dump_python(
                 value,
                 mode="json",
             )

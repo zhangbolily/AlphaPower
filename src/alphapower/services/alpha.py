@@ -16,7 +16,7 @@ from alphapower.internal.multiprocessing import (
 )
 from alphapower.manager.alpha_manager import AlphaManagerFactory
 from alphapower.manager.alpha_manager_abc import AbstractAlphaManager
-from alphapower.view.alpha import AggregateDataView, AlphaView
+from alphapower.view.alpha import AlphaView
 
 from .alpha_abc import AbstractAlphaService
 
@@ -211,20 +211,65 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 page_count: int = (alphas_count + page_size - 1) // page_size
 
                 @async_exception_handler
-                async def fetch_page(page: int, *args: Any) -> List[AlphaView]:
-                    return await self.alpha_manager.fetch_alphas_from_platform(
-                        competition=competition,
-                        date_created_gt=current_gt,
-                        date_created_lt=current_lt,
-                        hidden=hidden,
-                        name=name,
-                        status_eq=status_eq,
-                        status_ne=status_ne,
-                        limit=page_size,
-                        offset=page * page_size,
-                        order="dateCreated",
-                        **kwargs,
+                async def process_page(page: int, *args: Any) -> None:
+                    alphas_view: List[AlphaView] = (
+                        await self.alpha_manager.fetch_alphas_from_platform(
+                            competition=competition,
+                            date_created_gt=current_gt,
+                            date_created_lt=current_lt,
+                            hidden=hidden,
+                            name=name,
+                            status_eq=status_eq,
+                            status_ne=status_ne,
+                            limit=page_size,
+                            offset=page * page_size,
+                            order="dateCreated",
+                            **kwargs,
+                        )
                     )
+
+                    await self.log.ainfo(
+                        event="处理页面数据",
+                        page=page,
+                        count=len(alphas_view),
+                        emoji=LoggingEmoji.PROCESSING.value,
+                    )
+
+                    if aggregate_data_only:
+                        await self.alpha_manager.bulk_save_aggregate_data_to_db(
+                            alpha_ids=[alpha.id for alpha in alphas_view],
+                            in_sample_view_map={
+                                alpha.id: alpha.in_sample for alpha in alphas_view
+                            },
+                            out_sample_view_map={
+                                alpha.id: alpha.out_sample for alpha in alphas_view
+                            },
+                            train_view_map={
+                                alpha.id: alpha.train for alpha in alphas_view
+                            },
+                            test_view_map={
+                                alpha.id: alpha.test for alpha in alphas_view
+                            },
+                            prod_view_map={
+                                alpha.id: alpha.prod for alpha in alphas_view
+                            },
+                        )
+                        await self.log.ainfo(
+                            event="聚合数据保存成功",
+                            page=page,
+                            count=len(alphas_view),
+                            emoji=LoggingEmoji.SAVE.value,
+                        )
+                    else:
+                        await self.alpha_manager.bulk_save_alpha_to_db(
+                            alphas_view=alphas_view
+                        )
+                        await self.log.ainfo(
+                            event="数据保存成功",
+                            page=page,
+                            count=len(alphas_view),
+                            emoji=LoggingEmoji.SAVE.value,
+                        )
 
                 try:
                     # 使用 aiostream 按并发度请求数据
@@ -232,56 +277,9 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                         range(page_count)
                     )
                     pages_stream: Awaitable = stream.map(
-                        page_param_stream, fetch_page, task_limit=cocurrency
+                        page_param_stream, process_page, task_limit=cocurrency
                     )
-                    alphas_view: List[AlphaView] = []
-                    async with pages_stream.stream() as page_stream:  # type: ignore
-                        async for page_result in page_stream:
-                            alphas_view.extend(page_result)
-
-                    if aggregate_data_only:
-                        alpha_ids: List[str] = []
-                        in_sample_view_map: Dict[str, Optional[AggregateDataView]] = {}
-                        out_sample_view_map: Dict[str, Optional[AggregateDataView]] = {}
-                        train_view_map: Dict[str, Optional[AggregateDataView]] = {}
-                        test_view_map: Dict[str, Optional[AggregateDataView]] = {}
-                        prod_view_map: Dict[str, Optional[AggregateDataView]] = {}
-
-                        for alpha in alphas_view:
-                            alpha_ids.append(alpha.id)
-                            in_sample_view_map[alpha.id] = alpha.in_sample
-                            out_sample_view_map[alpha.id] = alpha.out_sample
-                            train_view_map[alpha.id] = alpha.train
-                            test_view_map[alpha.id] = alpha.test
-                            prod_view_map[alpha.id] = alpha.prod
-
-                        await self.log.ainfo(
-                            event="同步样本聚合数据字段",
-                            alpha_ids=alpha_ids,
-                            emoji=LoggingEmoji.INFO.value,
-                        )
-
-                        await self.alpha_manager.bulk_save_aggregate_data_to_db(
-                            alpha_ids=alpha_ids,
-                            in_sample_view_map=in_sample_view_map,
-                            out_sample_view_map=out_sample_view_map,
-                            train_view_map=train_view_map,
-                            test_view_map=test_view_map,
-                            prod_view_map=prod_view_map,
-                        )
-                    else:
-                        batch_size = 1000
-                        for i in range(0, len(alphas_view), batch_size):
-                            batch = alphas_view[i:i + batch_size]
-                            await self.alpha_manager.bulk_save_alpha_to_db(
-                                alphas_view=batch
-                            )
-                            await self.log.ainfo(
-                                event="批量保存 alphas 数据",
-                                batch_size=len(batch),
-                                batch_index=i,
-                                emoji=LoggingEmoji.SAVE.value,
-                            )
+                    await stream.list(pages_stream)  # type: ignore
                 except Exception as e:
                     await self.log.aerror(
                         event="同步失败",
@@ -302,7 +300,6 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                     date_created_gt=current_gt,
                     date_created_lt=current_lt,
                     alphas_count=alphas_count,
-                    synced_count=len(alphas_view),
                     emoji=LoggingEmoji.FINISHED.value,
                 )
 
@@ -322,6 +319,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
         aggregate_data_only: bool = False,
+        cocurrency: int = 1,
         **kwargs: Any,
     ) -> None:
         """
@@ -357,6 +355,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 status_eq=status_eq,
                 status_ne=status_ne,
                 aggregate_data_only=aggregate_data_only,
+                cocurrency=cocurrency,
                 **kwargs,
             )
 
