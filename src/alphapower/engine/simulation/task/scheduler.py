@@ -4,10 +4,11 @@
 
 import asyncio
 from bisect import insort
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from structlog.stdlib import BoundLogger
 
+from alphapower.constants import LoggingEmoji
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.logging import get_logger
 
@@ -37,6 +38,9 @@ class PriorityScheduler(AbstractScheduler):
         self.tasks: List[SimulationTask] = sorted(
             tasks or [], key=lambda task: -int(task.priority)
         )
+        self.task_ids: Dict[int, SimulationTask] = {
+            task.id: task for task in self.tasks
+        }  # 用来做任务去重
         self.task_provider: Optional[AbstractTaskProvider] = task_provider
         self.settings_group_map: Dict[str, List[SimulationTask]] = {}  # 新增映射关系
         self.task_fetch_size: int = task_fetch_size
@@ -62,13 +66,14 @@ class PriorityScheduler(AbstractScheduler):
                 task.cancel()
         self._post_async_tasks.clear()
 
-    async def fetch_tasks_from_provider(self) -> None:
+    async def fetch_tasks_from_provider(self, count: int, **kwargs: Any) -> None:
         """
         从任务提供者获取任务并添加到任务列表，同时更新映射关系。
         """
         if self.task_provider:
             new_tasks: List[SimulationTask] = await self.task_provider.fetch_tasks(
-                count=self.task_fetch_size
+                count=count,
+                **kwargs,
             )
             if new_tasks:
                 await logger.adebug(
@@ -85,6 +90,17 @@ class PriorityScheduler(AbstractScheduler):
         :param tasks: SimulationTask 对象的列表
         """
         for task in tasks:
+            if task.id in self.task_ids:
+                # 如果任务 ID 已存在，则跳过添加
+                logger.warning(
+                    event="跳过重复任务",
+                    task_id=task.id,
+                    message="任务 ID 已存在，跳过添加",
+                    emoji=LoggingEmoji.WARNING.value,
+                )
+                continue
+            self.task_ids[task.id] = task  # 添加到任务 ID 映射
+
             insort(self.tasks, task, key=lambda t: -int(t.priority))  # 插入时保持有序
             group_key: str = str(task.settings_group_key)
             if group_key not in self.settings_group_map:
@@ -103,6 +119,15 @@ class PriorityScheduler(AbstractScheduler):
             if not self.settings_group_map[group_key]:
                 del self.settings_group_map[group_key]
         self.tasks.remove(task)
+        if task.id not in self.task_ids:
+            logger.warning(
+                event="跳过删除任务",
+                task_id=task.id,
+                message="任务 ID 不存在，跳过删除",
+                emoji=LoggingEmoji.WARNING.value,
+            )
+            return
+        del self.task_ids[task.id]  # 从任务 ID 映射中删除
 
     async def has_tasks(self) -> bool:
         """
@@ -110,7 +135,7 @@ class PriorityScheduler(AbstractScheduler):
         :return: 如果有任务返回 True，否则返回 False
         """
         if not self.tasks:
-            await self.fetch_tasks_from_provider()
+            await self.fetch_tasks_from_provider(count=self.task_fetch_size)
         return len(self.tasks) > 0
 
     def set_task_provider(self, task_provider: AbstractTaskProvider) -> None:
@@ -170,6 +195,64 @@ class PriorityScheduler(AbstractScheduler):
         for task in batch:
             self.remove_task(task)  # 使用 remove_task 确保映射关系更新
 
+        if len(batch) < batch_size:
+            await logger.awarning(
+                event="调度任务不足",
+                requested_batch_size=batch_size,
+                actual_batch_size=len(batch),
+                message="请求的批量大小大于实际可调度的任务数量，尝试干预调度",
+                emoji=LoggingEmoji.WARNING.value,
+            )
+
+            insufficient_count: int = batch_size - len(batch)
+            await self.fetch_tasks_from_provider(
+                count=insufficient_count, settings_group_key=target_group_key
+            )
+
+            supplemental_tasks: List[SimulationTask] = self.settings_group_map[
+                target_group_key
+            ][:insufficient_count]
+
+            for task in supplemental_tasks:
+                self.remove_task(task)
+
+            if len(supplemental_tasks) < insufficient_count:
+                await logger.awarning(
+                    event="补充任务不足",
+                    requested_count=insufficient_count,
+                    actual_count=len(supplemental_tasks),
+                    message="请求的补充任务数量大于实际可用的任务数量",
+                    emoji=LoggingEmoji.WARNING.value,
+                )
+            batch.extend(supplemental_tasks)
+            await logger.ainfo(
+                event="调度干预结束",
+                requested_count=batch_size,
+                insufficient_count=insufficient_count,
+                actual_count=len(batch),
+                emoji=LoggingEmoji.FINISHED.value,
+            )
+
+            # 出现这种情况，判断一下是否需要补充任务到队列
+            if len(self.tasks) < self.task_fetch_size:
+                await logger.awarning(
+                    event="任务队列分组数量不足",
+                    message="出现任务队列分组数量不足的情况，调度干预已完成，尝试补充任务缓解后续调度压力",
+                    current_task_count=len(self.tasks),
+                    required_task_count=self.task_fetch_size,
+                    emoji=LoggingEmoji.WARNING.value,
+                )
+                await self.fetch_tasks_from_provider(
+                    count=self.task_fetch_size,
+                )
+                await logger.ainfo(
+                    event="任务队列补充完成",
+                    message="任务队列补充完成",
+                    current_task_count=len(self.tasks),
+                    required_task_count=self.task_fetch_size,
+                    emoji=LoggingEmoji.FINISHED.value,
+                )
+
         # 更新低优先级任务的调度计数
         self.low_priority_counter[target_group_key] += 1
 
@@ -180,7 +263,7 @@ class PriorityScheduler(AbstractScheduler):
         调度前的处理，用于检查是否有任务待调度。
         """
         if not self.tasks:
-            await self.fetch_tasks_from_provider()
+            await self.fetch_tasks_from_provider(count=self.task_fetch_size)
 
         # 调度前检查并提升低优先级任务
         self.promote_low_priority_tasks()

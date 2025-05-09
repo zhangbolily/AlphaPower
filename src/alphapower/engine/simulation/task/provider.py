@@ -7,7 +7,7 @@
 """
 
 import asyncio
-from typing import List, Optional, Set
+from typing import Any, List, Optional, Set
 
 from structlog.stdlib import BoundLogger
 
@@ -53,6 +53,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
         self,
         count: int = 10,  # 设置默认值
         priority: Optional[int] = None,
+        **kwargs: Any,
     ) -> List[SimulationTask]:
         """
         从数据库中获取任务，支持跳采样。
@@ -88,6 +89,7 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                     },
                     limit=rem * self._sample_rate,
                     offset=self.cursor,
+                    **kwargs,
                 )
 
                 if not task_ids:  # 如果没有更多任务，提前退出

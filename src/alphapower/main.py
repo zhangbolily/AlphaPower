@@ -313,6 +313,13 @@ async def alphas_v1(
             current_end_time = min(next_start_time, end_time)
             created_time_ranges.append((current_start_time, current_end_time))
             current_start_time = next_start_time
+    else:
+        # TODO: 临时解决方案，后续需要改进
+        created_time_ranges.append((datetime.fromtimestamp(0), datetime.now()))
+        await logger.ainfo(
+            "没有提供开始时间和结束时间，使用默认值。",
+            emoji="⚠️",
+        )
     
     await alpha_service.sync_alphas_in_ranges(
         tz=pytz.timezone("US/Eastern"),

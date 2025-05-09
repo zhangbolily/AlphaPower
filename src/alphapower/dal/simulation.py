@@ -83,7 +83,9 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             所有待处理任务的列表。
         """
-        return await self.deprecated_find_by(session=session, status=SimulationTaskStatus.PENDING)
+        return await self.deprecated_find_by(
+            session=session, status=SimulationTaskStatus.PENDING
+        )
 
     async def find_running_tasks(
         self, session: Optional[AsyncSession] = None
@@ -99,7 +101,9 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             所有正在运行任务的列表。
         """
-        return await self.deprecated_find_by(session=session, status=SimulationTaskStatus.RUNNING)
+        return await self.deprecated_find_by(
+            session=session, status=SimulationTaskStatus.RUNNING
+        )
 
     async def find_high_priority_tasks(
         self, min_priority: int, session: Optional[AsyncSession] = None
@@ -138,7 +142,9 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         Returns:
             属于指定设置组的所有任务列表。
         """
-        return await self.deprecated_find_by(session=session, settings_group_key=group_key)
+        return await self.deprecated_find_by(
+            session=session, settings_group_key=group_key
+        )
 
     async def find_tasks_by_date_range(
         self, start_date: str, end_date: str, session: Optional[AsyncSession] = None
@@ -230,6 +236,7 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         session: Optional[AsyncSession] = None,
+        **kwargs: Any,
     ) -> List[int]:
         """
         根据多个条件过滤任务，返回任务ID列表。
@@ -267,6 +274,13 @@ class SimulationTaskDAL(EntityDAL[SimulationTask]):
                     filters.append(column.in_(values))
                 else:
                     raise ValueError(f"无效的字段名: {key}")
+
+        for key, value in kwargs.items():
+            if hasattr(SimulationTask, key):
+                column = getattr(SimulationTask, key)
+                filters.append(column == value)
+            else:
+                raise ValueError(f"无效的字段名: {key}")
 
         if not filters:
             raise ValueError("至少需要一个过滤条件")

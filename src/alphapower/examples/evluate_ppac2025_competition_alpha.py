@@ -91,6 +91,7 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
                                 emoji="❌",
                             )
                             return False
+
         result: bool = await super()._evaluate_stage(alpha, policy, record, **kwargs)
 
         # 顺便更新一下评估记录的其他字段
@@ -223,6 +224,7 @@ if __name__ == "__main__":
                     next_stage=None,
                     correlation_calculator=correlation_calculator,
                     threshold=0.5,
+                    inner=True,
                 )
             )
             platform_self_correlation_stage: AbstractEvaluateStage = (

@@ -1,7 +1,7 @@
 # 用于定义任务提供者的接口。
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 
 from alphapower.entity import SimulationTask
 
@@ -16,6 +16,7 @@ class AbstractTaskProvider(ABC):
         self,
         count: int,
         priority: Optional[int] = None,
+        **kwargs: Any,
     ) -> list[SimulationTask]:
         """
         从数据源获取任务。
