@@ -18,12 +18,12 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import AlphaType
 from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def get_task_signature(regular: str, settings: SimulationSettingsView) -> str:
@@ -101,6 +101,7 @@ def _create_task(
         unit_handling=settings.unit_handling,
         test_period=settings.test_period,
         pasteurization=settings.pasteurization,
+        nan_handling=settings.nan_handling,
         decay=settings.decay,
         neutralization=settings.neutralization,
         visualization=(

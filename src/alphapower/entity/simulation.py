@@ -96,7 +96,7 @@ class SimulationTask(Base):
         String(ALPHA_ID_LENGTH), nullable=True
     )
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    signature: Mapped[str] = mapped_column(String(32), nullable=False)
+    signature: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     _tags: Mapped[Optional[JSON]] = mapped_column(JSON, nullable=True, name="tags")
     parent_progress_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)

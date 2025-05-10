@@ -22,7 +22,7 @@ class AbstractAlphaService(abc.ABC):
         name: Optional[str] = None,
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
-        cocurrency: int = 1,
+        concurrency: int = 1,
         aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -42,9 +42,23 @@ class AbstractAlphaService(abc.ABC):
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
         aggregate_data_only: bool = False,
+        concurrency: int = 1,
         **kwargs: Any,
     ) -> None:
         """
         Synchronize alphas in ranges.
         """
         raise NotImplementedError("sync_alphas_in_ranges method not implemented")
+
+    @abc.abstractmethod
+    async def sync_alphas_incremental(
+        self,
+        tz: tzinfo,
+        aggregate_data_only: bool = False,
+        concurrency: int = 1,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Synchronize alphas incrementally.
+        """
+        raise NotImplementedError("sync_alphas_incremental method not implemented")

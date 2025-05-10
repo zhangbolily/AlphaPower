@@ -24,8 +24,8 @@ from alphapower.constants import (
     SimulationTaskStatus,
     UserRole,
 )
+from alphapower.dal import simulation_task_dal
 from alphapower.dal.session_manager import session_manager
-from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask
 from alphapower.internal.logging import get_logger
 from alphapower.view.simulation import SingleSimulationResultView
@@ -157,10 +157,11 @@ class Worker(AbstractWorker):
                     session_manager.get_session(Database.SIMULATION) as session,
                     session.begin(),
                 ):
-                    dal: SimulationTaskDAL = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.CANCELLED
-                    await dal.update_all(tasks)
+                    await simulation_task_dal.update_all(
+                        entities=tasks, session=session
+                    )
                     await self.log.ainfo(
                         event="数据库中任务状态更新为已取消",
                         emoji="💾",
@@ -214,8 +215,7 @@ class Worker(AbstractWorker):
             session_manager.get_session(Database.SIMULATION) as session,
             session.begin(),
         ):
-            dal: SimulationTaskDAL = SimulationTaskDAL(session)
-            await dal.update(task)
+            await simulation_task_dal.update(task, session=session)
             await self.log.ainfo(
                 event="数据库中任务状态更新成功",
                 emoji="💾",
@@ -421,8 +421,7 @@ class Worker(AbstractWorker):
                         session_manager.get_session(Database.SIMULATION) as session,
                         session.begin(),
                     ):
-                        dal: SimulationTaskDAL = SimulationTaskDAL(session)
-                        await dal.update(task)
+                        await simulation_task_dal.update(task, session=session)
                     return
 
                 await self.log.ainfo(
@@ -442,8 +441,7 @@ class Worker(AbstractWorker):
                     session_manager.get_session(Database.SIMULATION) as session,
                     session.begin(),
                 ):
-                    dal = SimulationTaskDAL(session)
-                    await dal.update(task)
+                    await simulation_task_dal.update(task, session=session)
                     await self.log.ainfo(
                         event="数据库中任务状态更新为运行中",
                         emoji="💾",
@@ -560,8 +558,7 @@ class Worker(AbstractWorker):
                     session_manager.get_session(Database.SIMULATION) as session,
                     session.begin(),
                 ):
-                    dal = SimulationTaskDAL(session)
-                    await dal.update(task)
+                    await simulation_task_dal.update(task, session=session)
             finally:
                 await self.log.ainfo(
                     event="单个模拟任务处理结束",
@@ -632,8 +629,6 @@ class Worker(AbstractWorker):
                     )
                     finished: bool
                     child_result: Optional[SingleSimulationResultView]
-                    dal: SimulationTaskDAL
-
                     finished, child_result = (
                         await self._client.simulation_get_child_result(
                             child_progress_id=child_id,
@@ -657,8 +652,7 @@ class Worker(AbstractWorker):
                             session_manager.get_session(Database.SIMULATION) as session,
                             session.begin(),
                         ):
-                            dal = SimulationTaskDAL(session)
-                            await dal.update(task)
+                            await simulation_task_dal.update(task, session=session)
                         return
 
                     await self.log.ainfo(
@@ -685,8 +679,7 @@ class Worker(AbstractWorker):
                         session_manager.get_session(Database.SIMULATION) as session,
                         session.begin(),
                     ):
-                        dal = SimulationTaskDAL(session)
-                        await dal.update(task)
+                        await simulation_task_dal.update(task, session=session)
                 finally:
                     await self.log.adebug(
                         event="单个子任务处理结束",
@@ -825,11 +818,12 @@ class Worker(AbstractWorker):
                         session_manager.get_session(Database.SIMULATION) as session,
                         session.begin(),
                     ):
-                        dal: SimulationTaskDAL = SimulationTaskDAL(session)
                         for task in tasks:
                             task.status = SimulationTaskStatus.ERROR
                             task.completed_at = datetime.now()
-                        await dal.update_all(tasks)
+                        await simulation_task_dal.update_all(
+                            entities=tasks, session=session
+                        )
                     return
 
                 await self.log.ainfo(
@@ -845,11 +839,12 @@ class Worker(AbstractWorker):
                     session_manager.get_session(Database.SIMULATION) as session,
                     session.begin(),
                 ):
-                    dal = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.RUNNING
                         task.parent_progress_id = progress_id
-                    await dal.update_all(tasks)
+                    await simulation_task_dal.update_all(
+                        entities=tasks, session=session
+                    )
                     await self.log.ainfo(
                         event="数据库中多个任务状态更新为运行中",
                         emoji="💾",
@@ -913,11 +908,12 @@ class Worker(AbstractWorker):
                                 ) as session,
                                 session.begin(),
                             ):
-                                dal = SimulationTaskDAL(session)
                                 for task in tasks:
                                     task.status = SimulationTaskStatus.ERROR
                                     task.completed_at = datetime.now()
-                                await dal.update_all(tasks)
+                                await simulation_task_dal.update_all(
+                                    entities=tasks, session=session
+                                )
                         break  # 任务完成，退出循环
 
                     elif isinstance(progress_or_result, SimulationProgressView):
@@ -971,11 +967,12 @@ class Worker(AbstractWorker):
                     session_manager.get_session(Database.SIMULATION) as session,
                     session.begin(),
                 ):
-                    dal = SimulationTaskDAL(session)
                     for task in tasks:
                         task.status = SimulationTaskStatus.ERROR
                         task.completed_at = datetime.now()
-                    await dal.update_all(tasks)
+                    await simulation_task_dal.update_all(
+                        entities=tasks, session=session
+                    )
             finally:
                 final_statuses = {t.id: t.status.value for t in tasks}
                 await self.log.ainfo(
@@ -1054,12 +1051,13 @@ class Worker(AbstractWorker):
                     session_manager.get_session(Database.SIMULATION) as session,
                     session.begin(),
                 ):
-                    dal: SimulationTaskDAL = SimulationTaskDAL(session)
                     now = datetime.now()
                     for task in tasks:
                         task.scheduled_at = now
                         task.status = SimulationTaskStatus.SCHEDULED
-                    await dal.update_all(tasks)
+                    await simulation_task_dal.update_all(
+                        entities=tasks, session=session
+                    )
                 await self.log.ainfo(
                     event="数据库中任务状态更新为已调度",
                     emoji="💾",

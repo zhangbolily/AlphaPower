@@ -273,7 +273,7 @@ async def datafields(
     help="状态",
 )
 @click.option(
-    "--increamental", is_flag=True, default=False, help="增量同步，默认为全量同步"
+    "--incremental", is_flag=True, default=False, help="增量同步，默认为全量同步"
 )
 @click.option(
     "--aggregate-data-only",
@@ -282,15 +282,15 @@ async def datafields(
     help="仅同步聚合数据，默认为 False",
 )
 @click.option("--parallel", default=5, type=int, help="并行数 默认为5")
-@click.option("--cocurrency", default=1, type=int, help="并发数 默认为1")
+@click.option("--concurrency", default=1, type=int, help="并发数 默认为1")
 async def alphas_v1(
     start_time: Optional[datetime],
     end_time: Optional[datetime],
     status: Optional[Status],
-    increamental: bool = False,
+    incremental: bool = False,
     aggregate_data_only: bool = False,
     parallel: int = 5,
-    cocurrency: int = 1,
+    concurrency: int = 1,
 ) -> None:
     brain_client_factory: WorldQuantBrainClientFactory = WorldQuantBrainClientFactory(
         username=settings.credential.username,
@@ -304,6 +304,19 @@ async def alphas_v1(
     )
 
     alpha_service: AbstractAlphaService = await alpha_service_factory()
+
+    if incremental:
+        await logger.ainfo(
+            "增量同步模式，开始同步因子。",
+            emoji="⚙️",
+        )
+
+        await alpha_service.sync_alphas_incremental(
+            tz=pytz.timezone("US/Eastern"),
+            aggregate_data_only=aggregate_data_only,
+            concurrency=concurrency,
+        )
+        return
 
     created_time_ranges: List[Tuple[datetime, datetime]] = []
     if start_time and end_time:
@@ -320,15 +333,14 @@ async def alphas_v1(
             "没有提供开始时间和结束时间，使用默认值。",
             emoji="⚠️",
         )
-    
+
     await alpha_service.sync_alphas_in_ranges(
         tz=pytz.timezone("US/Eastern"),
         created_time_ranges=created_time_ranges,
         status_eq=status,
-        increamental=increamental,
         parallel=parallel,
         aggregate_data_only=aggregate_data_only,
-        cocurrency=cocurrency,
+        concurrency=concurrency,
     )
 
 

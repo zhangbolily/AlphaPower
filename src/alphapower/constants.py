@@ -103,8 +103,8 @@ class LoggingEmoji(Enum):
     SAVE = "💾"  # 保存
     SEARCH = "🔍"  # 搜索
     START = "▶️"  # 开始
-    STEP_IN_FUNC = "⤵️"  # 进入函数
-    STEP_OUT_FUNC = "⤴️"  # 退出函数
+    STEP_IN_FUNC = "⤵"  # 进入函数
+    STEP_OUT_FUNC = "⤴"  # 退出函数
     STOP = "⏹️"  # 停止
     SYNC = "🔄"  # 同步
     UNLOCK = "🔓"  # 解锁

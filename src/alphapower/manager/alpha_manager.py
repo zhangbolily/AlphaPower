@@ -184,7 +184,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         query: UserAlphasQuery = UserAlphasQuery(
             limit=1,
             offset=0,
-            order="dataCreated",
+            order="dateCreated",
         )
         await self.log.adebug(
             event="构建查询参数", query=query, emoji=LoggingEmoji.DEBUG.value
@@ -216,7 +216,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         query: UserAlphasQuery = UserAlphasQuery(
             limit=1,
             offset=0,
-            order="-dataCreated",
+            order="-dateCreated",
         )
         await self.log.adebug(
             event="构建查询参数", query=query, emoji=LoggingEmoji.DEBUG.value
@@ -249,8 +249,8 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             Database.ALPHAS, readonly=True
         ) as session:
             alphas: List[Alpha] = await alpha_dal.find_by(
-                Alpha.date_created.asc(),
                 limit=1,
+                order_by=Alpha.date_created.asc(),
                 session=session,
             )
         if len(alphas) == 0:
@@ -279,8 +279,8 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             Database.ALPHAS, readonly=True
         ) as session:
             alphas: List[Alpha] = await alpha_dal.find_by(
-                Alpha.date_created.desc(),
                 limit=1,
+                order_by=Alpha.date_created.desc(),
                 session=session,
             )
         if len(alphas) == 0:

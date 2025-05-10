@@ -424,7 +424,7 @@ class BaseDAL(Generic[T]):
         self,
         *args: ColumnElement,
         session: Optional[AsyncSession] = None,
-        order_by: Optional[Union[str, List[str]]] = None,
+        order_by: Optional[Union[ColumnElement, List[ColumnElement]]] = None,
         offset: Optional[int] = None,
         limit: Optional[int] = None,
         **kwargs: Union[str, int, float, bool],
@@ -475,19 +475,9 @@ class BaseDAL(Generic[T]):
         # 排序
         if order_by is not None:
             if isinstance(order_by, list):
-                order_columns = []
-                for field in order_by:
-                    if hasattr(self.entity_type, field):
-                        order_columns.append(getattr(self.entity_type, field))
-                    else:
-                        await log.awarning("无效的排序字段名", field=field, emoji="⚠️")
-                if order_columns:
-                    query = query.order_by(*order_columns)
-            elif isinstance(order_by, str):
-                if hasattr(self.entity_type, order_by):
-                    query = query.order_by(getattr(self.entity_type, order_by))
-                else:
-                    await log.awarning("无效的排序字段名", field=order_by, emoji="⚠️")
+                query = query.order_by(*order_by)
+            elif isinstance(order_by, ColumnElement):
+                query = query.order_by(order_by)
 
         # 分页
         if offset is not None:

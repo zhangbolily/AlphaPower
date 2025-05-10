@@ -1,4 +1,4 @@
-from datetime import datetime, tzinfo
+from datetime import datetime, timedelta, tzinfo
 from typing import Any, AsyncIterable, Awaitable, Dict, List, Optional, Tuple
 
 from aiostream import stream
@@ -9,6 +9,7 @@ from alphapower.constants import (
     LoggingEmoji,
     Status,
 )
+from alphapower.entity.alphas import Alpha
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.multiprocessing import (
     BaseProcessSafeClass,
@@ -43,7 +44,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
         name: Optional[str] = None,
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
-        cocurrency: int = 1,
+        concurrency: int = 1,
         aggregate_data_only: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -68,7 +69,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
             name=name,
             status_eq=status_eq,
             status_ne=status_ne,
-            cocurrency=cocurrency,
+            concurrency=concurrency,
             emoji=LoggingEmoji.DEBUG.value,
         )
 
@@ -277,7 +278,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                         range(page_count)
                     )
                     pages_stream: Awaitable = stream.map(
-                        page_param_stream, process_page, task_limit=cocurrency
+                        page_param_stream, process_page, task_limit=concurrency
                     )
                     await stream.list(pages_stream)  # type: ignore
                 except Exception as e:
@@ -319,7 +320,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
         status_eq: Optional[Status] = None,
         status_ne: Optional[Status] = None,
         aggregate_data_only: bool = False,
-        cocurrency: int = 1,
+        concurrency: int = 1,
         **kwargs: Any,
     ) -> None:
         """
@@ -355,7 +356,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 status_eq=status_eq,
                 status_ne=status_ne,
                 aggregate_data_only=aggregate_data_only,
-                cocurrency=cocurrency,
+                concurrency=concurrency,
                 **kwargs,
             )
 
@@ -372,6 +373,114 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
 
         await self.log.ainfo(
             event=f"退出 {self.sync_alphas_in_ranges.__qualname__}",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+    @async_exception_handler
+    async def sync_alphas_incremental(
+        self,
+        tz: tzinfo,
+        aggregate_data_only: bool = False,
+        concurrency: int = 1,
+        **kwargs: Any,
+    ) -> None:
+        """
+        同步增量数据。
+        """
+        await self.log.ainfo(
+            event=f"进入 {self.sync_alphas_incremental.__qualname__}",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self.sync_alphas_incremental.__qualname__} 入参",
+            method=self.sync_alphas_incremental.__qualname__,
+            aggregate_data_only=aggregate_data_only,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        # Implementation of the incremental synchronization logic goes here.
+        latest_alpha: Optional[AlphaView] = (
+            await self.alpha_manager.fetch_last_alpha_from_platform()
+        )
+
+        if latest_alpha is None:
+            await self.log.ainfo(
+                event="没有最新的 alpha 数据",
+                message="无法进行增量同步，因为没有最新的 alpha 数据，全量同步请设定好同步时间范围",
+                emoji=LoggingEmoji.INFO.value,
+            )
+            return
+    
+        latest_date_created: datetime = latest_alpha.date_created.replace(tzinfo=tz)
+        await self.log.ainfo(
+            event="最新的 alpha 数据",
+            latest_date_created=latest_date_created,
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        last_local_alpha: Optional[Alpha] = (
+            await self.alpha_manager.fetch_last_alpha_from_db()
+        )
+
+        if last_local_alpha is None:
+            await self.log.ainfo(
+                event="本地没有 alpha 数据",
+                message="无法进行增量同步，因为本地没有 alpha 数据，全量同步请设定好同步时间范围",
+                emoji=LoggingEmoji.INFO.value,
+            )
+            return
+        
+        last_local_date_created: datetime = last_local_alpha.date_created.replace(tzinfo=tz)
+        await self.log.ainfo(
+            event="本地最新的 alpha 数据",
+            last_local_date_created=last_local_date_created,
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        if latest_date_created <= last_local_date_created:
+            await self.log.ainfo(
+                event="没有增量数据",
+                message="没有新的 alpha 数据可供同步",
+                latest_date_created=latest_date_created,
+                last_local_date_created=last_local_date_created,
+                emoji=LoggingEmoji.INFO.value,
+            )
+            return
+    
+        created_time_ranges: List[Tuple[datetime, datetime]] = []
+        current_start_time = last_local_date_created
+        while current_start_time < latest_date_created:
+            next_start_time = current_start_time + timedelta(days=1)
+            current_end_time = min(next_start_time, latest_date_created)
+            created_time_ranges.append((current_start_time, current_end_time))
+            current_start_time = next_start_time
+        
+        await self.log.ainfo(
+            event="增量时间范围",
+            created_time_ranges=created_time_ranges,
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        await self.sync_alphas_in_ranges(
+            tz=tz,
+            competition=None,
+            created_time_ranges=created_time_ranges,
+            hidden=None,
+            name=None,
+            status_eq=None,
+            status_ne=None,
+            aggregate_data_only=aggregate_data_only,
+            concurrency=concurrency,
+            **kwargs,
+        )
+
+        await self.log.ainfo(
+            event="增量同步完成",
+            emoji=LoggingEmoji.FINISHED.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.sync_alphas_incremental.__qualname__}",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
 
