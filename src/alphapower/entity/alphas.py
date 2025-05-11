@@ -255,7 +255,9 @@ class AggregateData(Base):
             self._checks = None
             self._checks_view_cache = None
         else:
-            self._checks = SubmissionCheckViewListAdapter.dump_python(value)
+            self._checks = SubmissionCheckViewListAdapter.dump_python(
+                value, mode="json"
+            )
             self._checks_view_cache = value
 
 

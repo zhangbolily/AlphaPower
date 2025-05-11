@@ -179,6 +179,24 @@ class CorrelationCalculator:
                 emoji="❌",
             )
             raise ValueError("Alpha 的 pnl 数据为 None")
+
+        # 最近 90 个数据完全无效
+        if pnl_df["pnl"].iloc[-90:].nunique() == 1:
+            await self.log.aerror(
+            event="Alpha 的 pnl 数据最近 90 个数据没有任何变化, 无法计算自相关性, 请检查 Alpha 的配置",
+            alpha_id=alpha_id,
+            emoji="❌",
+            )
+            raise ValueError("Alpha 的 pnl 数据最近 90 个数据没有任何变化")
+
+        if pnl_df["pnl"].fillna(0.0).eq(0.0).all():
+            await self.log.aerror(
+                event="Alpha 的 pnl 数据全为 0, 无法计算自相关性, 请检查 Alpha 的配置",
+                alpha_id=alpha_id,
+                emoji="❌",
+            )
+            raise ValueError("Alpha 的 pnl 数据全为 0")
+
         return pnl_df
 
     async def initialize(self) -> None:
@@ -505,6 +523,13 @@ class CorrelationCalculator:
         pnl_diff_df = pnl_diff_df.ffill().fillna(0)
         pnl_diff_df = pnl_diff_df.sort_index(ascending=True)
 
+        if pnl_diff_df.eq(0.0).all().all():
+            await self.log.aerror(
+                event="Alpha 策略的 pnl 差分数据全为 0, 无法计算自相关性, 请检查 Alpha 的配置",
+                emoji="❌",
+            )
+            raise ValueError("Alpha 策略的 pnl 差分数据全为 0")
+
         await self.log.adebug(
             event="成功处理 pnl 数据框",
             rows=len(pnl_diff_df),
@@ -609,12 +634,14 @@ class CorrelationCalculator:
                 continue
 
             if np.isnan(corr):
-                log.warning(
-                    event="相关性计算结果为 NaN",
+                log.error(
+                    event="相关性计算结果为 NaN，可能是数据不一致或缺失",
                     alpha_id=other_alpha_id,
                     emoji="⚠️",
                 )
-                continue
+                raise ValueError(
+                    f"相关性计算结果为 NaN，可能是数据不一致或缺失: {other_alpha_id}"
+                )
 
             correlation_map[other_alpha_id] = corr
 

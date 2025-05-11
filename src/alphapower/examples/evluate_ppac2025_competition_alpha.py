@@ -97,6 +97,7 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
         # 顺便更新一下评估记录的其他字段
         if result:
             payload: AlphaPropertiesPayload = AlphaPropertiesPayload(
+                name=alpha.alpha_id,
                 regular=AlphaPropertiesPayload.Regular(
                     description=(
                         "Idea: Power Pool Alphas Competition 2025\n"
@@ -224,7 +225,6 @@ if __name__ == "__main__":
                     next_stage=None,
                     correlation_calculator=correlation_calculator,
                     threshold=0.5,
-                    inner=True,
                 )
             )
             platform_self_correlation_stage: AbstractEvaluateStage = (

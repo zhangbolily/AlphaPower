@@ -2,23 +2,38 @@ import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from itertools import combinations
 from math import ceil
-from typing import Dict, List, Optional, Set, Tuple, TypeVar
+from typing import Any, Dict, List, Optional, Set, Tuple, TypeVar
 
 import numpy as np
 import pandas as pd
 
-from alphapower.constants import CorrelationCalcType, Database
+from alphapower.client.common_view import TableView
+from alphapower.client.worldquant_brain_client_abc import AbstractWorldQuantBrainClient
+from alphapower.constants import (
+    CorrelationCalcType,
+    CorrelationType,
+    Database,
+    LoggingEmoji,
+)
 from alphapower.dal import correlation_dal
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity.evaluate import Correlation
-from alphapower.internal.decorator import async_timed
+from alphapower.internal.decorator import async_exception_handler, async_timed
 from alphapower.internal.multiprocessing import BaseProcessSafeClass
+from alphapower.view.alpha import ProdCorrelationView, SelfCorrelationView
 
 T = TypeVar("T")  # 泛型类型，代表 others 的 key 类型
 
 
 class CorrelationManager(BaseProcessSafeClass):
     # 相关性矩阵管理器，负责相关性计算、平台/本地数据交互、约束下矩阵优化等
+    def __init__(
+        self,
+        brain_client: AbstractWorldQuantBrainClient,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.brain_client = brain_client
 
     @async_timed
     async def calculate_correlations_with(
@@ -26,7 +41,12 @@ class CorrelationManager(BaseProcessSafeClass):
         target_series: List[float],  # 目标序列
         others_series_dict: Dict[T, List[float]],  # 其他序列字典
     ) -> Dict[T, float]:
-        # 计算目标序列与多个序列的相关系数
+        await self.log.ainfo(
+            event="进入 calculate_correlations_with 方法",
+            target_series_length=len(target_series),
+            others_series_count=len(others_series_dict),
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
             "开始批量计算目标序列相关系数",
             target_series=target_series,
@@ -80,6 +100,11 @@ class CorrelationManager(BaseProcessSafeClass):
             correlation_results=correlation_results,
             emoji="🎉",
         )
+        await self.log.ainfo(
+            event="退出 calculate_correlations_with 方法",
+            result_count=len(correlation_results),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return correlation_results
 
     @async_timed
@@ -87,7 +112,11 @@ class CorrelationManager(BaseProcessSafeClass):
         self,
         sequences_dict: Dict[T, List[float]],  # 多组数值序列
     ) -> Dict[T, Dict[T, float]]:
-        # 计算一组数值序列的皮尔逊相关系数矩阵（Pearson correlation coefficient matrix，皮尔逊相关系数矩阵）
+        await self.log.ainfo(
+            event="进入 compute_pearson_correlation_matrix 方法",
+            sequences_count=len(sequences_dict),
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
             "开始计算皮尔逊相关系数矩阵（批量模式）",
             sequences_dict=sequences_dict,
@@ -137,6 +166,11 @@ class CorrelationManager(BaseProcessSafeClass):
             "皮尔逊相关系数矩阵计算完成",
             emoji="🎉",
         )
+        await self.log.ainfo(
+            event="退出 compute_pearson_correlation_matrix 方法",
+            matrix_size=len(correlation_matrix),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return correlation_matrix
 
     async def _calculate_pairwise_correlation(
@@ -144,7 +178,12 @@ class CorrelationManager(BaseProcessSafeClass):
         series_a: List[float],
         series_b: List[float],
     ) -> float:
-        # 计算两个数值序列的相关系数
+        await self.log.ainfo(
+            event="进入 _calculate_pairwise_correlation 方法",
+            series_a_length=len(series_a),
+            series_b_length=len(series_b),
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
             "开始计算单对序列相关系数",
             series_a=series_a,
@@ -185,6 +224,11 @@ class CorrelationManager(BaseProcessSafeClass):
             correlation=correlation,
             emoji="📈",
         )
+        await self.log.ainfo(
+            event="退出 _calculate_pairwise_correlation 方法",
+            correlation=correlation,
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return correlation
 
     async def get_correlation_local(
@@ -192,7 +236,12 @@ class CorrelationManager(BaseProcessSafeClass):
         target_alpha_id: str,
         others_alpha_ids: Optional[List[str]],
     ) -> Dict[str, float]:
-        # 获取本地相关系数，支持生产相关系数和自相关系数
+        await self.log.ainfo(
+            event="进入 get_correlation_local 方法",
+            target_alpha_id=target_alpha_id,
+            others_alpha_ids_count=len(others_alpha_ids) if others_alpha_ids else 0,
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
             "开始获取本地相关系数",
             target_alpha_id=target_alpha_id,
@@ -225,6 +274,11 @@ class CorrelationManager(BaseProcessSafeClass):
                     target_alpha_id=target_alpha_id,
                     correlation=correlation_result.correlation,
                     emoji="✅",
+                )
+                await self.log.ainfo(
+                    event="退出 get_correlation_local 方法",
+                    correlation_count=len(correlation_dict),
+                    emoji=LoggingEmoji.STEP_OUT_FUNC.value,
                 )
                 return correlation_dict
             except Exception as exc:
@@ -302,7 +356,211 @@ class CorrelationManager(BaseProcessSafeClass):
             )
             raise ValueError("处理自相关系数结果异常") from exc
 
+        await self.log.ainfo(
+            event="退出 get_correlation_local 方法",
+            correlation_count=len(correlation_dict),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
         return correlation_dict
+
+    @async_exception_handler
+    async def get_correlation_platform(
+        self,
+        target_alpha_id: str,
+        corr_type: CorrelationCalcType,
+    ) -> TableView:
+        await self.log.ainfo(
+            event="进入 get_correlation_platform 方法",
+            target_alpha_id=target_alpha_id,
+            corr_type=corr_type.name,
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        if corr_type not in (
+            CorrelationCalcType.PLATFORM_PROD,
+            CorrelationCalcType.PLATFORM_SELF,
+        ):
+            await self.log.aerror(
+                "不支持的相关系数类型",
+                target_alpha_id=target_alpha_id,
+                corr_type=corr_type,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("不支持的相关系数类型")
+
+        await self.log.adebug(
+            "开始获取平台相关系数",
+            target_alpha_id=target_alpha_id,
+            corr_type=corr_type,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        corr_table_data: TableView = await self.brain_client.fetch_alpha_correlation(
+            alpha_id=target_alpha_id,
+            correlation_type=(
+                CorrelationType.PROD
+                if corr_type == CorrelationCalcType.PLATFORM_PROD
+                else CorrelationType.SELF
+            ),
+        )
+
+        if corr_table_data is None:
+            await self.log.aerror(
+                "获取平台相关系数失败，未找到对应记录",
+                target_alpha_id=target_alpha_id,
+                corr_type=corr_type,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("获取平台相关系数失败，未找到对应记录")
+
+        await self.log.ainfo(
+            event="退出 get_correlation_platform 方法",
+            table_data_available=corr_table_data is not None,
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return corr_table_data
+
+    @async_exception_handler
+    async def build_self_correlation_from_table(
+        self,
+        target_alpha_id: str,
+        corr_table_data: TableView,
+    ) -> SelfCorrelationView:
+        await self.log.ainfo(
+            event="进入 build_self_correlation_from_table 方法",
+            target_alpha_id=target_alpha_id,
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        # 从平台相关系数表中构建自相关系数
+        await self.log.adebug(
+            "开始从平台相关系数表中构建自相关系数",
+            target_alpha_id=target_alpha_id,
+            corr_table_data=corr_table_data,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        if not isinstance(corr_table_data, TableView):
+            await self.log.aerror(
+                "输入数据不是有效的表格数据",
+                target_alpha_id=target_alpha_id,
+                corr_table_data=corr_table_data,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("输入数据不是有效的表格数据")
+
+        correlation_items: List[SelfCorrelationView.CorrelationItem] = []
+
+        data_df: Optional[pd.DataFrame] = corr_table_data.to_dataframe()
+        if data_df is None or data_df.empty:
+            await self.log.aerror(
+                "平台相关系数表格数据为空",
+                target_alpha_id=target_alpha_id,
+                corr_table_data=corr_table_data,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("平台相关系数表格数据为空")
+
+        for _, row in data_df.iterrows():
+            correlation_item: SelfCorrelationView.CorrelationItem = (
+                SelfCorrelationView.CorrelationItem(
+                    alpha_id=row["id"],
+                    correlation=row["correlation"],
+                )
+            )
+            correlation_items.append(correlation_item)
+
+        self_correlation_view: SelfCorrelationView = SelfCorrelationView(
+            alpha_id=target_alpha_id,
+            correlations=correlation_items,
+            min=corr_table_data.min if corr_table_data.min is not None else 0.0,
+            max=corr_table_data.max if corr_table_data.max is not None else 0.0,
+        )
+
+        await self.log.ainfo(
+            "自相关系数构建完成",
+            alpha_id=target_alpha_id,
+            correlations=correlation_items,
+            min=self_correlation_view.min,
+            max=self_correlation_view.max,
+            emoji=LoggingEmoji.INFO.value,
+        )
+        await self.log.ainfo(
+            event="退出 build_self_correlation_from_table 方法",
+            correlation_count=len(self_correlation_view.correlations),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return self_correlation_view
+
+    @async_exception_handler
+    async def build_prod_correlation_from_table(
+        self,
+        target_alpha_id: str,
+        corr_table_data: TableView,
+    ) -> ProdCorrelationView:
+        await self.log.ainfo(
+            event="进入 build_prod_correlation_from_table 方法",
+            target_alpha_id=target_alpha_id,
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        # 从平台相关系数表中构建生产相关系数
+        await self.log.adebug(
+            "开始从平台相关系数表中构建生产相关系数",
+            target_alpha_id=target_alpha_id,
+            corr_table_data=corr_table_data,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        if not isinstance(corr_table_data, TableView):
+            await self.log.aerror(
+                "输入数据不是有效的表格数据",
+                target_alpha_id=target_alpha_id,
+                corr_table_data=corr_table_data,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("输入数据不是有效的表格数据")
+
+        correlation_intervals: List[ProdCorrelationView.CorrelationInterval] = []
+
+        data_df: Optional[pd.DataFrame] = corr_table_data.to_dataframe()
+        if data_df is None or data_df.empty:
+            await self.log.aerror(
+                "平台相关系数表格数据为空",
+                target_alpha_id=target_alpha_id,
+                corr_table_data=corr_table_data,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("平台相关系数表格数据为空")
+
+        for _, row in data_df.iterrows():
+            correlation_interval: ProdCorrelationView.CorrelationInterval = (
+                ProdCorrelationView.CorrelationInterval(
+                    lower=row["min"],
+                    upper=row["max"],
+                    alphas=row["alphas"],
+                )
+            )
+            correlation_intervals.append(correlation_interval)
+
+        prod_correlation_view: ProdCorrelationView = ProdCorrelationView(
+            alpha_id=target_alpha_id,
+            intervals=correlation_intervals,
+            min=corr_table_data.min if corr_table_data.min is not None else 0.0,
+            max=corr_table_data.max if corr_table_data.max is not None else 0.0,
+        )
+
+        await self.log.ainfo(
+            "生产相关系数构建完成",
+            alpha_id=target_alpha_id,
+            intervals=prod_correlation_view.intervals,
+            min=prod_correlation_view.min,
+            max=prod_correlation_view.max,
+            emoji=LoggingEmoji.INFO.value,
+        )
+        await self.log.ainfo(
+            event="退出 build_prod_correlation_from_table 方法",
+            interval_count=len(prod_correlation_view.intervals),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return prod_correlation_view
 
     @staticmethod
     def find_closest_to_zero_correlation_chunk(
@@ -342,7 +600,12 @@ class CorrelationManager(BaseProcessSafeClass):
         chunk_size: int = 1000,  # 每个子进程处理的组合数量
         max_workers: int = 4,  # 最大进程数
     ) -> Tuple[Set[T], float]:
-        # 在相关系数矩阵中寻找最小相关性的子矩阵
+        await self.log.ainfo(
+            event="进入 find_least_relavant_submatrix 方法",
+            matrix_shape=correlation_matrix.shape,
+            submatrix_size=submatrix_size,
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
         await self.log.adebug(
             "开始寻找最小相关性的子矩阵",
             correlation_matrix_shape=correlation_matrix.shape,
@@ -437,5 +700,11 @@ class CorrelationManager(BaseProcessSafeClass):
             optimal_indices=optimal_indices,
             closest_to_zero_corr=closest_to_zero_corr,
             emoji="🏆",
+        )
+        await self.log.ainfo(
+            event="退出 find_least_relavant_submatrix 方法",
+            optimal_indices=optimal_indices,
+            closest_to_zero_corr=closest_to_zero_corr,
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return optimal_indices, closest_to_zero_corr

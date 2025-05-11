@@ -83,6 +83,7 @@ class PyramidRefView(BaseModel):
     name: str
     multiplier: float
 
+
 PyramidRefViewListAdapter: TypeAdapter[List[PyramidRefView]] = TypeAdapter(
     List[PyramidRefView],
 )
@@ -558,3 +559,26 @@ class AlphaPropertiesPayload(PayloadBase):
     tags: List[str] = []  # tags 不能为 null
     category: Optional[str] = None
     regular: Regular = Regular()
+
+
+class SelfCorrelationView(BaseModel):
+    class CorrelationItem(BaseModel):
+        alpha_id: str
+        correlation: float
+
+    alpha_id: str
+    min: float
+    max: float
+    correlations: List[CorrelationItem]
+
+
+class ProdCorrelationView(BaseModel):
+    class CorrelationInterval(BaseModel):
+        lower: float
+        upper: float
+        alphas: int
+
+    alpha_id: str
+    min: float
+    max: float
+    intervals: List[CorrelationInterval]
