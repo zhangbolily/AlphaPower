@@ -38,8 +38,8 @@ class CorrelationManager(BaseProcessSafeClass):
     @async_timed
     async def calculate_correlations_with(
         self,
-        target_series: List[float],  # 目标序列
-        others_series_dict: Dict[T, List[float]],  # 其他序列字典
+        target_series: pd.Series,  # 目标序列
+        others_series_dict: Dict[T, pd.Series],  # 其他序列字典
     ) -> Dict[T, float]:
         await self.log.ainfo(
             event="进入 calculate_correlations_with 方法",
@@ -175,8 +175,8 @@ class CorrelationManager(BaseProcessSafeClass):
 
     async def _calculate_pairwise_correlation(
         self,
-        series_a: List[float],
-        series_b: List[float],
+        series_a: pd.Series,
+        series_b: pd.Series,
     ) -> float:
         await self.log.ainfo(
             event="进入 _calculate_pairwise_correlation 方法",
@@ -192,13 +192,19 @@ class CorrelationManager(BaseProcessSafeClass):
         )
 
         if len(series_a) != len(series_b):
-            await self.log.aerror(
-                "序列长度不一致",
+            await self.log.awarning(
+                event="序列长度不一致",
+                message="对其序列并填充缺失值为 0",
                 series_a_len=len(series_a),
                 series_b_len=len(series_b),
-                emoji="❌",
+                emoji=LoggingEmoji.WARNING.value,
             )
-            raise ValueError("序列长度不一致")
+            # 对齐序列并填充缺失值为 0
+            series_a = series_a.reindex(series_b.index, fill_value=0)
+            series_b = series_b.reindex(series_a.index, fill_value=0)
+
+        # FIXME: 相关系数计算有错误
+        pd_corr: float = series_a.corr(series_b)
 
         arr_a = np.array(series_a)
         arr_b = np.array(series_b)
@@ -229,6 +235,15 @@ class CorrelationManager(BaseProcessSafeClass):
             correlation=correlation,
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
+
+        if pd_corr != correlation:
+            await self.log.awarning(
+                "Pandas 和 NumPy 计算的相关系数不一致",
+                pd_corr=pd_corr,
+                numpy_corr=correlation,
+                emoji="⚠️",
+            )
+
         return correlation
 
     async def get_correlation_local(

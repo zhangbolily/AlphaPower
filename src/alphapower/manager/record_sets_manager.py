@@ -1,29 +1,29 @@
 # 不要自动补全 docstring
 
-import asyncio
 from datetime import timedelta
-from typing import Optional
+from typing import Dict, Optional
 
 import pandas as pd
 from structlog.stdlib import BoundLogger
 
-from alphapower.client import WorldQuantClient
-from alphapower.client.common_view import TableView
-from alphapower.constants import Database, RecordSetType
+from alphapower.client.common_view import RecordSetTimeSeriesView, TableView
+from alphapower.client.worldquant_brain_client_abc import AbstractWorldQuantBrainClient
+from alphapower.constants import Database, LoggingEmoji, RecordSetType
 from alphapower.dal.evaluate import RecordSetDAL
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity.alphas import Alpha
 from alphapower.entity.evaluate import RecordSet
+from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.logging import get_logger
 
 
 class RecordSetsManager:
     def __init__(
         self,
-        client: WorldQuantClient,
+        brain_client: AbstractWorldQuantBrainClient,
         record_set_dal: RecordSetDAL,
     ) -> None:
-        self.client: WorldQuantClient = client
+        self.brain_client: AbstractWorldQuantBrainClient = brain_client
         self.record_set_dal: RecordSetDAL = record_set_dal
         self.log: BoundLogger = get_logger(
             module_name=f"{__name__}.{self.__class__.__name__}"
@@ -172,6 +172,11 @@ class RecordSetsManager:
         alpha: Alpha,
         set_type: RecordSetType,
     ) -> pd.DataFrame:
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_and_save_record_sets.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
         # ⚡️DEBUG: 记录函数入参
         await self.log.adebug(
             "开始从平台获取记录集",
@@ -180,54 +185,15 @@ class RecordSetsManager:
             emoji="🔄",
         )
         try:
-            async with self.client as client:
-                record_sets_view: Optional[TableView] = None
-                finished: bool = False
-                retry_after: float = 0.0
-                timeout: float = 30.0  # 超时时间 30 秒
-                start_time: float = asyncio.get_event_loop().time()
-                alpha_id: str = alpha.alpha_id
+            alpha_id: str = alpha.alpha_id
 
-                while not finished:
-                    elapsed_time: float = asyncio.get_event_loop().time() - start_time
-                    if elapsed_time > timeout:
-                        await self.log.aerror(
-                            "加载记录集超时",
-                            alpha_id=alpha_id,
-                            set_type=set_type,
-                            timeout=timeout,
-                            emoji="⏰",
-                        )
-                        raise TimeoutError(
-                            f"加载记录集超时，alpha_id: {alpha_id}, set_type: {set_type}"
-                        )
-
-                    finished, record_sets_view, retry_after, _ = (
-                        await client.alpha_fetch_record_sets(
-                            alpha_id=alpha_id, record_type=set_type
-                        )
-                    )
-
-                    if not finished:
-                        await self.log.ainfo(
-                            "记录集数据加载中，等待重试",
-                            alpha_id=alpha_id,
-                            set_type=set_type,
-                            retry_after=retry_after,
-                            emoji="⏳",
-                        )
-                        await asyncio.sleep(retry_after)
-
-            if record_sets_view is None:
-                await self.log.aerror(
-                    "平台返回的记录集数据为 None",
+            record_sets_view: TableView = (
+                await self.brain_client.fetch_alpha_record_sets(
                     alpha_id=alpha_id,
-                    set_type=set_type,
-                    emoji="❌",
+                    record_set_type=set_type,
+                    override_retry_after=None,
                 )
-                raise ValueError(
-                    f"平台返回的记录集数据为 None，alpha_id: {alpha_id}, set_type: {set_type}"
-                )
+            )
 
             record_set_entity: RecordSet = RecordSet(
                 alpha_id=alpha_id,
@@ -322,6 +288,11 @@ class RecordSetsManager:
             raise RuntimeError(
                 f"获取记录集失败，alpha_id: {alpha.alpha_id}, set_type: {set_type}，原因: {e}"
             ) from e
+        finally:
+            await self.log.ainfo(
+                event=f"退出 {self.fetch_and_save_record_sets.__qualname__} 方法",
+                emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+            )
 
     async def get_record_sets(
         self,
@@ -412,3 +383,84 @@ class RecordSetsManager:
                 set_type=set_type,
                 emoji="✅",
             )
+
+    @async_exception_handler
+    async def build_time_series(
+        self,
+        alpha: Alpha,
+        set_type: RecordSetType,
+        data: pd.DataFrame,
+    ) -> RecordSetTimeSeriesView:
+        await self.log.ainfo(
+            event=f"进入 {self.build_time_series.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.log.adebug(
+            "开始构建时间序列",
+            alpha_id=alpha.alpha_id,
+            set_type=set_type,
+            data_shape=data.shape,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        if data.empty:
+            await self.log.aerror(
+                "数据为空，无法构建时间序列",
+                alpha_id=alpha.alpha_id,
+                set_type=set_type,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError("数据为空，无法构建时间序列")
+
+        column_map: Dict[RecordSetType, str] = {
+            RecordSetType.PNL: "pnl",
+            RecordSetType.DAILY_PNL: "daily-pnl",
+            RecordSetType.SHARPE: "sharpe",
+            RecordSetType.TURNOVER: "turnover",
+            RecordSetType.YEARLY_STATS: "yearly-stats",
+        }
+
+        if set_type not in column_map:
+            await self.log.aerror(
+                "不支持的记录集类型",
+                alpha_id=alpha.alpha_id,
+                set_type=set_type,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError(f"不支持的记录集类型: {set_type}")
+
+        column_name: str = column_map[set_type]
+        if column_name not in data.columns:
+            await self.log.aerror(
+                "数据中缺少必要的列",
+                alpha_id=alpha.alpha_id,
+                set_type=set_type,
+                missing_column=column_name,
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError(f"数据中缺少必要的列: {column_name}")
+
+        # 构建时间序列
+        data["date"] = pd.to_datetime(data["date"])
+        time_series: pd.Series = data.set_index("date")[column_name]
+
+        time_series_view: RecordSetTimeSeriesView = RecordSetTimeSeriesView(
+            type=set_type,
+            alpha_id=alpha.alpha_id,
+            series=time_series,
+        )
+
+        await self.log.ainfo(
+            "成功构建时间序列",
+            alpha_id=alpha.alpha_id,
+            set_type=set_type,
+            series_shape=time_series.shape,
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.build_time_series.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return time_series_view

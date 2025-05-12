@@ -11,7 +11,9 @@ Classes:
 from typing import Any, List, Optional
 
 import pandas as pd
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
+
+from alphapower.constants import RecordSetType
 
 
 class TableSchemaView(BaseModel):
@@ -98,3 +100,22 @@ class TableView(BaseModel):
                 for prop in self.table_schema.properties  # pylint: disable=no-member
             ],
         )
+
+
+class RecordSetTimeSeriesView(BaseModel):
+    type: RecordSetType
+    alpha_id: str
+    series: pd.Series = Field(...)
+
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {
+            pd.Series: lambda v: v.to_dict(),
+        }
+
+    @field_validator("series", mode="before")
+    @classmethod
+    def validate_series(cls, v: pd.Series) -> pd.Series:
+        if not isinstance(v, pd.Series):
+            raise TypeError("series 必须是 pd.Series 类型")
+        return v

@@ -93,7 +93,7 @@ class CorrelationCalculator:
         self._is_initialized: bool = False
         self._region_to_alpha_map: Dict[Region, List[Alpha]] = {}
         self.multiprocess: bool = multiprocess
-        self.other_alphas_pnl_cache: Dict[str, pd.DataFrame] = {}
+        self.other_alphas_pnl_cache: Dict[Alpha, pd.DataFrame] = {}
         self.log: BoundLogger = get_logger(
             module_name=f"{__name__}.{self.__class__.__name__}"
         )
@@ -124,7 +124,7 @@ class CorrelationCalculator:
             pnl_data = await self._prepare_pnl_dataframe(pnl_data)
 
             # 缓存 pnl 数据
-            self.other_alphas_pnl_cache[alpha.alpha_id] = pnl_data
+            self.other_alphas_pnl_cache[alpha] = pnl_data
             await self.log.ainfo(
                 event="成功加载 Alpha 策略的 pnl 数据",
                 alpha_id=alpha.alpha_id,
@@ -183,9 +183,9 @@ class CorrelationCalculator:
         # 最近 90 个数据完全无效
         if pnl_df["pnl"].iloc[-90:].nunique() == 1:
             await self.log.aerror(
-            event="Alpha 的 pnl 数据最近 90 个数据没有任何变化, 无法计算自相关性, 请检查 Alpha 的配置",
-            alpha_id=alpha_id,
-            emoji="❌",
+                event="Alpha 的 pnl 数据最近 90 个数据没有任何变化, 无法计算自相关性, 请检查 Alpha 的配置",
+                alpha_id=alpha_id,
+                emoji="❌",
             )
             raise ValueError("Alpha 的 pnl 数据最近 90 个数据没有任何变化")
 
@@ -255,7 +255,7 @@ class CorrelationCalculator:
             pnl_data = await self._prepare_pnl_dataframe(pnl_data)
 
             # 缓存 pnl 数据
-            self.other_alphas_pnl_cache[alpha.alpha_id] = pnl_data
+            self.other_alphas_pnl_cache[alpha] = pnl_data
             await self.log.ainfo(
                 event="成功加载 Alpha 策略的 pnl 数据",
                 alpha_id=alpha.alpha_id,
@@ -517,11 +517,10 @@ class CorrelationCalculator:
             four_years_ago = pnl_df.index.max() - pd.DateOffset(
                 years=CORRELATION_CALCULATION_YEARS
             )
-            pnl_df = pnl_df[pnl_df.index > four_years_ago]
+            pnl_df = pnl_df.loc[pnl_df.index > four_years_ago]
 
-        pnl_diff_df: pd.DataFrame = pnl_df - pnl_df.shift(1)
+        pnl_diff_df: pd.DataFrame = pnl_df.diff()
         pnl_diff_df = pnl_diff_df.ffill().fillna(0)
-        pnl_diff_df = pnl_diff_df.sort_index(ascending=True)
 
         if pnl_diff_df.eq(0.0).all().all():
             await self.log.aerror(
@@ -564,7 +563,6 @@ class CorrelationCalculator:
             return {}
 
         start: datetime = datetime.now()
-        target_values: np.ndarray = target.values.squeeze()
         target_index = target.index
 
         log.debug(
@@ -598,13 +596,12 @@ class CorrelationCalculator:
                 target_arr = target.loc[common_index].values.squeeze()
                 other_arr = other_pnl_df.loc[common_index].values.squeeze()
             else:
-                # 外相关性：直接对齐索引
-                target_arr = target_values
-                other_arr = other_pnl_df.values.squeeze()
-                # 若长度不一致，取最短长度
-                min_len = min(len(target_arr), len(other_arr))
-                target_arr = target_arr[-min_len:]
-                other_arr = other_arr[-min_len:]
+                # 外相关性：取并集索引
+                all_index = target_index.union(other_pnl_df.index)
+                target_arr = target.reindex(all_index, fill_value=0).values.squeeze()
+                other_arr = other_pnl_df.reindex(
+                    all_index, fill_value=0
+                ).values.squeeze()
 
             # 检查有效性
             if target_arr.size == 0 or other_arr.size == 0:
@@ -617,12 +614,25 @@ class CorrelationCalculator:
 
             # 计算皮尔逊相关系数（Pearson correlation coefficient，皮尔逊相关性）
             try:
+                target_series: pd.Series = target["pnl"]
+                other_series: pd.Series = other_pnl_df["pnl"]
+                pd_corr: float = target_series.corr(other_series)
+
                 corr_matrix: np.ndarray = np.corrcoef(
                     target_arr,
                     other_arr,
                     rowvar=False,
                 )
                 corr: float = corr_matrix[0, 1]
+
+                if pd_corr != corr:
+                    log.warning(
+                        event="相关性计算结果不一致",
+                        alpha_id=other_alpha_id,
+                        pd_corr=pd_corr,
+                        numpy_corr=corr,
+                        emoji="⚠️",
+                    )
             except Exception as e:
                 log.error(
                     event="相关性计算异常",
@@ -725,6 +735,7 @@ class CorrelationCalculator:
         alpha: Alpha,
         force_refresh: bool = False,
         inner: bool = False,
+        same_region: bool = True,
     ) -> Dict[Alpha, float]:
         """
         计算自相关性（correlation，自相关系数）。
@@ -753,33 +764,52 @@ class CorrelationCalculator:
 
         start_time: datetime = datetime.now()
 
-        try:
-            region: Region = alpha.region
-        except AttributeError as e:
-            await self.log.aerror(
-                event="Alpha 策略缺少 region 设置",
+        # TODO: 特殊调试代码
+        if alpha.alpha_id == "ZANArd8":
+            # 特例处理，ZANArd8 需要特殊处理
+            await self.log.ainfo(
+                event="ZANArd8 策略的自相关性计算",
                 alpha_id=alpha.alpha_id,
-                error=str(e),
-                emoji="❌",
-                module=__name__,
-                exc_info=True,
-            )
-            raise ValueError("Alpha 策略缺少 region 设置") from e
-
-        matched_region_alphas: List[Alpha] = self._region_to_alpha_map.get(region, [])
-        matched_alpha_map: Dict[str, Alpha] = {
-            a.alpha_id: a for a in matched_region_alphas
-        }
-
-        if not matched_region_alphas:
-            await self.log.awarning(
-                event="没有找到同区域匹配的 OS 阶段 Alpha 策略",
-                region=str(region),
-                alpha_id=alpha.alpha_id,
-                emoji="⚠️",
+                emoji="🔄",
                 module=__name__,
             )
-            return {}
+
+        matched_alpha_map: Dict[str, Alpha] = {}
+
+        if same_region:
+            try:
+                region: Region = alpha.region
+            except AttributeError as e:
+                await self.log.aerror(
+                    event="Alpha 策略缺少 region 设置",
+                    alpha_id=alpha.alpha_id,
+                    error=str(e),
+                    emoji="❌",
+                    module=__name__,
+                    exc_info=True,
+                )
+                raise ValueError("Alpha 策略缺少 region 设置") from e
+
+            matched_region_alphas: List[Alpha] = self._region_to_alpha_map.get(
+                region, []
+            )
+
+            if not matched_region_alphas:
+                await self.log.awarning(
+                    event="没有找到同区域匹配的 OS 阶段 Alpha 策略",
+                    region=str(region),
+                    alpha_id=alpha.alpha_id,
+                    emoji="⚠️",
+                    module=__name__,
+                )
+                return {}
+
+            matched_alpha_map = {a.alpha_id: a for a in matched_region_alphas}
+        else:
+            matched_alpha_map = {
+                other_alpha.alpha_id: other_alpha
+                for other_alpha in self.other_alphas_pnl_cache.keys()
+            }
 
         try:
             target_pnl_diff_df: pd.DataFrame = await self._get_pnl_dataframe(
@@ -799,6 +829,11 @@ class CorrelationCalculator:
             raise
 
         pairwise_correlation: Dict[str, float] = {}
+        others_pnl_df: Dict[str, pd.DataFrame] = {
+            other_alpha.alpha_id: self.other_alphas_pnl_cache[other_alpha]
+            for other_alpha in matched_alpha_map.values()
+            if other_alpha.alpha_id != alpha.alpha_id
+        }
 
         try:
             if self.multiprocess:
@@ -807,7 +842,7 @@ class CorrelationCalculator:
                 task = asyncio.to_thread(
                     self._do_calculation_in_subprocess,
                     target_pnl_diff_df,
-                    self.other_alphas_pnl_cache,
+                    others_pnl_df,
                     inner,
                 )
                 pairwise_correlation = await task
@@ -825,7 +860,7 @@ class CorrelationCalculator:
             else:
                 pairwise_correlation = self._do_calculation(
                     target=target_pnl_diff_df,
-                    others=self.other_alphas_pnl_cache,
+                    others=others_pnl_df,
                     log=self.log,
                     inner=inner,
                 )

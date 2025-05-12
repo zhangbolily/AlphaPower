@@ -340,12 +340,14 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
         correlation_calculator: CorrelationCalculator,
         threshold: float = CONSULTANT_MAX_SELF_CORRELATION,
         inner: bool = False,
+        same_region: bool = True,
     ) -> None:
 
         super().__init__(next_stage)
         self.correlation_calculator: CorrelationCalculator = correlation_calculator
         self._threshold: float = threshold
         self._inner: bool = inner
+        self._same_region: bool = same_region
         self.log: BoundLogger = get_logger(
             f"{__name__}.{self.__class__.__name__}",
         )
@@ -363,6 +365,7 @@ class CorrelationLocalEvaluateStage(AbstractEvaluateStage):
                 await self.correlation_calculator.calculate_correlation(
                     alpha=alpha,
                     inner=self._inner,
+                    same_region=self._same_region,
                 )
             )
 

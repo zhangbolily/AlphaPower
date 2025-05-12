@@ -12,11 +12,13 @@ from alphapower.constants import (
     ENDPOINT_ALPHAS,
     ENDPOINT_ALPHAS_CORRELATIONS,
     ENDPOINT_AUTHENTICATION,
+    ENDPOINT_RECORD_SETS,
     ENDPOINT_TAGS,
     ENDPOINT_USER_SELF_ALPHAS,
     ENDPOINT_USER_SELF_TAGS,
     CorrelationType,
     LoggingEmoji,
+    RecordSetType,
     UserPermission,
     UserRole,
 )
@@ -992,6 +994,114 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             alpha_id=alpha_id,
             correlation_type=correlation_type,
         )
+        return response
+
+    @async_exception_handler
+    async def fetch_alpha_record_sets(
+        self,
+        alpha_id: str,
+        record_set_type: RecordSetType,
+        override_retry_after: Optional[float] = None,
+    ) -> TableView:
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_alpha_record_sets.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response: Any = None
+        retry_after: Optional[float] = -1
+
+        await self.log.adebug(
+            event=f"准备发送 GET 请求获取 Alpha 记录集",
+            emoji=LoggingEmoji.DEBUG.value,
+            url=ENDPOINT_RECORD_SETS(alpha_id, record_set_type),
+            api_name=self.fetch_alpha_record_sets.__qualname__,
+        )
+
+        while retry_after and retry_after != 0:
+            response, retry_after = await http_client.request(
+                method="GET",
+                url=ENDPOINT_RECORD_SETS(alpha_id, record_set_type),
+                api_name=self.fetch_alpha_record_sets.__qualname__,
+                response_json=False,
+            )
+
+            if retry_after and retry_after != 0:
+                retry_after = (
+                    retry_after
+                    if override_retry_after is None
+                    else max(override_retry_after, retry_after)
+                )
+
+                await self.log.ainfo(
+                    event=f"请求需轮询等待完成",
+                    emoji=LoggingEmoji.EXPIRED.value,
+                    retry_after=retry_after,
+                    override_retry_after=override_retry_after,
+                    alpha_id=alpha_id,
+                    record_set_type=record_set_type,
+                )
+
+                await asyncio.sleep(retry_after)
+            elif isinstance(response, Response):
+                try:
+                    response = TableView.model_validate_json(response.text)
+                    await self.log.adebug(
+                        event=f"响应已成功解析为 TableView",
+                        emoji="📥",
+                        response_type=type(response).__name__,
+                        alpha_id=alpha_id,
+                        record_set_type=record_set_type,
+                    )
+                except Exception as e:
+                    await self.log.aerror(
+                        event=f"响应解析失败",
+                        emoji=LoggingEmoji.ERROR.value,
+                        error=str(e),
+                        stack=traceback.format_exc(),
+                        alpha_id=alpha_id,
+                        record_set_type=record_set_type,
+                    )
+                    raise
+            else:
+                await self.log.aerror(
+                    event=f"响应类型错误",
+                    emoji=LoggingEmoji.ERROR.value,
+                    expected=Response.__name__,
+                    got=type(response).__name__,
+                    alpha_id=alpha_id,
+                    record_set_type=record_set_type,
+                )
+                raise TypeError(
+                    f"期望返回类型为 {Response.__name__}，实际为 {type(response).__name__}"
+                )
+
+        if not isinstance(response, TableView):
+            await self.log.aerror(
+                event=f"获取 Alpha 记录集响应类型错误",
+                emoji=LoggingEmoji.ERROR.value,
+                expected=TableView.__name__,
+                got=type(response).__name__,
+                alpha_id=alpha_id,
+                record_set_type=record_set_type,
+            )
+            raise TypeError(
+                f"期望返回类型为 {TableView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        await self.log.ainfo(
+            event=f"获取 Alpha 记录集成功",
+            emoji=LoggingEmoji.SUCCESS.value,
+            alpha_id=alpha_id,
+            record_set_type=record_set_type,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_alpha_record_sets.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
         return response
 
 

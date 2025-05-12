@@ -1,8 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any, List, Optional
 
 from alphapower.client.common_view import TableView
-from alphapower.constants import CorrelationType, UserPermission, UserRole
+from alphapower.constants import (
+    CorrelationType,
+    RecordSetType,
+    UserPermission,
+    UserRole,
+)
 from alphapower.view.alpha import (
     AlphaDetailView,
     AlphaPropertiesPayload,
@@ -108,9 +113,24 @@ class AbstractWorldQuantBrainClient(ABC):
 
     @abstractmethod
     async def fetch_alpha_correlation(
-        self, alpha_id: str, correlation_type: CorrelationType
+        self,
+        alpha_id: str,
+        correlation_type: CorrelationType,
+        override_retry_after: Optional[float] = None,
     ) -> TableView:
         """
         Fetch the correlation data for the given alpha ID and correlation type.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def fetch_alpha_record_sets(
+        self,
+        alpha_id: str,
+        record_set_type: RecordSetType,
+        override_retry_after: Optional[float] = None,
+    ) -> TableView:
+        """
+        Fetch the record sets for the given alpha ID and record set type.
         """
         raise NotImplementedError("Subclasses must implement this method.")

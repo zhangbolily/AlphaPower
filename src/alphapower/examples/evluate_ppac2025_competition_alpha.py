@@ -160,20 +160,16 @@ if __name__ == "__main__":
             for alpha in os_alphas:
                 for classification in alpha.classifications:
                     if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
-                        await log.ainfo(
-                            event="Alpha 策略符合 Power Pool 条件",
-                            alpha_id=alpha.alpha_id,
-                            classifications=alpha.classifications,
-                            emoji="✅",
-                        )
+                        # 仅处理 Power Pool 的因子
                         yield alpha
-
-                await log.ainfo(
-                    event="Alpha 策略不符合 Power Pool 条件",
-                    alpha_id=alpha.alpha_id,
-                    classifications=alpha.classifications,
-                    emoji="❌",
-                )
+                        break
+                else:
+                    await log.ainfo(
+                        event="Alpha 策略不符合 Power Pool 条件",
+                        alpha_id=alpha.alpha_id,
+                        classifications=alpha.classifications,
+                        emoji="❌",
+                    )
 
         async with wq_client as client:
             correlation_calculator = CorrelationCalculator(
@@ -193,7 +189,7 @@ if __name__ == "__main__":
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
-                client=client,
+                brain_client=brain_client,
                 record_set_dal=record_set_dal,
             )
 
@@ -225,6 +221,8 @@ if __name__ == "__main__":
                     next_stage=None,
                     correlation_calculator=correlation_calculator,
                     threshold=0.5,
+                    same_region=True,
+                    inner=False,
                 )
             )
             platform_self_correlation_stage: AbstractEvaluateStage = (
@@ -256,6 +254,7 @@ if __name__ == "__main__":
                 policy=RefreshPolicy.FORCE_REFRESH,
                 concurrency=256,
                 status=Status.UNSUBMITTED,
+                alpha_id='GmkYbbZ',
             ):
                 print(alpha)
 

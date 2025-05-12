@@ -165,7 +165,7 @@ async def alpha_fetch_record_sets(
     record_type: RecordSetType,
 ) -> Tuple[bool, Optional[TableView], float, RateLimit]:
 
-    url: str = f"{BASE_URL}/{ENDPOINT_RECORD_SETS(record_type, alpha_id)}"
+    url: str = f"{BASE_URL}/{ENDPOINT_RECORD_SETS(alpha_id, record_type)}"
     async with session.get(url) as response:
         response.raise_for_status()
 

@@ -171,8 +171,8 @@ ENDPOINT_BEFORE_AND_AFTER_PERFORMANCE: Final[Callable[[Optional[str], str], str]
 )
 
 # 图表数据相关端点
-ENDPOINT_RECORD_SETS: Final[Callable[[RecordSetType, str], str]] = (
-    lambda record_set_type, alpha_id: f"alphas/{alpha_id}/recordsets/{record_set_type.value}"
+ENDPOINT_RECORD_SETS: Final[Callable[[str, RecordSetType], str]] = (
+    lambda alpha_id, record_set_type: f"alphas/{alpha_id}/recordsets/{record_set_type.value}"
 )
 
 # 模拟端点
