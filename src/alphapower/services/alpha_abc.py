@@ -62,3 +62,13 @@ class AbstractAlphaService(abc.ABC):
         Synchronize alphas incrementally.
         """
         raise NotImplementedError("sync_alphas_incremental method not implemented")
+
+    @abc.abstractmethod
+    async def fix_alphas_properties(
+        self,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Fix alphas properties.
+        """
+        raise NotImplementedError("fix_alphas_properties method not implemented")

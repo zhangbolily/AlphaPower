@@ -4,41 +4,10 @@ from typing import Any, Dict, List, Optional
 
 from alphapower.constants import Status
 from alphapower.entity.alphas import AggregateData, Alpha
-from alphapower.view.alpha import AggregateDataView, AlphaView
+from alphapower.view.alpha import AggregateDataView, AlphaPropertiesPayload, AlphaView
 
 
 class AbstractAlphaManager(abc.ABC):
-    """
-    Abstract base class for AlphaManager.
-
-    competition: Optional[Any] = None
-    date_created_gt: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("dateCreated>", "date_created_gt"),
-        serialization_alias="dateCreated>",
-    )
-    date_created_lt: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("dateCreated<", "date_created_lt"),
-        serialization_alias="dateCreated<",
-    )
-    hidden: Optional[bool] = None
-    limit: Optional[int] = None
-    name: Optional[str] = None
-    offset: Optional[int] = None
-    order: Optional[str] = None
-    status_eq: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("status", "status_eq"),
-        serialization_alias="status",
-    )
-    status_ne: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("status//!", "status_ne"),
-        serialization_alias="status//!",
-    )
-    """
-
     @abc.abstractmethod
     async def fetch_alphas_total_count_from_platform(
         self,
@@ -93,6 +62,18 @@ class AbstractAlphaManager(abc.ABC):
     async def fetch_last_alpha_from_platform(self) -> Optional[AlphaView]:
         """
         Fetch the last alpha from the platform.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
+        )
+
+    @abc.abstractmethod
+    async def fetch_alphas_from_db(
+        self,
+        **kwargs: Any,
+    ) -> List[Alpha]:
+        """
+        Fetch alphas from the database.
         """
         raise NotImplementedError(
             f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
@@ -182,6 +163,32 @@ class AbstractAlphaManager(abc.ABC):
     ) -> Dict[str, Dict[str, AggregateData]]:
         """
         Save aggregate data to the database in bulk.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
+        )
+
+    @abc.abstractmethod
+    async def save_alpha_properties(
+        self,
+        alpha: Alpha,
+        properties: AlphaPropertiesPayload,
+    ) -> Alpha:
+        """
+        Save alpha properties to the database.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."
+        )
+
+    @abc.abstractmethod
+    async def bulk_save_alphas_properties(
+        self,
+        alphas: List[Alpha],
+        properties_list: List[AlphaPropertiesPayload],
+    ) -> Dict[str, Alpha]:
+        """
+        Save alpha properties to the database in bulk.
         """
         raise NotImplementedError(
             f"{self.__class__.__name__} is an abstract class and cannot be instantiated directly."

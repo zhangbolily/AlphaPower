@@ -318,7 +318,7 @@ class AlphaDetailView(BaseModel):
     test: Optional["AlphaDetailView.Sample"] = None
     prod: Optional["AlphaDetailView.Sample"] = None
     competitions: Optional[List[IdNameRefView]] = None
-    themes: Optional[List[str]] = None
+    themes: Optional[List[ThemeRefView]] = None
     pyramids: Optional[List[PyramidRefView]] = None
     team: Optional[str] = None
 

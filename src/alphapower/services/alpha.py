@@ -6,6 +6,7 @@ from aiostream import stream
 from alphapower.constants import (
     MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
     MAX_PAGE_SIZE_IN_ALPHA_LIST_QUERY,
+    Color,
     LoggingEmoji,
     Status,
 )
@@ -17,7 +18,7 @@ from alphapower.internal.multiprocessing import (
 )
 from alphapower.manager.alpha_manager import AlphaManagerFactory
 from alphapower.manager.alpha_manager_abc import AbstractAlphaManager
-from alphapower.view.alpha import AlphaView
+from alphapower.view.alpha import AlphaPropertiesPayload, AlphaView
 
 from .alpha_abc import AbstractAlphaService
 
@@ -410,7 +411,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 emoji=LoggingEmoji.INFO.value,
             )
             return
-    
+
         latest_date_created: datetime = latest_alpha.date_created.replace(tzinfo=tz)
         await self.log.ainfo(
             event="最新的 alpha 数据",
@@ -429,8 +430,10 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 emoji=LoggingEmoji.INFO.value,
             )
             return
-        
-        last_local_date_created: datetime = last_local_alpha.date_created.replace(tzinfo=tz)
+
+        last_local_date_created: datetime = last_local_alpha.date_created.replace(
+            tzinfo=tz
+        )
         await self.log.ainfo(
             event="本地最新的 alpha 数据",
             last_local_date_created=last_local_date_created,
@@ -446,7 +449,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
                 emoji=LoggingEmoji.INFO.value,
             )
             return
-    
+
         created_time_ranges: List[Tuple[datetime, datetime]] = []
         current_start_time = last_local_date_created
         while current_start_time < latest_date_created:
@@ -454,7 +457,7 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
             current_end_time = min(next_start_time, latest_date_created)
             created_time_ranges.append((current_start_time, current_end_time))
             current_start_time = next_start_time
-        
+
         await self.log.ainfo(
             event="增量时间范围",
             created_time_ranges=created_time_ranges,
@@ -481,6 +484,79 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
 
         await self.log.ainfo(
             event=f"退出 {self.sync_alphas_incremental.__qualname__}",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+    async def fix_alphas_properties(
+        self,
+        **kwargs: Any,
+    ) -> None:
+        # 目前这个方法功能是移除 Alpha 的 color 属性，并设置 name 为 alpha id
+        # 未来可能会添加更多的功能
+        await self.log.ainfo(
+            event=f"进入 {self.fix_alphas_properties.__qualname__}",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        os_alphas: List[Alpha] = await self.alpha_manager.fetch_alphas_from_db(
+            stage="OS",
+        )
+
+        if not os_alphas:
+            await self.log.ainfo(
+                event="没有 OS 阶段的 alpha 数据",
+                message="无法进行修复，因为没有 OS 阶段的 alpha 数据",
+                emoji=LoggingEmoji.INFO.value,
+            )
+            return
+        await self.log.ainfo(
+            event="开始修复 OS 阶段的 alpha 数据",
+            count=len(os_alphas),
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        incorrect_alphas: List[Alpha] = []
+        for alpha in os_alphas:
+            if alpha.name != alpha.alpha_id or alpha.color is not None:
+                await self.log.ainfo(
+                    event="修复 alpha 数据",
+                    old_name=alpha.name,
+                    new_name=alpha.alpha_id,
+                    old_color=alpha.color,
+                    new_color=Color.NONE,
+                    emoji=LoggingEmoji.INFO.value,
+                )
+                alpha.name = alpha.alpha_id
+                alpha.color = Color.NONE
+                incorrect_alphas.append(alpha)
+
+        properties_list: List[AlphaPropertiesPayload] = []
+        for alpha in incorrect_alphas:
+            properties_payload: AlphaPropertiesPayload = AlphaPropertiesPayload(
+                color=None,
+                name=alpha.name,
+                tags=alpha.tags,
+            )
+            properties_list.append(properties_payload)
+
+        await self.log.ainfo(
+            event="开始修复 alpha 的属性",
+            count=len(properties_list),
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        await self.alpha_manager.bulk_save_alphas_properties(
+            alphas=incorrect_alphas,
+            properties_list=properties_list,
+        )
+        await self.log.ainfo(
+            event="修复 alpha 的属性完成",
+            count=len(properties_list),
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fix_alphas_properties.__qualname__}",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
 

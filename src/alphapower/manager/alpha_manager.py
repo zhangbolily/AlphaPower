@@ -16,6 +16,7 @@ from alphapower.internal.multiprocessing import (
 )
 from alphapower.view.alpha import (
     AggregateDataView,
+    AlphaPropertiesPayload,
     AlphaView,
     UserAlphasQuery,
     UserAlphasView,
@@ -238,6 +239,35 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return alphas_view.results[0]
+
+    @async_exception_handler
+    async def fetch_alphas_from_db(
+        self,
+        **kwargs: Any,
+    ) -> List[Alpha]:
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_alphas_from_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self.fetch_alphas_from_db.__qualname__} 入参",
+            kwargs=kwargs,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+        async with session_manager.get_session(
+            Database.ALPHAS, readonly=True
+        ) as session:
+            alphas: List[Alpha] = await alpha_dal.find_by(session=session, **kwargs)
+        await self.log.adebug(
+            event=f"{self.fetch_alphas_from_db.__qualname__} 出参",
+            alpha_ids=[alpha.alpha_id for alpha in alphas],
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_alphas_from_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return alphas
 
     @async_exception_handler
     async def fetch_first_alpha_from_db(self) -> Optional[Alpha]:
@@ -745,6 +775,200 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
         await self.log.ainfo(
             event=f"退出 {self.bulk_save_aggregate_data_to_db.__qualname__} 方法",
             keys=list(result.keys()),
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return result
+
+    @async_exception_handler
+    async def _save_alpha_properties_in_transaction(
+        self,
+        session: AsyncSession,
+        alpha_id: str,
+        properties: AlphaPropertiesPayload,
+    ) -> Alpha:
+        await self.log.ainfo(
+            event=f"进入 {self._save_alpha_properties_in_transaction.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self._save_alpha_properties_in_transaction.__qualname__} 入参",
+            alpha_id=alpha_id,
+            properties=properties,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        # 先用接口更新平台数据
+        brain_client: AbstractWorldQuantBrainClient = await self.brain_client()
+        await brain_client.update_alpha_properties(
+            alpha_id=alpha_id,
+            payload=properties,
+        )
+
+        # 更新数据库中的 Alpha 实体
+        alpha: Optional[Alpha] = await alpha_dal.find_one_by(
+            session=session,
+            alpha_id=alpha_id,
+        )
+
+        if alpha is None:
+            await self.log.aerror(
+                event="未找到 Alpha 实体",
+                message=f"无法更新 Alpha 属性，ID: {alpha_id} 不存在",
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            raise ValueError(f"Alpha ID {alpha_id} 不存在")
+
+        # 更新 Alpha 实体
+        if properties.name:
+            alpha.name = properties.name
+
+        if properties.category:
+            alpha.category = properties.category
+
+        if properties.tags:
+            alpha.tags = properties.tags  # type: ignore
+
+        if properties.color:
+            alpha.color = properties.color
+
+        if properties.regular.description:
+            if alpha.regular:
+                alpha.regular.description = properties.regular.description
+            else:
+                await self.log.aerror(
+                    event="数据完整性错误",
+                    message="Regular 属性缺失，无法更新描述",
+                    emoji=LoggingEmoji.ERROR.value,
+                )
+                raise ValueError("Regular 属性缺失，无法更新描述")
+
+        alpha = await alpha_dal.update(
+            session=session,
+            entity=alpha,
+        )
+        await self.log.ainfo(
+            event=f"保存 {Alpha.__name__} 属性成功",
+            alpha_id=alpha_id,
+            name=alpha.name,
+            category=alpha.category,
+            tags=alpha.tags,
+            color=alpha.color,
+            description=alpha.regular.description,
+            emoji=LoggingEmoji.FINISHED.value,
+        )
+        await self.log.adebug(
+            event=f"{self._save_alpha_properties_in_transaction.__qualname__} 出参",
+            alpha_id=alpha.alpha_id,
+            name=alpha.name,
+            category=alpha.category,
+            tags=alpha.tags,
+            color=alpha.color,
+            description=alpha.regular.description,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+        await self.log.ainfo(
+            event=f"退出 {self._save_alpha_properties_in_transaction.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return alpha
+
+    @async_exception_handler
+    async def save_alpha_properties(
+        self,
+        alpha: Alpha,
+        properties: AlphaPropertiesPayload,
+    ) -> Alpha:
+        await self.log.ainfo(
+            event=f"进入 {self.save_alpha_properties.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self.save_alpha_properties.__qualname__} 入参",
+            alpha_id=alpha.alpha_id,
+            properties=properties,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        async with (
+            session_manager.get_session(
+                Database.ALPHAS,
+                readonly=False,
+            ) as session,
+            session.begin(),
+        ):
+            alpha = await self._save_alpha_properties_in_transaction(
+                session=session,
+                alpha_id=alpha.alpha_id,
+                properties=properties,
+            )
+
+        await self.log.ainfo(
+            event=f"退出 {self.save_alpha_properties.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return alpha
+
+    @async_exception_handler
+    async def bulk_save_alphas_properties(
+        self,
+        alphas: List[Alpha],
+        properties_list: List[AlphaPropertiesPayload],
+    ) -> Dict[str, Alpha]:
+        await self.log.ainfo(
+            event=f"进入 {self.bulk_save_alphas_properties.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.adebug(
+            event=f"{self.bulk_save_alphas_properties.__qualname__} 入参",
+            alpha_ids=[alpha.alpha_id for alpha in alphas],
+            properties_list=properties_list,
+            emoji=LoggingEmoji.DEBUG.value,
+        )
+
+        result: Dict[str, Alpha] = {}
+
+        async with (
+            session_manager.get_session(
+                Database.ALPHAS,
+                readonly=False,
+            ) as session,
+            session.begin(),
+        ):
+            for alpha, properties in zip(alphas, properties_list):
+                result[alpha.alpha_id] = await self._save_alpha_properties_in_transaction(
+                    session=session,
+                    alpha_id=alpha.alpha_id,
+                    properties=properties,
+                )
+                await self.log.adebug(
+                    event="批量保存属性",
+                    alpha_id=alpha.alpha_id,
+                    name=alpha.name,
+                    category=alpha.category,
+                    tags=alpha.tags,
+                    color=alpha.color,
+                    description=alpha.regular.description,
+                    emoji=LoggingEmoji.DEBUG.value,
+                )
+
+        await self.log.ainfo(
+            event=f"批量保存 {Alpha.__name__} 属性成功",
+            alpha_ids=[alpha.alpha_id for alpha in alphas],
+            properties_list=[
+                {
+                    "name": alpha.name,
+                    "category": alpha.category,
+                    "tags": alpha.tags,
+                    "color": alpha.color,
+                    "description": alpha.regular.description,
+                }
+                for alpha in alphas
+            ],
+            emoji=LoggingEmoji.FINISHED.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.bulk_save_alphas_properties.__qualname__} 方法",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return result

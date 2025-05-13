@@ -90,6 +90,19 @@ async def sync() -> None:
 
 
 @cli.group()
+async def alpha() -> None:
+    """
+    因子命令组。
+
+    提供用于同步因子的子命令。
+
+    Returns:
+        None
+    """
+    await logger.adebug("因子命令组初始化完成。")
+
+
+@cli.group()
 async def simulation() -> None:
     """
     模拟命令组。
@@ -227,6 +240,34 @@ async def alphas(
         max_count_per_loop=max_count_per_loop,
     )
     await logger.ainfo("因子同步完成。", emoji="✅")
+
+
+@alpha.command()
+async def fix() -> None:
+    """
+    修复因子属性。
+
+    返回:
+        None
+
+    异常:
+        Exception: 如果修复过程中发生错误。
+    """
+    await logger.ainfo("开始修复因子属性。", emoji="🔧")
+    brain_client_factory: WorldQuantBrainClientFactory = WorldQuantBrainClientFactory(
+        username=settings.credential.username,
+        password=settings.credential.password,
+    )
+    alpha_manager_factory: AlphaManagerFactory = AlphaManagerFactory(
+        brain_client_factory=brain_client_factory,
+    )
+    alpha_service_factory: AlphaServiceFactory = AlphaServiceFactory(
+        alpha_manager_factory=alpha_manager_factory,
+    )
+
+    alpha_service: AbstractAlphaService = await alpha_service_factory()
+    await alpha_service.fix_alphas_properties()
+    await logger.ainfo("因子属性修复完成。", emoji="✅")
 
 
 @sync.command()
