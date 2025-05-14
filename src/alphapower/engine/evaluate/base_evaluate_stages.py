@@ -27,10 +27,7 @@ from alphapower.constants import (
     SubmissionCheckResult,
     SubmissionCheckType,
 )
-from alphapower.dal.evaluate import (
-    CheckRecordDAL,
-    CorrelationDAL,
-)
+from alphapower.dal.evaluate import CheckRecordDAL, CorrelationDAL
 from alphapower.dal.session_manager import session_manager
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
 from alphapower.entity import Alpha, CheckRecord, EvaluateRecord
@@ -285,24 +282,39 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
 
             # 处理部分 PENDING 和 WARNING 算通过的情况
             # 需要外部输入配置，指定哪些检查可以通过
-            if len(pass_result_set) == 0:
-                await self.log.adebug(
-                    "Alpha 对象的 in_sample 检查通过结果集为空，跳过检查",
-                    emoji="⚠️",
-                    alpha_id=alpha.alpha_id,
-                    check_name=check.name,
-                )
-                continue
+            if pass_result_set:
+                if check.result in pass_result_set:
+                    await self.log.ainfo(
+                        "Alpha 对象的 in_sample 检查通过",
+                        emoji="✅",
+                        alpha_id=alpha.alpha_id,
+                        check_name=check.name,
+                        check_result=check.result,
+                        pass_result_set=pass_result_set,
+                    )
+                else:
+                    await self.log.awarning(
+                        "Alpha 对象的 in_sample 检查未通过",
+                        emoji="❌",
+                        alpha_id=alpha.alpha_id,
+                        check_name=check.name,
+                        check_result=check.result,
+                        pass_result_set=pass_result_set,
+                    )
+                    return False
 
-            if check.result in pass_result_set:
-                await self.log.ainfo(
+            if (
+                check.result == SubmissionCheckResult.PASS
+                or check.result == SubmissionCheckResult.PENDING
+            ):
+                await self.log.adebug(
                     "Alpha 对象的 in_sample 检查通过",
                     emoji="✅",
                     alpha_id=alpha.alpha_id,
                     check_name=check.name,
                     check_result=check.result,
-                    pass_result_set=pass_result_set,
                 )
+                continue
             else:
                 await self.log.awarning(
                     "Alpha 对象的 in_sample 检查未通过",
@@ -310,19 +322,8 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                     alpha_id=alpha.alpha_id,
                     check_name=check.name,
                     check_result=check.result,
-                    pass_result_set=pass_result_set,
                 )
                 return False
-
-            if check.result == SubmissionCheckResult.PASS:
-                await self.log.adebug(
-                    "Alpha 对象的 in_sample 检查通过",
-                    emoji="✅",
-                    alpha_id=alpha.alpha_id,
-                    check_name=check.name,
-                    check_result=check.result,
-                )
-                continue
 
         await self.log.ainfo(
             "Alpha 对象的 in_sample 检查全部通过",

@@ -193,24 +193,10 @@ if __name__ == "__main__":
                 record_set_dal=record_set_dal,
             )
 
-            check_pass_result_map: Dict[
-                SubmissionCheckType, Set[SubmissionCheckResult]
-            ] = {
-                SubmissionCheckType.SUB_UNIVERSE_SHARPE: {
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.IS_LADDER_SHARPE: {
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-            }
-
             in_sample_stage: PPAC2025InSampleEvaluateStage = (
                 PPAC2025InSampleEvaluateStage(
                     client=client,
                     next_stage=None,
-                    check_pass_result_map=check_pass_result_map,
                     brain_client=brain_client,
                 )
             )
