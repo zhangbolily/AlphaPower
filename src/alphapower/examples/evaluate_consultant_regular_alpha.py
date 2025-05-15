@@ -168,20 +168,24 @@ if __name__ == "__main__":
             check_pass_result_map: Dict[
                 SubmissionCheckType, Set[SubmissionCheckResult]
             ] = {
-                SubmissionCheckType.SUB_UNIVERSE_SHARPE: {
+                SubmissionCheckType.UNITS: {
                     SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.IS_LADDER_SHARPE: {
-                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
                 },
                 SubmissionCheckType.LOW_2Y_SHARPE: {
                     SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
                 },
                 SubmissionCheckType.CONCENTRATED_WEIGHT: {
                     SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.IS_LADDER_SHARPE: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
                 },
             }
@@ -191,11 +195,13 @@ if __name__ == "__main__":
                 password=settings.credential.password,
             )
 
-            in_sample_stage: ConsultantInSampleEvaluateStage = ConsultantInSampleEvaluateStage(
-                client=client,
-                brain_client=wqb_client,
-                next_stage=None,
-                check_pass_result_map=check_pass_result_map,
+            in_sample_stage: ConsultantInSampleEvaluateStage = (
+                ConsultantInSampleEvaluateStage(
+                    client=client,
+                    brain_client=wqb_client,
+                    next_stage=None,
+                    check_pass_result_map=check_pass_result_map,
+                )
             )
             await in_sample_stage.initialize()
 

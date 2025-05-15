@@ -193,11 +193,32 @@ if __name__ == "__main__":
                 record_set_dal=record_set_dal,
             )
 
+            check_pass_result_map: Dict[
+                SubmissionCheckType, Set[SubmissionCheckResult]
+            ] = {
+                SubmissionCheckType.UNITS: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.LOW_2Y_SHARPE: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.CONCENTRATED_WEIGHT: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+            }
+
             in_sample_stage: PPAC2025InSampleEvaluateStage = (
                 PPAC2025InSampleEvaluateStage(
                     client=client,
                     next_stage=None,
                     brain_client=brain_client,
+                    check_pass_result_map=check_pass_result_map,
                 )
             )
             await in_sample_stage.initialize()
