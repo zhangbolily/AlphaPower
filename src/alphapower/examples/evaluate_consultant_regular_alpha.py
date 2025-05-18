@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
 from alphapower.client import WorldQuantClient, wq_client
+from alphapower.client.checks_view import SubmissionCheckResultView
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
     CorrelationType,
@@ -30,6 +31,7 @@ from alphapower.engine.evaluate.base_evaluate_stages import (
     CorrelationLocalEvaluateStage,
     CorrelationPlatformEvaluateStage,
     InSampleChecksEvaluateStage,
+    SubmissionEvaluateStage,
 )
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.correlation_calculator import CorrelationCalculator
@@ -115,6 +117,44 @@ class ConsultantInSampleEvaluateStage(InSampleChecksEvaluateStage):
         return result
 
 
+class ConsultantSubmissionEvaluateStage(SubmissionEvaluateStage):
+    async def _determine_submission_pass_status(
+        self,
+        submission_check_view: SubmissionCheckResultView,
+        **kwargs: Any,
+    ) -> bool:
+
+        if submission_check_view.in_sample is None:
+            return False
+        if submission_check_view.in_sample.checks is None:
+            return False
+        if len(submission_check_view.in_sample.checks) == 0:
+            return False
+
+        for check in submission_check_view.in_sample.checks:
+            if check.name in (
+                SubmissionCheckType.POWER_POOL_CORRELATION.value,
+                SubmissionCheckType.MATCHES_THEMES.value,
+            ):
+                continue
+
+            if check.result not in (
+                SubmissionCheckResult.PASS,
+                SubmissionCheckResult.PENDING,
+                SubmissionCheckResult.ERROR,
+            ):
+                # 如果有任何一个检查不通过，直接返回 False
+                await log.aerror(
+                    event="PPAC2025 提交评估失败",
+                    check=check.name,
+                    result=check.result,
+                    emoji="❌",
+                )
+                return False
+
+        return True
+
+
 if __name__ == "__main__":
     # 运行测试
 
@@ -161,10 +201,9 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 11),
-                end_time=datetime(2025, 5, 14, 23, 59, 59),
+                end_time=datetime(2025, 5, 20, 23, 59, 59),
             )
 
-            # 这几个检查是 WARNING 都要算不通过，没有办法提交生产相关性检查
             check_pass_result_map: Dict[
                 SubmissionCheckType, Set[SubmissionCheckResult]
             ] = {
@@ -184,6 +223,11 @@ if __name__ == "__main__":
                     SubmissionCheckResult.PENDING,
                 },
                 SubmissionCheckType.IS_LADDER_SHARPE: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.MATCHES_THEMES: {
                     SubmissionCheckResult.PASS,
                     SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
@@ -223,8 +267,14 @@ if __name__ == "__main__":
                 )
             )
 
+            submission_stage: AbstractEvaluateStage = ConsultantSubmissionEvaluateStage(
+                next_stage=None,
+                check_record_dal=check_record_dal,
+                client=client,
+            )
+
             in_sample_stage.next_stage = local_correlation_stage
-            local_correlation_stage.next_stage = None
+            local_correlation_stage.next_stage = submission_stage
             evaluator = BaseEvaluator(
                 name="consultant",
                 fetcher=fetcher,

@@ -1074,8 +1074,11 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
             elif action == AbstractEvaluateStage.CheckAction.USE_EXISTING:
                 if exist_check_record:
                     try:
-                        submission_check_view = SubmissionCheckResultView(
-                            **exist_check_record.content
+                        submission_check_view = (
+                            SubmissionCheckResultView.model_validate(
+                                exist_check_record.content,
+                                by_alias=True,
+                            )
                         )
                     except (TypeError, ValueError, KeyError) as parse_err:
                         await self.log.aerror(
@@ -1166,7 +1169,7 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
                                 entity=CheckRecord(
                                     alpha_id=alpha.alpha_id,
                                     record_type=CheckRecordType.SUBMISSION,
-                                    content=result.model_dump(),
+                                    content=result.model_dump(mode="json"),
                                 ),
                             )
                         return result
@@ -1210,7 +1213,11 @@ class SubmissionEvaluateStage(AbstractEvaluateStage):
             return False
 
         for check in submission_check_view.in_sample.checks:
-            if check.result != SubmissionCheckResult.PASS:
+            if check.result not in (
+                SubmissionCheckResult.PASS,
+                SubmissionCheckResult.ERROR,
+                SubmissionCheckResult.PENDING,
+            ):
                 return False
 
         return True

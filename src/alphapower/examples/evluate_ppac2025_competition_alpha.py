@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
 from alphapower.client import WorldQuantClient, wq_client
+from alphapower.client.checks_view import SubmissionCheckResultView
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
     CorrelationType,
@@ -30,6 +31,7 @@ from alphapower.engine.evaluate.base_evaluate_stages import (
     CorrelationLocalEvaluateStage,
     CorrelationPlatformEvaluateStage,
     InSampleChecksEvaluateStage,
+    SubmissionEvaluateStage,
 )
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.correlation_calculator import CorrelationCalculator
@@ -123,6 +125,35 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
         return result
 
 
+class PPAC2025SubmissionEvaluateStage(SubmissionEvaluateStage):
+    async def _determine_submission_pass_status(
+        self,
+        submission_check_view: SubmissionCheckResultView,
+        **kwargs: Any,
+    ) -> bool:
+
+        if submission_check_view.in_sample is None:
+            return False
+        if submission_check_view.in_sample.checks is None:
+            return False
+        if len(submission_check_view.in_sample.checks) == 0:
+            return False
+
+        for check in submission_check_view.in_sample.checks:
+            if (
+                check.name == SubmissionCheckType.POWER_POOL_CORRELATION.value
+                and check.result == SubmissionCheckResult.PASS
+            ):
+                await log.ainfo(
+                    event="PPAC2025 评估通过，因子符合 Power Pool 条件",
+                    check=check.name,
+                    emoji="✅",
+                )
+                return True
+
+        return False
+
+
 if __name__ == "__main__":
 
     async def main() -> None:
@@ -185,7 +216,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 12),
-                end_time=datetime(2025, 5, 14, 23, 59, 59),
+                end_time=datetime(2025, 5, 17, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -242,6 +273,14 @@ if __name__ == "__main__":
                 )
             )
 
+            submission_check_stage: AbstractEvaluateStage = (
+                PPAC2025SubmissionEvaluateStage(
+                    next_stage=None,
+                    check_record_dal=check_record_dal,
+                    client=client,
+                )
+            )
+
             scoring_stage: ScoringEvaluateStage = ScoringEvaluateStage(
                 next_stage=None,
                 record_sets_manager=record_set_manager,
@@ -249,6 +288,7 @@ if __name__ == "__main__":
 
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = scoring_stage
+            scoring_stage.next_stage = submission_check_stage
 
             evaluator = BaseEvaluator(
                 name="ppac2025",

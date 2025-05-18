@@ -406,7 +406,6 @@ class WorldQuantClient:
         return finished, retry_after, result
 
     @exception_handler
-    @rate_limit_handler
     async def alpha_fetch_submission_check_result(
         self, alpha_id: str
     ) -> Tuple[bool, Optional[float], Optional[SubmissionCheckResultView], RateLimit]:

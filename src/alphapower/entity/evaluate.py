@@ -15,24 +15,12 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
-from sqlalchemy import (
-    JSON,
-    DateTime,
-    Enum,
-    Float,
-    Integer,
-    String,
-    func,
-)
+from sqlalchemy import JSON, DateTime, Enum, Float, Integer, String, func
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.hybrid import hybrid_property
 
 # 导入 validates 装饰器
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    MappedColumn,
-    mapped_column,
-)
+from sqlalchemy.orm import DeclarativeBase, MappedColumn, mapped_column
 
 from alphapower.client.common_view import TableView
 from alphapower.constants import (
@@ -166,6 +154,7 @@ class CheckRecord(Base):
         String(ALPHA_ID_LENGTH),
         nullable=False,
         comment="Alpha ID",  # 添加字段注释
+        index=True,
     )
     record_type: MappedColumn[CheckRecordType] = mapped_column(
         Enum(CheckRecordType),

@@ -413,7 +413,7 @@ class Alpha(Base):
 
     def __init__(self, **kwargs: Any) -> None:
 
-        themes: Optional[List[str]] = kwargs.pop("themes", None)
+        themes: Optional[List[ThemeRefView]] = kwargs.pop("themes", None)
         regular: Optional[ExpressionView] = kwargs.pop("regular", None)
         combo: Optional[ExpressionView] = kwargs.pop("combo", None)
         selection: Optional[ExpressionView] = kwargs.pop("selection", None)
@@ -439,7 +439,7 @@ class Alpha(Base):
         self._competitions_view_cache: Optional[List[IdNameRefView]] = None
 
         if themes is not None:
-            self._themes = StringListAdapter.dump_python(
+            self._themes = ThemeRefViewListAdapter.dump_python(
                 themes,
                 mode="json",
             )
