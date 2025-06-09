@@ -134,6 +134,68 @@ DB_DATA: Final[str] = "data"  # 市场数据库名称
 DB_SIMULATION: Final[str] = "simulation"  # 模拟回测数据库名称
 
 
+# Alpha 表达式定义
+FAST_EXPRESSION_GRAMMAR: Final[str] = r"""
+    start: statement_list
+
+    statement_list: statement (";" statement)*
+
+    ?statement: assignment | expr
+
+    assignment: NAME "=" expr          -> assign
+
+    ?expr: logic_expr
+
+    ?logic_expr: logic_expr "||" logic_term   -> or_expr
+               | logic_term
+
+    ?logic_term: logic_term "&&" compare_expr -> and_expr
+               | compare_expr
+
+    ?compare_expr: compare_expr "==" sum      -> eq
+                 | compare_expr "!=" sum      -> ne
+                 | compare_expr ">"  sum      -> gt
+                 | compare_expr "<"  sum      -> lt
+                 | compare_expr ">=" sum      -> ge
+                 | compare_expr "<=" sum      -> le
+                 | sum
+
+    ?sum: sum "+" term   -> add
+        | sum "-" term   -> sub
+        | term
+
+    ?term: term "*" factor -> mul
+         | term "/" factor -> div
+         | factor
+
+    ?factor: member_expr
+           | ESCAPED_STRING    -> string 
+           | NUMBER        -> number
+           | "-" factor    -> neg
+           | "(" expr ")"
+
+    ?member_expr: base ("." NAME)*   -> member
+
+    ?base: NAME                -> variable
+        | function_call
+
+    function_call: NAME "(" [expr ("," expr)*] ")"
+
+    NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
+
+    %import common.ESCAPED_STRING
+    %import common.NUMBER
+    %import common.WS_INLINE
+    %ignore WS_INLINE
+
+    // C风格多行注释：/* ... */
+    %ignore /\/\*.*?\*\//s
+
+    // 单行注释：//
+    %ignore /\/\/.*/
+"""
+
+
 # -----------------------------------------------------------------------------
 # API 路由相关常量
 # -----------------------------------------------------------------------------
@@ -234,6 +296,8 @@ class UserPermission(str, Enum):
     SUPER_ALPHA = "SUPER_ALPHA"  # 超级Alpha
     VISUALIZATION = "VISUALIZATION"  # 可视化
     WORKDAY = "WORKDAY"  # 工作日
+    BRAIN_LABS = "BRAIN_LABS"  # Brain Labs
+    BRAIN_LABS_JUPYTER_LAB = "BRAIN_LABS_JUPYTER_LAB"  # Brain Labs Jupyter Lab
 
 
 # 用户角色常量 (兼容性保留，建议使用UserRole枚举)
@@ -725,6 +789,7 @@ class CorrelationType(Enum):
     DEFAULT = "DEFAULT"
     SELF = "self"  # 自相关
     PROD = "prod"  # 生产环境相关性
+    POWER_POOL = "power-pool"  # Power Pool 相关性
 
 
 class CorrelationCalcType(Enum):

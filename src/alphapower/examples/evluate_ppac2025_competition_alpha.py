@@ -215,8 +215,8 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 12),
-                end_time=datetime(2025, 5, 17, 23, 59, 59),
+                start_time=datetime(2025, 3, 17),
+                end_time=datetime(2025, 6, 9, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -266,7 +266,7 @@ if __name__ == "__main__":
             platform_self_correlation_stage: AbstractEvaluateStage = (
                 CorrelationPlatformEvaluateStage(
                     next_stage=None,
-                    correlation_type=CorrelationType.SELF,
+                    correlation_type=CorrelationType.POWER_POOL,
                     check_record_dal=check_record_dal,
                     correlation_dal=correlation_dal,
                     client=brain_client,
@@ -287,7 +287,8 @@ if __name__ == "__main__":
             )
 
             in_sample_stage.next_stage = local_correlation_stage
-            local_correlation_stage.next_stage = scoring_stage
+            local_correlation_stage.next_stage = platform_self_correlation_stage
+            platform_self_correlation_stage.next_stage = scoring_stage
             scoring_stage.next_stage = submission_check_stage
 
             evaluator = BaseEvaluator(
@@ -298,7 +299,7 @@ if __name__ == "__main__":
             )
 
             async for alpha in evaluator.evaluate_many(
-                policy=RefreshPolicy.FORCE_REFRESH,
+                policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
                 concurrency=256,
                 status=Status.UNSUBMITTED,
             ):

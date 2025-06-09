@@ -596,10 +596,10 @@ class HttpXClient(BaseLogger):
                 await asyncio.sleep(backoff_time or 1)
 
                 try:
-                    retried_resp: httpx.Response = await do_request_func()
                     next_backoff_time: float = (
                         backoff_time * self._backoff_factor if backoff_time else 1
                     )
+                    retried_resp: httpx.Response = await do_request_func()
 
                     ensured_resp: Optional[httpx.Response] = (
                         await self._handle_response_status(

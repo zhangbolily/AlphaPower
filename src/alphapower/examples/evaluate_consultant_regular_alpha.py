@@ -200,8 +200,8 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 11),
-                end_time=datetime(2025, 5, 20, 23, 59, 59),
+                start_time=datetime(2025, 5, 19),
+                end_time=datetime(2025, 6, 8, 23, 59, 59),
             )
 
             check_pass_result_map: Dict[
@@ -275,6 +275,7 @@ if __name__ == "__main__":
 
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = submission_stage
+            submission_stage.next_stage = platform_prod_correlation_stage
             evaluator = BaseEvaluator(
                 name="consultant",
                 fetcher=fetcher,
