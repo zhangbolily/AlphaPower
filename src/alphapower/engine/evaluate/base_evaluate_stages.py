@@ -13,7 +13,6 @@ from alphapower.client import (
 )
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
-    CONSULTANT_MAX_PROD_CORRELATION,
     CONSULTANT_MAX_SELF_CORRELATION,
     MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA,
     MIN_FORMULATED_PYRAMID_ALPHAS,
@@ -292,6 +291,7 @@ class InSampleChecksEvaluateStage(AbstractEvaluateStage):
                         check_result=check.result,
                         pass_result_set=pass_result_set,
                     )
+                    continue
                 else:
                     await self.log.awarning(
                         "Alpha 对象的 in_sample 检查未通过",
@@ -485,6 +485,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         check_record_dal: CheckRecordDAL,
         correlation_dal: CorrelationDAL,
         client: WorldQuantBrainClient,
+        threshold: float,
     ) -> None:
 
         super().__init__(next_stage)
@@ -492,6 +493,7 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         self.check_record_dal: CheckRecordDAL = check_record_dal
         self.correlation_dal: CorrelationDAL = correlation_dal
         self.client: WorldQuantBrainClient = client
+        self.threshold: float = threshold
         self.log: BoundLogger = get_logger(
             f"{__name__}.{self.__class__.__name__}",
         )
@@ -505,9 +507,9 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
     ) -> bool:
 
         record_type: CheckRecordType = (
-            CheckRecordType.CORRELATION_SELF
-            if self.correlation_type == CorrelationType.SELF
-            else CheckRecordType.CORRELATION_PROD
+            CheckRecordType.CORRELATION_PROD
+            if self.correlation_type == CorrelationType.PROD
+            else CheckRecordType.CORRELATION_SELF
         )
         check_type_name: str = (
             "自相关性"
@@ -585,9 +587,9 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
 
             if correlation_content:
                 max_corr: float = correlation_content.max or 0.0
-                if self.correlation_type == CorrelationType.SELF:
-                    record.self_correlation = max_corr
-                    if max_corr > CONSULTANT_MAX_SELF_CORRELATION:
+                if self.correlation_type == CorrelationType.PROD:
+                    record.prod_correlation = max_corr
+                    if max_corr > self.threshold:
                         await self.log.awarning(
                             f"{check_type_name}检查未通过，最大相关性超过阈值",
                             emoji="❌",
@@ -595,9 +597,9 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
                             max_corr=max_corr,
                         )
                         return False
-                elif self.correlation_type == CorrelationType.PROD:
-                    record.prod_correlation = max_corr
-                    if max_corr > CONSULTANT_MAX_PROD_CORRELATION:
+                else:
+                    record.self_correlation = max_corr
+                    if max_corr > self.threshold:
                         await self.log.awarning(
                             f"{check_type_name}检查未通过，最大相关性超过阈值",
                             emoji="❌",
@@ -660,9 +662,9 @@ class CorrelationPlatformEvaluateStage(AbstractEvaluateStage):
         check_record: CheckRecord = CheckRecord(
             alpha_id=alpha.alpha_id,
             record_type=(
-                CheckRecordType.CORRELATION_SELF
-                if self.correlation_type == CorrelationType.SELF
-                else CheckRecordType.CORRELATION_PROD
+                CheckRecordType.CORRELATION_PROD
+                if self.correlation_type == CorrelationType.PROD
+                else CheckRecordType.CORRELATION_SELF
             ),
             content=data.model_dump(mode="python"),
         )

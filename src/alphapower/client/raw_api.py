@@ -361,6 +361,15 @@ async def _create_simulation(
     url: str = f"{BASE_URL}/{ENDPOINT_SIMULATION}"
 
     async with session.post(url, json=simulation_data) as response:
+        if response.status == 400:
+            # 模拟数据格式错误，返回默认响应
+            log.error(
+                "创建模拟失败，可能是模拟数据格式错误",
+                status=response.status,
+                response_text=await response.text(),
+            )
+            return DEFAULT_SIMULATION_RESPONSE
+
         response.raise_for_status()
         if response.status == 201:
             progress_id: str = response.headers["Location"].split("/")[-1]

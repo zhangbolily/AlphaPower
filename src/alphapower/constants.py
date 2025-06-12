@@ -135,7 +135,9 @@ DB_SIMULATION: Final[str] = "simulation"  # 模拟回测数据库名称
 
 
 # Alpha 表达式定义
-FAST_EXPRESSION_GRAMMAR: Final[str] = r"""
+FAST_EXPRESSION_GRAMMAR: Final[
+    str
+] = r"""
     start: statement_list
 
     statement_list: statement (";" statement)*
@@ -179,11 +181,20 @@ FAST_EXPRESSION_GRAMMAR: Final[str] = r"""
     ?base: NAME                -> variable
         | function_call
 
-    function_call: NAME "(" [expr ("," expr)*] ")"
+    function_call: NAME "(" [argument ("," argument)*] ")"
+    ?argument: expr                          -> positional_arg
+        | NAME "=" expr                -> keyword_arg
 
     NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
 
-    %import common.ESCAPED_STRING
+    //
+    // Strings
+    //
+    _STRING_INNER: /.*?/
+    _STRING_ESC_INNER: _STRING_INNER /(?<!\\)(\\\\)*?/
+
+    ESCAPED_STRING : "\"" _STRING_ESC_INNER "\"" | "'" _STRING_INNER "'"
+
     %import common.NUMBER
     %import common.WS_INLINE
     %ignore WS_INLINE
@@ -520,6 +531,7 @@ class Neutralization(Enum):
     FAST = "FAST"
     SLOW = "SLOW"
     SLOW_AND_FAST = "SLOW_AND_FAST"
+    REVERSION_AND_MOMENTUM = "REVERSION_AND_MOMENTUM"
 
 
 # 基础中性化策略
@@ -529,6 +541,7 @@ NEUTRALIZATION_BASIC: Final[List[Neutralization]] = [
     Neutralization.INDUSTRY,
     Neutralization.SUBINDUSTRY,
     Neutralization.SECTOR,
+    Neutralization.REVERSION_AND_MOMENTUM,
 ]
 
 # 扩展中性化策略
@@ -568,6 +581,13 @@ class RegularLanguage(Enum):
     PYTHON = "PYTHON"
     EXPRESSION = "EXPRESSION"
     FASTEXPR = "FASTEXPR"
+
+
+class FastExpressionType(Enum):
+    DEFAULT = "DEFAULT"  # 默认值，无实际意义
+    REGULAR = "REGULAR"  # 正则表达式类型
+    SELECTION = "SELECTION"  # 选择类型
+    COMBO = "COMBO"  # 组合类型
 
 
 class Region(Enum):
@@ -764,6 +784,7 @@ class SubmissionCheckType(Enum):
     SUPER_SUBMISSION = "SUPER_SUBMISSION"
     SUPER_UNIVERSE_SHARPE = "SUPER_UNIVERSE_SHARPE"
     UNITS = "UNITS"
+    AVAILABLE_SETTING = "AVAILABLE_SETTING"
 
 
 class RecordSetType(Enum):
@@ -1002,6 +1023,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.INDUSTRY,
         Neutralization.SUBINDUSTRY,
         Neutralization.SLOW_AND_FAST,
+        Neutralization.REVERSION_AND_MOMENTUM,
     ],
     Region.GLB: [
         Neutralization.NONE,
@@ -1015,6 +1037,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.SUBINDUSTRY,
         Neutralization.COUNTRY,
         Neutralization.SLOW_AND_FAST,
+        Neutralization.REVERSION_AND_MOMENTUM,
     ],
     Region.EUR: [
         Neutralization.NONE,
@@ -1028,6 +1051,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.SUBINDUSTRY,
         Neutralization.COUNTRY,
         Neutralization.SLOW_AND_FAST,
+        Neutralization.REVERSION_AND_MOMENTUM,
     ],
     Region.ASI: [
         Neutralization.NONE,
@@ -1040,6 +1064,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.SUBINDUSTRY,
         Neutralization.COUNTRY,
         Neutralization.SLOW_AND_FAST,
+        Neutralization.REVERSION_AND_MOMENTUM,
     ],
     Region.CHN: [
         Neutralization.NONE,
@@ -1051,6 +1076,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.INDUSTRY,
         Neutralization.SUBINDUSTRY,
         Neutralization.SLOW_AND_FAST,
+        Neutralization.REVERSION_AND_MOMENTUM,
     ],
     Region.KOR: NEUTRALIZATION_BASIC,
     Region.TWN: NEUTRALIZATION_BASIC,
@@ -1063,6 +1089,7 @@ REGION_NEUTRALIZATION_MAP: Final[Dict[Region, List[Neutralization]]] = {
         Neutralization.INDUSTRY,
         Neutralization.SUBINDUSTRY,
         Neutralization.COUNTRY,
+        Neutralization.REVERSION_AND_MOMENTUM,
     ],
 }
 

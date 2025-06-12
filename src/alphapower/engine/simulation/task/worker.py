@@ -1045,34 +1045,6 @@ class Worker(AbstractWorker):
                 await asyncio.sleep(5)
                 continue  # 继续下一次循环
 
-            # 更新任务状态为已调度
-            try:
-                async with (
-                    session_manager.get_session(Database.SIMULATION) as session,
-                    session.begin(),
-                ):
-                    now = datetime.now()
-                    for task in tasks:
-                        task.scheduled_at = now
-                        task.status = SimulationTaskStatus.SCHEDULED
-                    await simulation_task_dal.update_all(
-                        entities=tasks, session=session
-                    )
-                await self.log.ainfo(
-                    event="数据库中任务状态更新为已调度",
-                    emoji="💾",
-                    task_ids=[t.id for t in tasks],
-                )
-            except Exception:
-                await self.log.aexception(
-                    event="更新任务状态为已调度时数据库操作失败",
-                    emoji="❌",
-                    task_ids=[t.id for t in tasks],
-                )
-                # 数据库更新失败，可能需要重试或将任务放回队列
-                # 此处选择继续处理，但记录错误
-                # 可以考虑将任务状态回滚或标记为错误
-
             await self.log.ainfo(
                 event="开始处理调度到的任务",
                 emoji="⚙️",
@@ -1083,9 +1055,9 @@ class Worker(AbstractWorker):
             #! 3. 心跳检查
             await self._heartbeat(name="_do_work_before_process")
 
-            # 根据用户角色执行不同的任务处理逻辑
+            # 根据用户角色和任务数量执行不同的任务处理逻辑
             try:
-                if self._user_role == UserRole.USER:
+                if self._user_role == UserRole.USER or len(tasks) == 1:
                     if len(tasks) != 1:
                         await self.log.aerror(
                             event="用户角色调度到多个任务",

@@ -12,8 +12,8 @@ from typing import Any, List, Optional, Set
 from structlog.stdlib import BoundLogger
 
 from alphapower.constants import Database
+from alphapower.dal import simulation_task_dal
 from alphapower.dal.session_manager import session_manager
-from alphapower.dal.simulation import SimulationTaskDAL
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.logging import get_logger
 
@@ -79,27 +79,32 @@ class DatabaseTaskProvider(AbstractTaskProvider):
             sampled_task_ids: List[int] = []
             while len(sampled_task_ids) < count:
                 rem: int = count - len(sampled_task_ids)
-                dal: SimulationTaskDAL = SimulationTaskDAL(session=session)
-                task_ids: List[int] = await dal.find_task_ids_by_filters(
-                    status=SimulationTaskStatus.PENDING,
-                    priority=priority,
-                    notin_={
-                        "id": list(self.committing_scheduled_task_ids)
-                        + sampled_task_ids,
-                    },
-                    limit=rem * self._sample_rate,
-                    offset=self.cursor,
-                    **kwargs,
-                )
-
-                if not task_ids:  # 如果没有更多任务，提前退出
-                    pending_task_count: int = await dal.deprecated_count(
+                task_ids: List[int] = (
+                    await simulation_task_dal.find_task_ids_by_filters(
+                        session=session,
                         status=SimulationTaskStatus.PENDING,
                         priority=priority,
                         notin_={
                             "id": list(self.committing_scheduled_task_ids)
                             + sampled_task_ids,
                         },
+                        limit=rem * self._sample_rate,
+                        offset=self.cursor,
+                        **kwargs,
+                    )
+                )
+
+                if not task_ids:  # 如果没有更多任务，提前退出
+                    pending_task_count: int = (
+                        await simulation_task_dal.deprecated_count(
+                            session=session,
+                            status=SimulationTaskStatus.PENDING,
+                            priority=priority,
+                            notin_={
+                                "id": list(self.committing_scheduled_task_ids)
+                                + sampled_task_ids,
+                            },
+                        )
                     )
 
                     self.cursor = 0
@@ -125,7 +130,8 @@ class DatabaseTaskProvider(AbstractTaskProvider):
                 sampled_task_ids.extend(task_ids[:: self._sample_rate])
                 self.cursor += len(task_ids)
 
-            sampled_tasks = await dal.find_filtered(
+            sampled_tasks = await simulation_task_dal.find_filtered(
+                session=session,
                 status=SimulationTaskStatus.PENDING,
                 priority=priority,
                 in_={"id": sampled_task_ids},

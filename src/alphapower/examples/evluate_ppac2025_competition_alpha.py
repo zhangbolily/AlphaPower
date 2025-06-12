@@ -6,12 +6,12 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 
 from alphapower.client import WorldQuantClient, wq_client
-from alphapower.client.checks_view import SubmissionCheckResultView
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
     CorrelationType,
     Database,
     RefreshPolicy,
+    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -31,7 +31,6 @@ from alphapower.engine.evaluate.base_evaluate_stages import (
     CorrelationLocalEvaluateStage,
     CorrelationPlatformEvaluateStage,
     InSampleChecksEvaluateStage,
-    SubmissionEvaluateStage,
 )
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.correlation_calculator import CorrelationCalculator
@@ -82,9 +81,14 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
     ) -> bool:
         if alpha.in_sample and alpha.in_sample.checks:
             for check in alpha.in_sample.checks:
-                if check.name == SubmissionCheckType.MATCHES_PYRAMID.value:
+                if (
+                    check.name == SubmissionCheckType.MATCHES_PYRAMID.value
+                    and check.pyramids
+                ):
                     for pyramid in check.pyramids:
-                        if "MODEL" in pyramid.name or "ANALYST" in pyramid.name:
+                        if (
+                            "MODEL" in pyramid.name or "ANALYST" in pyramid.name
+                        ) and alpha.region == Region.USA:
                             # 如果因子在模型或分析中，评估失败
                             await log.aerror(
                                 event="PPAC2025 评估失败，因子在模型或分析中",
@@ -123,35 +127,6 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
             )
 
         return result
-
-
-class PPAC2025SubmissionEvaluateStage(SubmissionEvaluateStage):
-    async def _determine_submission_pass_status(
-        self,
-        submission_check_view: SubmissionCheckResultView,
-        **kwargs: Any,
-    ) -> bool:
-
-        if submission_check_view.in_sample is None:
-            return False
-        if submission_check_view.in_sample.checks is None:
-            return False
-        if len(submission_check_view.in_sample.checks) == 0:
-            return False
-
-        for check in submission_check_view.in_sample.checks:
-            if (
-                check.name == SubmissionCheckType.POWER_POOL_CORRELATION.value
-                and check.result == SubmissionCheckResult.PASS
-            ):
-                await log.ainfo(
-                    event="PPAC2025 评估通过，因子符合 Power Pool 条件",
-                    check=check.name,
-                    emoji="✅",
-                )
-                return True
-
-        return False
 
 
 if __name__ == "__main__":
@@ -215,8 +190,8 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 17),
-                end_time=datetime(2025, 6, 9, 23, 59, 59),
+                start_time=datetime(2025, 3, 17, 0, 0),
+                end_time=datetime(2025, 6, 12, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -238,6 +213,11 @@ if __name__ == "__main__":
                     SubmissionCheckResult.PENDING,
                 },
                 SubmissionCheckType.CONCENTRATED_WEIGHT: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.MATCHES_COMPETITION: {
                     SubmissionCheckResult.PASS,
                     SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
@@ -270,14 +250,7 @@ if __name__ == "__main__":
                     check_record_dal=check_record_dal,
                     correlation_dal=correlation_dal,
                     client=brain_client,
-                )
-            )
-
-            submission_check_stage: AbstractEvaluateStage = (
-                PPAC2025SubmissionEvaluateStage(
-                    next_stage=None,
-                    check_record_dal=check_record_dal,
-                    client=client,
+                    threshold=0.5,
                 )
             )
 
@@ -289,7 +262,6 @@ if __name__ == "__main__":
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = platform_self_correlation_stage
             platform_self_correlation_stage.next_stage = scoring_stage
-            scoring_stage.next_stage = submission_check_stage
 
             evaluator = BaseEvaluator(
                 name="ppac2025",
@@ -300,7 +272,7 @@ if __name__ == "__main__":
 
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
-                concurrency=256,
+                concurrency=3,
                 status=Status.UNSUBMITTED,
             ):
                 print(alpha)

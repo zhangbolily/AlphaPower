@@ -9,9 +9,11 @@ from alphapower.client import WorldQuantClient, wq_client
 from alphapower.client.checks_view import SubmissionCheckResultView
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
+    CONSULTANT_MAX_PROD_CORRELATION,
     CorrelationType,
     Database,
     RefreshPolicy,
+    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -80,9 +82,14 @@ class ConsultantInSampleEvaluateStage(InSampleChecksEvaluateStage):
     ) -> bool:
         if alpha.in_sample and alpha.in_sample.checks:
             for check in alpha.in_sample.checks:
-                if check.name == SubmissionCheckType.MATCHES_PYRAMID.value:
+                if (
+                    check.name == SubmissionCheckType.MATCHES_PYRAMID.value
+                    and check.pyramids
+                ):
                     for pyramid in check.pyramids:
-                        if "MODEL" in pyramid.name or "ANALYST" in pyramid.name:
+                        if (
+                            "MODEL" in pyramid.name or "ANALYST" in pyramid.name
+                        ) and alpha.region == Region.USA:
                             # 如果因子在模型或分析中，评估失败
                             await log.aerror(
                                 event="PPAC2025 评估失败，因子在模型或分析中",
@@ -200,8 +207,8 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 5, 19),
-                end_time=datetime(2025, 6, 8, 23, 59, 59),
+                start_time=datetime(2025, 3, 17),
+                end_time=datetime(2025, 6, 11, 23, 59, 59),
             )
 
             check_pass_result_map: Dict[
@@ -228,6 +235,11 @@ if __name__ == "__main__":
                     SubmissionCheckResult.PENDING,
                 },
                 SubmissionCheckType.MATCHES_THEMES: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.MATCHES_COMPETITION: {
                     SubmissionCheckResult.PASS,
                     SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,
@@ -264,6 +276,7 @@ if __name__ == "__main__":
                     check_record_dal=check_record_dal,
                     correlation_dal=correlation_dal,
                     client=wqb_client,
+                    threshold=CONSULTANT_MAX_PROD_CORRELATION,
                 )
             )
 
@@ -285,7 +298,7 @@ if __name__ == "__main__":
 
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
-                concurrency=256,
+                concurrency=64,
                 status=Status.UNSUBMITTED,
             ):
                 print(alpha)

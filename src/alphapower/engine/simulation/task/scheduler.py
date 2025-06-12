@@ -4,11 +4,14 @@
 
 import asyncio
 from bisect import insort
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from structlog.stdlib import BoundLogger
 
-from alphapower.constants import LoggingEmoji
+from alphapower.constants import Database, LoggingEmoji
+from alphapower.dal import simulation_task_dal
+from alphapower.dal.session_manager import session_manager
 from alphapower.entity import SimulationTask, SimulationTaskStatus
 from alphapower.internal.logging import get_logger
 
@@ -47,6 +50,8 @@ class PriorityScheduler(AbstractScheduler):
         self.low_priority_threshold: int = low_priority_threshold  # 保存阈值
         self.low_priority_counter: Dict[str, int] = {}  # 记录低优先级任务的调度次数
 
+        self._schedule_lock: asyncio.Lock = asyncio.Lock()  # 用于调度锁
+
         self._post_async_tasks: List[asyncio.Task] = []  # 保存后续异步任务
         self._post_async_tasks_lock: asyncio.Lock = asyncio.Lock()
 
@@ -73,6 +78,7 @@ class PriorityScheduler(AbstractScheduler):
         if self.task_provider:
             new_tasks: List[SimulationTask] = await self.task_provider.fetch_tasks(
                 count=count,
+                parent_progress_id="ASI",  # TODO: 强制运行 ASI 部分配置错误的任务
                 **kwargs,
             )
             if new_tasks:
@@ -209,9 +215,11 @@ class PriorityScheduler(AbstractScheduler):
                 count=insufficient_count, settings_group_key=target_group_key
             )
 
-            supplemental_tasks: List[SimulationTask] = self.settings_group_map[
-                target_group_key
-            ][:insufficient_count]
+            supplemental_tasks: List[SimulationTask] = (
+                self.settings_group_map[target_group_key][:insufficient_count]
+                if target_group_key in self.settings_group_map
+                else []
+            )
 
             for task in supplemental_tasks:
                 self.remove_task(task)
@@ -224,7 +232,15 @@ class PriorityScheduler(AbstractScheduler):
                     message="请求的补充任务数量大于实际可用的任务数量",
                     emoji=LoggingEmoji.WARNING.value,
                 )
-            batch.extend(supplemental_tasks)
+            # 根据 signature 字段去重，避免 batch 和 supplemental_tasks 中有重复 signature 的任务
+            existing_signatures = {task.signature for task in batch}
+            unique_supplemental_tasks = [
+                task
+                for task in supplemental_tasks
+                if task.signature not in existing_signatures
+            ]
+            batch.extend(unique_supplemental_tasks)
+
             await logger.ainfo(
                 event="调度干预结束",
                 requested_count=batch_size,
@@ -232,26 +248,6 @@ class PriorityScheduler(AbstractScheduler):
                 actual_count=len(batch),
                 emoji=LoggingEmoji.FINISHED.value,
             )
-
-            # 出现这种情况，判断一下是否需要补充任务到队列
-            if len(self.tasks) < self.task_fetch_size:
-                await logger.awarning(
-                    event="任务队列分组数量不足",
-                    message="出现任务队列分组数量不足的情况，调度干预已完成，尝试补充任务缓解后续调度压力",
-                    current_task_count=len(self.tasks),
-                    required_task_count=self.task_fetch_size,
-                    emoji=LoggingEmoji.WARNING.value,
-                )
-                await self.fetch_tasks_from_provider(
-                    count=self.task_fetch_size,
-                )
-                await logger.ainfo(
-                    event="任务队列补充完成",
-                    message="任务队列补充完成",
-                    current_task_count=len(self.tasks),
-                    required_task_count=self.task_fetch_size,
-                    emoji=LoggingEmoji.FINISHED.value,
-                )
 
         # 更新低优先级任务的调度计数
         self.low_priority_counter[target_group_key] += 1
@@ -275,15 +271,35 @@ class PriorityScheduler(AbstractScheduler):
         调度后的处理，用于确认调度的任务。
         :param scheduled_tasks: SimulationTask 对象的列表
         """
+        task_ids: List[int] = []
+
         if scheduled_tasks:
+            now: datetime = datetime.now()
+
             for task in scheduled_tasks:
                 if task.status != SimulationTaskStatus.PENDING:
                     raise ValueError(f"任务状态 {task.status} 错误，无法调度。")
                 task.status = SimulationTaskStatus.SCHEDULED
+                task.scheduled_at = now
+
+            task_ids = [task.id for task in scheduled_tasks]
+
+            async with (
+                session_manager.get_session(Database.SIMULATION) as session,
+                session.begin(),
+            ):
+                await simulation_task_dal.update_all(
+                    session=session,
+                    entities=scheduled_tasks,
+                )
+                await logger.ainfo(
+                    event="任务状态更新",
+                    task_ids=task_ids,
+                    message=f"任务状态已更新为 {SimulationTaskStatus.SCHEDULED.value}",
+                    emoji=LoggingEmoji.FINISHED.value,
+                )
 
         if self.task_provider and scheduled_tasks:
-            task_ids: List[int] = [task.id for task in scheduled_tasks]
-
             async with self._post_async_tasks_lock:
                 for post_async_task in self._post_async_tasks:
                     if post_async_task.done():
@@ -294,6 +310,7 @@ class PriorityScheduler(AbstractScheduler):
                         self.task_provider.acknowledge_scheduled_tasks(task_ids)
                     )
                 )
+
         await logger.ainfo(
             event="调度任务完成",
             scheduled_task_count=len(scheduled_tasks) if scheduled_tasks else 0,
@@ -320,8 +337,10 @@ class PriorityScheduler(AbstractScheduler):
         :param batch_size: 批量任务的大小，默认为 1
         :return: SimulationTask 对象的列表
         """
-        await self._before_schedule()
-        scheduled_tasks: List[SimulationTask] = await self._do_schedule(batch_size)
-        await self._post_schedule(scheduled_tasks)
+        async with self._schedule_lock:
+            # 加入调度锁，防止并发导致任务重复
+            await self._before_schedule()
+            scheduled_tasks: List[SimulationTask] = await self._do_schedule(batch_size)
+            await self._post_schedule(scheduled_tasks)
 
         return scheduled_tasks
