@@ -11,8 +11,12 @@ from alphapower.constants import (
     BASE_URL,
     ENDPOINT_ALPHAS,
     ENDPOINT_ALPHAS_CORRELATIONS,
+    ENDPOINT_ALPHAS_OPTIONS,
     ENDPOINT_AUTHENTICATION,
+    ENDPOINT_DATA_CATEGORIES,
+    ENDPOINT_DATA_SETS,
     ENDPOINT_RECORD_SETS,
+    ENDPOINT_SIMULATIONS_OPTIONS,
     ENDPOINT_TAGS,
     ENDPOINT_USER_SELF_ALPHAS,
     ENDPOINT_USER_SELF_TAGS,
@@ -36,6 +40,14 @@ from alphapower.view.alpha import (
     UserAlphasSummaryView,
     UserAlphasView,
 )
+from alphapower.view.data import (
+    DataCategoryListView,
+    DataCategoryView,
+    DatasetListView,
+    DatasetsQuery,
+    DatasetView,
+)
+from alphapower.view.options import AlphasOptions, SimulationsOptions
 from alphapower.view.user import AuthenticationView
 
 from .httpx_client import HttpXClient
@@ -1099,6 +1111,199 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
 
         await self.log.ainfo(
             event=f"退出 {self.fetch_alpha_record_sets.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+        return response
+
+    @async_exception_handler
+    async def fetch_data_categories(self) -> List[DataCategoryView]:
+        """
+        获取数据类别列表。
+        """
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_data_categories.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.log.ainfo(
+            "获取数据类别列表",
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response, _ = await http_client.request(
+            method="GET",
+            url=ENDPOINT_DATA_CATEGORIES,
+            api_name=WorldQuantBrainClient.fetch_data_categories.__qualname__,
+            response_model=DataCategoryListView,
+        )
+
+        if not isinstance(response, DataCategoryListView):
+            await self.log.aerror(
+                "获取数据类别列表响应类型错误",
+                emoji=LoggingEmoji.ERROR.value,
+                expected=DataCategoryListView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {DataCategoryListView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        if not response.root:
+            await self.log.awarning(
+                "获取数据类别列表为空",
+                emoji=LoggingEmoji.WARNING.value,
+            )
+            return []
+
+        await self.log.ainfo(
+            "获取数据类别列表成功",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_data_categories.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+        return response.root
+
+    @async_exception_handler
+    async def fetch_datasets(self, query: DatasetsQuery) -> List[DatasetView]:
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_datasets.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.log.ainfo(
+            "获取数据集列表",
+            emoji=LoggingEmoji.INFO.value,
+            query=query.to_params(),
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response, _ = await http_client.request(
+            method="GET",
+            url=ENDPOINT_DATA_SETS,
+            api_name=WorldQuantBrainClient.fetch_datasets.__qualname__,
+            params=query.to_params(),
+            response_model=DatasetListView,
+        )
+
+        if not isinstance(response, DatasetListView):
+            await self.log.aerror(
+                "获取数据集列表响应类型错误",
+                emoji=LoggingEmoji.ERROR.value,
+                expected=DatasetListView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {DatasetListView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        if not response.results:
+            await self.log.awarning(
+                "获取数据集列表为空",
+                emoji=LoggingEmoji.WARNING.value,
+            )
+            return []
+
+        await self.log.ainfo(
+            "获取数据集列表成功",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_datasets.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+        return response.results
+
+    @async_exception_handler
+    async def fetch_alphas_options(self, user_id: str) -> AlphasOptions:
+        """
+        获取 Alphas 的动态配置选项。
+        """
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_alphas_options.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+        await self.log.ainfo(
+            event="获取 Alphas 动态配置选项",
+            emoji=LoggingEmoji.INFO.value,
+            user_id=user_id,
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response, _ = await http_client.request(
+            method="OPTIONS",
+            url=ENDPOINT_ALPHAS_OPTIONS(user_id),
+            api_name=WorldQuantBrainClient.fetch_alphas_options.__qualname__,
+            response_model=AlphasOptions,
+        )
+
+        if not isinstance(response, AlphasOptions):
+            await self.log.aerror(
+                "获取 Alphas 动态配置选项响应类型错误",
+                emoji=LoggingEmoji.ERROR.value,
+                expected=AlphasOptions.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {AlphasOptions.__name__}，实际为 {type(response).__name__}"
+            )
+
+        await self.log.ainfo(
+            "获取 Alphas 动态配置选项成功",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_alphas_options.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return response
+
+    @async_exception_handler
+    async def fetch_simulations_options(self) -> SimulationsOptions:
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_simulations_options.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.log.ainfo(
+            event="获取 Simulations 动态配置选项",
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response, _ = await http_client.request(
+            method="OPTIONS",
+            url=ENDPOINT_SIMULATIONS_OPTIONS,
+            api_name=WorldQuantBrainClient.fetch_simulations_options.__qualname__,
+            response_model=SimulationsOptions,
+        )
+
+        if not isinstance(response, SimulationsOptions):
+            await self.log.aerror(
+                "获取 Simulations 动态配置选项响应类型错误",
+                emoji=LoggingEmoji.ERROR.value,
+                expected=SimulationsOptions.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {SimulationsOptions.__name__}，实际为 {type(response).__name__}"
+            )
+        
+        await self.log.ainfo(
+            "获取 Simulations 动态配置选项成功",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_simulations_options.__qualname__} 方法",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
 

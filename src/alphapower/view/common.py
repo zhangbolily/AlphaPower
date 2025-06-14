@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 from structlog.stdlib import BoundLogger
@@ -7,6 +7,30 @@ from alphapower.internal.logging import get_logger
 
 # 全局复用日志对象，避免每次调用都新建
 logger: BoundLogger = get_logger(__name__)
+
+
+class QueryBase(BaseModel):
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+
+    def to_params(self) -> Dict[str, Any]:
+        params: Dict[str, Any] = self.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
+            exclude_unset=True,
+        )
+        return params
+
+
+class PayloadBase(BaseModel):
+    # 将对象转换为可被官方 json 库序列化的字典对象
+    def to_serializable_dict(self) -> Dict[str, Any]:
+        return self.model_dump(
+            mode="json",
+            by_alias=True,
+            exclude_unset=True,
+        )
 
 
 class RateLimit(BaseModel):

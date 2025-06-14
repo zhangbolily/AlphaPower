@@ -46,12 +46,12 @@ from alphapower.constants import (
     ROLE_CONSULTANT,
     ROLE_USER,
     AlphaType,
+    CodeLanguage,
     Database,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -237,7 +237,7 @@ async def test_process_multi_simulation_task_executes_correctly(
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,  # 修正：从 UnitHandling.RAW 修改为 UnitHandling.VERIFY
             max_trade=Switch.OFF,
-            language=RegularLanguage.FASTEXPR,  # 修正：从 "FASTEXPRESSION" 修改为 "python"
+            language=CodeLanguage.FASTEXPR,  # 修正：从 "FASTEXPRESSION" 修改为 "python"
             visualization=False,
         )
         for _ in range(2)
@@ -276,7 +276,7 @@ async def test_handle_single_simulation_task(
     settings: SimulationSettingsView = SimulationSettingsView.model_construct(
         region=Region.USA.value,
         delay=Delay.ONE.value,
-        language=RegularLanguage.FASTEXPR.value,
+        language=CodeLanguage.FASTEXPR.value,
         instrument_type=InstrumentType.EQUITY.value,
         universe=Universe.TOP1000.value,
         neutralization=Neutralization.INDUSTRY.value,
@@ -325,7 +325,7 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
     task1: SimulationTask = SimulationTask(
@@ -343,7 +343,7 @@ async def test_handle_multi_simulation_tasks(consultant_worker: Worker) -> None:
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
@@ -381,7 +381,7 @@ async def test_cancel_single_simulation_task(
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
@@ -422,7 +422,7 @@ async def test_cancel_multi_simulation_tasks(
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
     task1: SimulationTask = SimulationTask(
@@ -440,7 +440,7 @@ async def test_cancel_multi_simulation_tasks(
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
     mock_scheduler: AsyncMock = AsyncMock(spec=PriorityScheduler)
@@ -525,7 +525,7 @@ async def test_cancel_task_failure_handling(
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
 
@@ -560,7 +560,7 @@ async def test_do_work_with_unknown_user_role_raises_error(
         pasteurization=Switch.ON,
         unit_handling=UnitHandling.VERIFY,  # 修正
         max_trade=Switch.OFF,
-        language=RegularLanguage.EXPRESSION,  # 修正
+        language=CodeLanguage.EXPRESSION,  # 修正
         visualization=False,
     )
 
@@ -602,7 +602,7 @@ async def test_handle_multi_task_completion_with_partial_failures(
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,  # 修正
             max_trade=Switch.OFF,
-            language=RegularLanguage.EXPRESSION,  # 修正
+            language=CodeLanguage.EXPRESSION,  # 修正
             visualization=False,
         ),
         SimulationTask(
@@ -620,7 +620,7 @@ async def test_handle_multi_task_completion_with_partial_failures(
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,  # 修正
             max_trade=Switch.OFF,
-            language=RegularLanguage.EXPRESSION,  # 修正
+            language=CodeLanguage.EXPRESSION,  # 修正
             visualization=False,
         ),
     ]

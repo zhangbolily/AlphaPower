@@ -78,7 +78,6 @@ class PriorityScheduler(AbstractScheduler):
         if self.task_provider:
             new_tasks: List[SimulationTask] = await self.task_provider.fetch_tasks(
                 count=count,
-                parent_progress_id="ASI",  # TODO: 强制运行 ASI 部分配置错误的任务
                 **kwargs,
             )
             if new_tasks:

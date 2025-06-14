@@ -22,8 +22,12 @@ from alphapower.dal.session_manager import session_manager
 from alphapower.internal.logging import get_logger
 from alphapower.internal.utils import safe_async_run
 from alphapower.manager.alpha_manager import AlphaManagerFactory
+from alphapower.manager.datasets_manager import DatasetsManagerFactory
+from alphapower.manager.options_manager import OptionsManagerFactory
 from alphapower.services.alpha import AlphaServiceFactory
 from alphapower.services.alpha_abc import AbstractAlphaService
+from alphapower.services.datasets import DatasetsServiceFactory
+from alphapower.services.datasets_abc import AbstractDatasetsService
 from alphapower.services.sync_alphas import AlphaSyncService
 from alphapower.services.sync_datafields import sync_datafields
 from alphapower.services.sync_datasets import sync_datasets
@@ -382,6 +386,48 @@ async def alphas_v1(
         parallel=parallel,
         aggregate_data_only=aggregate_data_only,
         concurrency=concurrency,
+    )
+
+
+@sync.command()
+async def datasets_v1() -> None:
+    """
+    同步数据集。
+
+    返回:
+        None
+
+    异常:
+        Exception: 如果同步过程中发生错误。
+    """
+    brain_client_factory: WorldQuantBrainClientFactory = WorldQuantBrainClientFactory(
+        username=settings.credential.username,
+        password=settings.credential.password,
+    )
+    datasets_manager_factory: DatasetsManagerFactory = DatasetsManagerFactory(
+        brain_client_factory=brain_client_factory,
+    )
+    options_manager_factory: OptionsManagerFactory = OptionsManagerFactory(
+        brain_client_factory=brain_client_factory,
+    )
+    datasets_service_factory: DatasetsServiceFactory = DatasetsServiceFactory(
+        datasets_manager_factory=datasets_manager_factory,
+        options_manager_factory=options_manager_factory,
+    )
+
+    datasets_service: AbstractDatasetsService = await datasets_service_factory()
+
+    await datasets_service.sync_datasets(
+        category=None,
+        delay=None,
+        instrumentType=None,
+        limit=None,
+        offset=None,
+        region=None,
+        universe=None,
+        # 这里可以添加更多参数
+        # 例如: custom_param1=value1, custom_param2=value2
+        # 这将传递给 sync_datasets 方法
     )
 
 

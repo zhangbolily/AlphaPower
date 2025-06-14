@@ -19,13 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Database,
     Decay,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Switch,
     Truncation,
     UnitHandling,
@@ -133,7 +133,7 @@ class TestSimulationTask:
             truncation=0.5,
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=True,
             test_period="2020-01-01/2021-01-01",
             max_trade=Switch.OFF,
@@ -152,7 +152,7 @@ class TestSimulationTask:
         assert db_task.type == AlphaType.REGULAR
         expected_key = (
             f"{Region.CHN.value}_{Delay.ONE.value}_"
-            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         assert db_task.settings_group_key == expected_key
         assert db_task.regular == "test_regular"
@@ -182,7 +182,7 @@ class TestSimulationTask:
         assert db_task.truncation == 0.5
         assert db_task.pasteurization == Switch.ON
         assert db_task.unit_handling == UnitHandling.VERIFY
-        assert db_task.language == RegularLanguage.PYTHON
+        assert db_task.language == CodeLanguage.PYTHON
         assert db_task.visualization is True
         assert db_task.test_period == "2020-01-01/2021-01-01"
         assert db_task.max_trade == Switch.OFF
@@ -211,7 +211,7 @@ class TestSimulationTask:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -280,7 +280,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.ON,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -337,7 +337,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -375,7 +375,7 @@ class TestSimulationTask:
         # 使用相同的region、delay、language和instrument_type创建任务，以生成相同的settings_group_key
         group_region = Region.CHN
         group_delay = Delay.ONE
-        group_language = RegularLanguage.PYTHON
+        group_language = CodeLanguage.PYTHON
         group_instrument = InstrumentType.EQUITY
 
         tasks = []
@@ -413,7 +413,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
 
         session.add_all(tasks + [different_task])
@@ -460,7 +460,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
         session.add(valid_task)
         await session.flush()
@@ -492,7 +492,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         # 测试无效的 truncation 值（应该触发验证异常）
@@ -514,7 +514,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
     async def test_tag_methods(self, session: AsyncSession) -> None:
@@ -540,7 +540,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -633,7 +633,7 @@ class TestSimulationTask:
             universe=Universe.TOP2000U,
             delay=Delay.ONE,
             neutralization=Neutralization.MARKET,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
@@ -644,7 +644,7 @@ class TestSimulationTask:
         # 验证初始 settings_group_key
         expected_key = (
             f"{Region.CHN.value}_{Delay.ONE.value}_"
-            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         assert task.settings_group_key == expected_key
 
@@ -654,7 +654,7 @@ class TestSimulationTask:
         await session.flush()
         expected_key = (
             f"{Region.USA.value}_{Delay.ONE.value}_"
-            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         assert task.settings_group_key == expected_key
 
@@ -662,15 +662,15 @@ class TestSimulationTask:
         await session.flush()
         expected_key = (
             f"{Region.USA.value}_{Delay.ZERO.value}_"
-            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         assert task.settings_group_key == expected_key
 
-        task.language = RegularLanguage.EXPRESSION
+        task.language = CodeLanguage.EXPRESSION
         await session.flush()
         expected_key = (
             f"{Region.USA.value}_{Delay.ZERO.value}_"
-            + f"{RegularLanguage.EXPRESSION.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.EXPRESSION.value}_{InstrumentType.EQUITY.value}"
         )
         assert task.settings_group_key == expected_key
 
@@ -678,7 +678,7 @@ class TestSimulationTask:
         await session.flush()
         expected_key = (
             f"{Region.USA.value}_{Delay.ZERO.value}_"
-            + f"{RegularLanguage.EXPRESSION.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.EXPRESSION.value}_{InstrumentType.EQUITY.value}"
         )
         assert task.settings_group_key == expected_key
 
@@ -704,7 +704,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         with pytest.raises(ValueError, match="instrument_type 不能使用 DEFAULT 值"):
@@ -720,7 +720,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         with pytest.raises(ValueError, match="universe 不能使用 DEFAULT 值"):
@@ -736,7 +736,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         with pytest.raises(ValueError, match="delay 不能使用 DEFAULT 值"):
@@ -752,7 +752,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         with pytest.raises(ValueError, match="neutralization 不能使用 DEFAULT 值"):
@@ -768,7 +768,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
     async def test_field_relationship_validation(self) -> None:
@@ -793,7 +793,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         # 测试选股范围与区域、证券类型兼容性验证
@@ -810,7 +810,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         # 测试延迟设置与区域兼容性验证
@@ -827,7 +827,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
         # 测试中性化策略与区域和证券类型兼容性验证
@@ -844,7 +844,7 @@ class TestSimulationTask:
                 pasteurization=Switch.ON,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
             )
 
     async def test_event_listeners(self, session: AsyncSession) -> None:
@@ -869,7 +869,7 @@ class TestSimulationTask:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
         )
         session.add(task)
         await session.flush()
@@ -892,7 +892,7 @@ class TestSimulationTask:
 
         # 测试多字段同时变更
         task.delay = Delay.ONE
-        task.language = RegularLanguage.EXPRESSION
+        task.language = CodeLanguage.EXPRESSION
         await session.flush()
 
         result = await session.execute(
@@ -901,4 +901,4 @@ class TestSimulationTask:
         multi_updated_task = result.scalars().one()
 
         assert str(Delay.ONE.value) in multi_updated_task.settings_group_key
-        assert RegularLanguage.EXPRESSION.value in multi_updated_task.settings_group_key
+        assert CodeLanguage.EXPRESSION.value in multi_updated_task.settings_group_key

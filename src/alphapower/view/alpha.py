@@ -5,13 +5,13 @@ from pydantic import AliasChoices, BaseModel, Field, TypeAdapter
 
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Color,
     Delay,
     Grade,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -21,29 +21,7 @@ from alphapower.constants import (
     Universe,
 )
 
-
-class QueryBase(BaseModel):
-    limit: Optional[int] = None
-    offset: Optional[int] = None
-
-    def to_params(self) -> Dict[str, Any]:
-        params: Dict[str, Any] = self.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_none=True,
-            exclude_unset=True,
-        )
-        return params
-
-
-class PayloadBase(BaseModel):
-    # 将对象转换为可被官方 json 库序列化的字典对象
-    def to_serializable_dict(self) -> Dict[str, Any]:
-        return self.model_dump(
-            mode="json",
-            by_alias=True,
-            exclude_unset=True,
-        )
+from .common import PayloadBase, QueryBase
 
 
 class IdNameRefView(BaseModel):
@@ -217,7 +195,7 @@ class SettingsView(BaseModel):
     )
     pasteurization: Optional[Switch] = None
     region: Optional[Region] = None
-    language: Optional[RegularLanguage] = None
+    language: Optional[CodeLanguage] = None
     decay: Optional[int] = None
     neutralization: Optional[Neutralization] = None
     visualization: Optional[bool] = None

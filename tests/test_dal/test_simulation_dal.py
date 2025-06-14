@@ -11,12 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Database,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -81,7 +81,7 @@ class TestSimulationTaskDAL:
                     pasteurization=Switch.OFF,
                     unit_handling=UnitHandling.VERIFY,
                     max_trade=Switch.OFF,
-                    language=RegularLanguage.PYTHON,
+                    language=CodeLanguage.PYTHON,
                     visualization=False,
                 )
                 for i in range(1, 3)
@@ -126,7 +126,7 @@ class TestSimulationTaskDAL:
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -170,7 +170,7 @@ class TestSimulationTaskDAL:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=False,
         )
         simulation_session.add(task)
@@ -212,7 +212,7 @@ class TestSimulationTaskDAL:
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -235,7 +235,7 @@ class TestSimulationTaskDAL:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=False,
         )
 
@@ -278,7 +278,7 @@ class TestSimulationTaskDAL:
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -301,7 +301,7 @@ class TestSimulationTaskDAL:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=False,
         )
 
@@ -347,7 +347,7 @@ class TestSimulationTaskDAL:
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
                 visualization=False,
             )
             simulation_session.add(task)
@@ -374,7 +374,7 @@ class TestSimulationTaskDAL:
         # 创建测试数据
         group_key = (
             f"{Region.GLB.value}_{Delay.ONE.value}_"
-            + f"{RegularLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
+            + f"{CodeLanguage.PYTHON.value}_{InstrumentType.EQUITY.value}"
         )
         tasks = [
             SimulationTask(
@@ -395,7 +395,7 @@ class TestSimulationTaskDAL:
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 4)
@@ -419,7 +419,7 @@ class TestSimulationTaskDAL:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=False,
         )
 
@@ -468,7 +468,7 @@ class TestSimulationTaskDAL:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=False,
         )
 
@@ -491,7 +491,7 @@ class TestSimulationTaskDAL:
                 pasteurization=Switch.OFF,
                 unit_handling=UnitHandling.VERIFY,
                 max_trade=Switch.OFF,
-                language=RegularLanguage.PYTHON,
+                language=CodeLanguage.PYTHON,
                 visualization=False,
             )
             for i in range(1, 3)
@@ -515,7 +515,7 @@ class TestSimulationTaskDAL:
             pasteurization=Switch.OFF,
             unit_handling=UnitHandling.VERIFY,
             max_trade=Switch.OFF,
-            language=RegularLanguage.PYTHON,
+            language=CodeLanguage.PYTHON,
             visualization=False,
         )
 

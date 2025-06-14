@@ -277,6 +277,12 @@ ENDPOINT_OPERATORS: Final[str] = "operators"
 # 前后性能对比默认路径
 PATH_SELF_PERFORMANCE_COMPARE: Final[str] = "/users/self/"
 
+# 动态配置
+ENDPOINT_ALPHAS_OPTIONS: Final[Callable[[str], str]] = (
+    lambda user_id: f"users/{user_id}/alphas"
+)
+ENDPOINT_SIMULATIONS_OPTIONS: Final[str] = ENDPOINT_SIMULATION
+
 # TODO: 待实现的各种排行榜功能
 ENDPOINT_BOARD_GENIUS: Final[str] = "consultant/boards/genius"
 ENDPOINT_COMPETITION_BOARD: Final[Callable[[str], str]] = (
@@ -575,7 +581,7 @@ class TagType(Enum):
     COLOR = "COLOR"  # 颜色类型
 
 
-class RegularLanguage(Enum):
+class CodeLanguage(Enum):
 
     DEFAULT = "DEFAULT"
     PYTHON = "PYTHON"

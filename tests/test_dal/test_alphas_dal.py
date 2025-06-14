@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from alphapower.constants import (
     ALPHA_ID_LENGTH,
     AlphaType,
+    CodeLanguage,
     Color,
     CompetitionScoring,
     CompetitionStatus,
@@ -30,7 +31,6 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Stage,
     Status,
     Switch,
@@ -85,7 +85,7 @@ async def fixture_test_setting(alphas_session: AsyncSession) -> Setting:
         Setting: 创建的 Setting 对象。
     """
     setting = Setting(
-        language=RegularLanguage.PYTHON,
+        language=CodeLanguage.PYTHON,
         decay=10,
         truncation=0.01,
         visualization=False,

@@ -9,6 +9,7 @@ from pydantic import AliasChoices, BaseModel, Field, RootModel
 
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Color,
     CompetitionScoring,
     CompetitionStatus,
@@ -17,7 +18,6 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -171,7 +171,7 @@ class SimulationSettingsView(BaseModel):
     )
     pasteurization: Optional[Switch] = None
     region: Optional[Region] = None
-    language: Optional[RegularLanguage] = None
+    language: Optional[CodeLanguage] = None
     decay: Optional[int] = None
     neutralization: Optional[Neutralization] = None
     visualization: Optional[bool] = None

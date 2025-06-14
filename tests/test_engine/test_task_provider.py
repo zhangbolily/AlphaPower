@@ -18,11 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
+    CodeLanguage,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -58,7 +58,7 @@ async def test_fetch_tasks(session: AsyncSession) -> None:
         SimulationSettingsView.model_construct(
             region=Region.USA.name,
             delay=Delay.ONE.value,
-            language=RegularLanguage.EXPRESSION.value,
+            language=CodeLanguage.EXPRESSION.value,
             instrument_type=InstrumentType.EQUITY.value,
             universe=Universe.TOP1000.value,
             neutralization=Neutralization.INDUSTRY.value,
@@ -73,7 +73,7 @@ async def test_fetch_tasks(session: AsyncSession) -> None:
         SimulationSettingsView.model_construct(
             region=Region.CHN.name,
             delay=Delay.ONE.value,
-            language=RegularLanguage.EXPRESSION.value,
+            language=CodeLanguage.EXPRESSION.value,
             instrument_type=InstrumentType.EQUITY.value,
             universe=Universe.TOP2000U.value,
             neutralization=Neutralization.INDUSTRY.value,
@@ -155,7 +155,7 @@ async def test_fetch_tasks_invalid_priority(session: AsyncSession) -> None:
         SimulationSettingsView.model_construct(
             region=Region.USA.name,
             delay=Delay.ONE.value,
-            language=RegularLanguage.FASTEXPR.value,
+            language=CodeLanguage.FASTEXPR.value,
             instrument_type=InstrumentType.EQUITY.value,
             universe=Universe.TOP1000.value,
             neutralization=Neutralization.INDUSTRY.value,

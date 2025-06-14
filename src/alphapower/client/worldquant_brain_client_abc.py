@@ -19,6 +19,8 @@ from alphapower.view.alpha import (
     UserAlphasSummaryView,
     UserAlphasView,
 )
+from alphapower.view.data import DataCategoryView, DatasetsQuery, DatasetView
+from alphapower.view.options import AlphasOptions, SimulationsOptions
 from alphapower.view.user import AuthenticationView
 
 
@@ -132,5 +134,36 @@ class AbstractWorldQuantBrainClient(ABC):
     ) -> TableView:
         """
         Fetch the record sets for the given alpha ID and record set type.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    # 数据集相关操作
+    @abstractmethod
+    async def fetch_data_categories(self) -> List[DataCategoryView]:
+        """
+        Fetch the data categories.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+    
+    @abstractmethod
+    async def fetch_datasets(self, query: DatasetsQuery) -> List[DatasetView]:
+        """
+        Fetch datasets based on the provided query.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+    
+
+    # 动态配置
+    @abstractmethod
+    async def fetch_alphas_options(self, user_id: str) -> AlphasOptions:
+        """
+        Fetch the options for alphas based on the user ID.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+    
+    @abstractmethod
+    async def fetch_simulations_options(self) -> SimulationsOptions:
+        """
+        Fetch the options for simulations.
         """
         raise NotImplementedError("Subclasses must implement this method.")

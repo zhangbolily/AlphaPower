@@ -24,12 +24,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, Mapper, mapped
 from alphapower.constants import (
     ALPHA_ID_LENGTH,
     AlphaType,
+    CodeLanguage,
     Decay,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     SimulationTaskStatus,
     Switch,
     Truncation,
@@ -101,8 +101,8 @@ class SimulationTask(Base):
     _tags: Mapped[Optional[JSON]] = mapped_column(JSON, nullable=True, name="tags")
     parent_progress_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     child_progress_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    language: Mapped[RegularLanguage] = mapped_column(
-        Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
+    language: Mapped[CodeLanguage] = mapped_column(
+        Enum(CodeLanguage), nullable=False, default=CodeLanguage.DEFAULT
     )
     test_period: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
 

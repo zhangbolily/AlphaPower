@@ -208,7 +208,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 17),
-                end_time=datetime(2025, 6, 11, 23, 59, 59),
+                # end_time=datetime(2025, 6, 11, 23, 59, 59),
             )
 
             check_pass_result_map: Dict[
@@ -265,7 +265,7 @@ if __name__ == "__main__":
                 CorrelationLocalEvaluateStage(
                     next_stage=None,
                     correlation_calculator=correlation_calculator,
-                    threshold=0.7,
+                    threshold=0.5,
                 )
             )
 

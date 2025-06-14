@@ -4,11 +4,11 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     SimulationResultStatus,
     Switch,
     UnitHandling,
@@ -43,7 +43,7 @@ class SimulationSettingsView(BaseModel):
     )
     pasteurization: Optional[Switch] = None
     region: Optional[Region] = None
-    language: Optional[RegularLanguage] = None
+    language: Optional[CodeLanguage] = None
     decay: Optional[int] = None
     neutralization: Optional[Neutralization] = None
     visualization: Optional[bool] = None

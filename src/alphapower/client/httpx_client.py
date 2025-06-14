@@ -226,12 +226,6 @@ class HttpXClient(BaseLogger):
                 await self.log.ainfo(
                     event="退出 do_request 函数",
                     emoji=LoggingEmoji.STEP_OUT_FUNC.value,
-                    resp_code=response.status_code if "response" in locals() else None,
-                    resp_content_type=(
-                        response.headers.get("content-type")
-                        if "response" in locals()
-                        else None
-                    ),
                 )
 
         return do_request
@@ -333,10 +327,6 @@ class HttpXClient(BaseLogger):
                 await self.log.ainfo(
                     event=f"退出 {self.request.__qualname__} 函数",
                     emoji=LoggingEmoji.STEP_OUT_FUNC.value,
-                    resp_code=resp.status_code if "resp" in locals() else None,
-                    resp_content_type=(
-                        resp.headers.get("content-type") if "resp" in locals() else None
-                    ),
                 )
 
         await self.log.aerror(
@@ -595,9 +585,11 @@ class HttpXClient(BaseLogger):
                 )
                 await asyncio.sleep(backoff_time or 1)
 
+                next_backoff_time: float = 1.0
+
                 try:
-                    next_backoff_time: float = (
-                        backoff_time * self._backoff_factor if backoff_time else 1
+                    next_backoff_time = (
+                        backoff_time * self._backoff_factor if backoff_time else 1.0
                     )
                     retried_resp: httpx.Response = await do_request_func()
 

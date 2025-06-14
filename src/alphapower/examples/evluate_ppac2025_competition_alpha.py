@@ -191,7 +191,7 @@ if __name__ == "__main__":
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
                 start_time=datetime(2025, 3, 17, 0, 0),
-                end_time=datetime(2025, 6, 12, 23, 59, 59),
+                # end_time=datetime(2025, 6, 14, 23, 59, 59),
             )
 
             record_set_manager: RecordSetsManager = RecordSetsManager(
@@ -218,6 +218,11 @@ if __name__ == "__main__":
                     SubmissionCheckResult.PENDING,
                 },
                 SubmissionCheckType.MATCHES_COMPETITION: {
+                    SubmissionCheckResult.PASS,
+                    SubmissionCheckResult.WARNING,
+                    SubmissionCheckResult.PENDING,
+                },
+                SubmissionCheckType.MATCHES_THEMES: {
                     SubmissionCheckResult.PASS,
                     SubmissionCheckResult.WARNING,
                     SubmissionCheckResult.PENDING,

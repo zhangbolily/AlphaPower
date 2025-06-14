@@ -11,11 +11,11 @@ import pytest
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -41,7 +41,7 @@ async def test_create_simulation_task() -> None:
     settings: SimulationSettingsView = SimulationSettingsView.model_construct(
         region=Region.USA.value,
         delay=Delay.ONE.value,
-        language=RegularLanguage.FASTEXPR.value,
+        language=CodeLanguage.FASTEXPR.value,
         instrument_type=InstrumentType.EQUITY.value,
         universe=Universe.TOP1000.value,
         neutralization=Neutralization.INDUSTRY.value,
@@ -75,7 +75,7 @@ async def test_create_simulation_tasks() -> None:
         SimulationSettingsView.model_construct(
             region=Region.USA.name,
             delay=Delay.ONE.value,
-            language=RegularLanguage.FASTEXPR.value,
+            language=CodeLanguage.FASTEXPR.value,
             instrument_type=InstrumentType.EQUITY.value,
             universe=Universe.TOP3000.value,
             neutralization=Neutralization.INDUSTRY.value,
@@ -90,7 +90,7 @@ async def test_create_simulation_tasks() -> None:
         SimulationSettingsView.model_construct(
             region=Region.EUR.name,
             delay=Delay.ZERO.value,
-            language=RegularLanguage.FASTEXPR.value,
+            language=CodeLanguage.FASTEXPR.value,
             instrument_type=InstrumentType.EQUITY.value,
             universe=Universe.TOP1200.value,
             neutralization=Neutralization.INDUSTRY.value,

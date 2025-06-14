@@ -28,6 +28,7 @@ from sqlalchemy.orm import (
 from alphapower.constants import (
     ALPHA_ID_LENGTH,
     AlphaType,
+    CodeLanguage,
     Color,
     CompetitionScoring,
     CompetitionStatus,
@@ -36,7 +37,6 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Stage,
     Status,
     Switch,
@@ -295,8 +295,8 @@ class Alpha(Base):
     )
 
     # 因子模拟配置数据，拍平存储到这张表里
-    language: MappedColumn[RegularLanguage] = mapped_column(
-        Enum(RegularLanguage), nullable=False, default=RegularLanguage.DEFAULT
+    language: MappedColumn[CodeLanguage] = mapped_column(
+        Enum(CodeLanguage), nullable=False, default=CodeLanguage.DEFAULT
     )
     test_period: MappedColumn[Optional[str]] = mapped_column(String(64), nullable=True)
     decay: MappedColumn[int] = mapped_column(Integer, nullable=False)
@@ -749,7 +749,7 @@ def get_alpha_signature(
     selection: Optional[ExpressionView],
     region: Region,
     delay: Delay,
-    language: RegularLanguage,
+    language: CodeLanguage,
     instrument_type: InstrumentType,
     universe: Universe,
     truncation: Optional[float],

@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from alphapower.constants import (
     AlphaType,
+    CodeLanguage,
     Color,
     CompetitionScoring,
     CompetitionStatus,
@@ -34,7 +35,6 @@ from alphapower.constants import (
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Stage,
     Status,
     Switch,
@@ -137,7 +137,7 @@ class TestSetting:
             pasteurization=Switch.ON,
             unit_handling=UnitHandling.VERIFY,
             nan_handling=Switch.ON,
-            language=RegularLanguage.FASTEXPR,
+            language=CodeLanguage.FASTEXPR,
             visualization=True,
             test_period="3m",
             max_trade=Switch.DEFAULT,
@@ -162,7 +162,7 @@ class TestSetting:
         assert db_setting.pasteurization == Switch.ON
         assert db_setting.unit_handling == UnitHandling.VERIFY
         assert db_setting.nan_handling == Switch.ON
-        assert db_setting.language == RegularLanguage.FASTEXPR
+        assert db_setting.language == CodeLanguage.FASTEXPR
         assert db_setting.visualization is True
         assert db_setting.test_period == "3m"
         assert db_setting.max_trade == Switch.DEFAULT

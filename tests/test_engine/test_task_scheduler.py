@@ -11,11 +11,11 @@ from sqlalchemy import text
 
 from alphapower.client import SimulationSettingsView
 from alphapower.constants import (
+    CodeLanguage,
     Delay,
     InstrumentType,
     Neutralization,
     Region,
-    RegularLanguage,
     Switch,
     UnitHandling,
     Universe,
@@ -153,7 +153,7 @@ async def test_schedule_with_database_task_provider() -> None:
             SimulationSettingsView.model_construct(
                 region=Region.USA.name,
                 delay=Delay.ONE.value,
-                language=RegularLanguage.FASTEXPR.value,
+                language=CodeLanguage.FASTEXPR.value,
                 instrument_type=InstrumentType.EQUITY.value,
                 universe=Universe.TOP1000.value,
                 neutralization=Neutralization.INDUSTRY.value,
@@ -168,7 +168,7 @@ async def test_schedule_with_database_task_provider() -> None:
             SimulationSettingsView.model_construct(
                 region=Region.CHN.name,
                 delay=Delay.ONE.value,
-                language=RegularLanguage.FASTEXPR.value,
+                language=CodeLanguage.FASTEXPR.value,
                 instrument_type=InstrumentType.EQUITY.value,
                 universe=Universe.TOP2000U.value,
                 neutralization=Neutralization.INDUSTRY.value,
