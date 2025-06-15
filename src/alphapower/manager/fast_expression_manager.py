@@ -3,10 +3,15 @@ from typing import Any, Dict, List, Set
 
 from lark import Lark, ParseTree, Token, Transformer, Tree
 from lark.reconstruct import Reconstructor
+from pydantic_ai import Agent
 
-from alphapower.constants import FAST_EXPRESSION_GRAMMAR, FastExpressionType
+from alphapower.constants import (
+    FAST_EXPRESSION_GRAMMAR,
+    USER_PROMPT_REGULAR_FAST_EXPRESSION_EXPLAIN,
+    FastExpressionType,
+)
 
-from .fast_expression_manager_abc import FastExpressionManagerABC
+from .fast_expression_manager_abc import AbstractFastExpressionManager
 
 
 class FastExpression:
@@ -56,36 +61,55 @@ class SystemVariableCollector(Transformer):
 class FastExpressionNormalizer(Transformer):
     def __init__(self) -> None:
         super().__init__()
+        self.assigned_vars: Set[str] = set()
+        self.variable_count: int = 0
 
     def assign(self, items: List[Any]) -> Any:
         node: Any = items[0]
         if isinstance(node, Token):
-            items[0] = Token(node.type, "var")
-        return Tree("assign", items)
+            self.assigned_vars.add(str(node))
+        else:
+            raise ValueError("Expected a Token for assignment.")
+        return node
 
     def variable(self, items: List[Any]) -> Any:
         node: Any = items[0]
         if isinstance(node, Token):
-            items[0] = Token(node.type, "var")
-        return Tree("variable", items)
+            if str(node) in self.assigned_vars:
+                return items
+
+            token: Token = Token(node.type, "{" + f"var{self.variable_count}" + "}")
+            self.variable_count += 1
+            return Tree("variable", [token])
+        else:
+            raise ValueError("Expected a Token for variable.")
 
     def number(self, items: List[Any]) -> Any:
         node: Any = items[0]
         if isinstance(node, Token):
-            items[0] = Token(node.type, "0")
-        return Tree("number", items)
+            token: Token = Token("NAME", "{" + f"var{self.variable_count}" + "}")
+            self.variable_count += 1
+            return Tree("member", [Tree("variable", [token])])
+        else:
+            raise ValueError("Expected a Token for number.")
 
     def string(self, items: List[Any]) -> Any:
         node: Any = items[0]
         if isinstance(node, Token):
-            items[0] = Token(node.type, '"const"')
-        return Tree("string", items)
+            token: Token = Token("NAME", "{" + f"var{self.variable_count}" + "}")
+            self.variable_count += 1
+            return Tree("member", [Tree("variable", [token])])
+        else:
+            raise ValueError("Expected a Token for string.")
 
     def neg(self, items: List[Any]) -> Any:
         node: Any = items[0]
         if isinstance(node, Token):
-            items[0] = Token(node.type, "0")
-        return Tree("neg", items)
+            if node.type == "NUMBER":
+                token: Token = Token("NAME", "{" + f"var{self.variable_count}" + "}")
+                self.variable_count += 1
+                return Tree("member", [Tree("variable", [token])])
+        return node
 
 
 class NormalizedTreeCodeGenerator(Transformer):
@@ -268,44 +292,41 @@ class ASTToDict(Transformer):
         return items
 
 
-class FastExpressionManager(FastExpressionManagerABC):
-    def __init__(self) -> None:
-        self.parser = Lark(
-            FAST_EXPRESSION_GRAMMAR, parser="lalr", maybe_placeholders=False
-        )
-        self.reconstructor = Reconstructor(self.parser)
-        self.system_variable_collector = SystemVariableCollector()
-        self.normalizer = FastExpressionNormalizer()
-        self.ast_to_dict = ASTToDict()
-        self.normalized_tree_code_generator = NormalizedTreeCodeGenerator()
+class FastExpressionManager(AbstractFastExpressionManager):
+    def __init__(
+        self,
+        agent: Agent,
+    ) -> None:
+        self.agent = agent
 
     def parse(self, expression: str, type: FastExpressionType) -> FastExpression:
-        used_operators: Set[str] = set()
-        used_datafields: Set[str] = set()
-
-        tree: ParseTree = self.parser.parse(expression)
-        tree_dict = self.ast_to_dict.transform(tree)
-        encoded_tree: str = tree_dict.pretty()
-        fingerprint: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
-
-        self.system_variable_collector.transform(tree)
-        used_datafields = (
-            self.system_variable_collector.referenced_vars
-            - self.system_variable_collector.assigned_vars
-        )
-
-        normalized_tree: ParseTree = self.normalizer.transform(tree)
-        tree_dict = self.ast_to_dict.transform(normalized_tree)
-        encoded_tree = tree_dict.pretty()
-        structure_hash: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
-
-        expression = self.reconstructor.reconstruct(tree)
-        normalized_expression: str = self.reconstructor.reconstruct(normalized_tree)
         parser: Lark = Lark(
             FAST_EXPRESSION_GRAMMAR, parser="lalr", maybe_placeholders=False
         )
+        ast_to_dict_transformer: Transformer = ASTToDict()
+        normalizer: Transformer = FastExpressionNormalizer()
         reconstructor: Reconstructor = Reconstructor(parser)
-        normalized_expression = reconstructor.reconstruct(normalized_tree)
+        system_variable_collector: SystemVariableCollector = SystemVariableCollector()
+
+        used_operators: Set[str] = set()
+        used_datafields: Set[str] = set()
+
+        tree: ParseTree = parser.parse(expression)
+        tree_dict: ParseTree = ast_to_dict_transformer.transform(tree)
+        encoded_tree: str = tree_dict.pretty()
+        fingerprint: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
+
+        system_variable_collector.transform(tree)
+        used_datafields = (
+            system_variable_collector.referenced_vars
+            - system_variable_collector.assigned_vars
+        )
+
+        normalized_tree: ParseTree = normalizer.transform(tree)
+        tree_dict = ast_to_dict_transformer.transform(normalized_tree)
+        encoded_tree = tree_dict.pretty()
+        structure_hash: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
+        normalized_expression: str = reconstructor.reconstruct(normalized_tree)
 
         return FastExpression(
             expression=expression,
@@ -318,3 +339,13 @@ class FastExpressionManager(FastExpressionManagerABC):
             fingerprint=fingerprint,
             structure_hash=structure_hash,
         )
+
+    async def explain(self, expression: FastExpression) -> str:
+        """
+        Explain the expression using the agent.
+        """
+        prompt = USER_PROMPT_REGULAR_FAST_EXPRESSION_EXPLAIN.format(
+            expression=expression.normalized_expression
+        )
+        response = await self.agent.run(prompt)
+        return response.output

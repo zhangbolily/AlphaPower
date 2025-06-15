@@ -4,7 +4,7 @@ from typing import Any
 from alphapower.constants import FastExpressionType
 
 
-class FastExpressionManagerABC(ABC):
+class AbstractFastExpressionManager(ABC):
     @abstractmethod
     def parse(self, expression: str, type: FastExpressionType) -> Any:
         pass

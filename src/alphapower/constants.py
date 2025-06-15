@@ -37,6 +37,20 @@ MAX_EFFECTIVE_GENIUS_PYRAMIDS_IN_ALPHA: Final[int] = (
     2  # Alpha中有效的天才金字塔的最大数量
 )
 
+RESOURCE_DATA_FOLDER: Final[str] = "resources"  # 资源文件夹名称
+AI_AGENT_PROMPT_FOLDER: Final[str] = (
+    RESOURCE_DATA_FOLDER + "/prompts"
+)  # AI代理提示文件夹
+SYSTEM_PROMPT_FILE_REGULAR_FAST_EXPRESSION_EXPLAIN: Final[str] = (
+    AI_AGENT_PROMPT_FOLDER + "/regular_fast_expression_explain.txt"
+)  # 正常快速表达式解释提示文件
+
+
+# AI 相关
+USER_PROMPT_REGULAR_FAST_EXPRESSION_EXPLAIN: Final[str] = (
+    "Explain this expression:\n\n{expression}"
+)
+
 
 class LoggingEmoji(Enum):
     DEFAULT = "DEFAULT"  # 默认值，无实际意义
