@@ -58,16 +58,18 @@ class DataCategoryListView(RootModel):
 
 class DatasetsQuery(QueryBase):
 
-    category: Optional[str] = None
-    delay: Optional[Delay] = None
     instrumentType: Optional[InstrumentType] = Field(
         validation_alias=AliasChoices("instrumentType", "instrument_type"),
         serialization_alias="instrumentType",
     )
+    region: Optional[Region] = None
+    delay: Optional[Delay] = None
+    universe: Optional[Universe] = None
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+    search: Optional[str] = None
     limit: Optional[int] = None
     offset: Optional[int] = None
-    region: Optional[Region] = None
-    universe: Optional[Universe] = None
 
 
 class DatasetView(BaseModel):

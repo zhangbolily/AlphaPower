@@ -842,6 +842,28 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
                 )
                 raise ValueError("Regular 属性缺失，无法更新描述")
 
+        if properties.selection.description:
+            if alpha.selection:
+                alpha.selection.description = properties.selection.description
+            else:
+                await self.log.aerror(
+                    event="数据完整性错误",
+                    message="Selection 属性缺失，无法更新描述",
+                    emoji=LoggingEmoji.ERROR.value,
+                )
+                raise ValueError("Selection 属性缺失，无法更新描述")
+
+        if properties.combo.description:
+            if alpha.combo:
+                alpha.combo.description = properties.combo.description
+            else:
+                await self.log.aerror(
+                    event="数据完整性错误",
+                    message="Combo 属性缺失，无法更新描述",
+                    emoji=LoggingEmoji.ERROR.value,
+                )
+                raise ValueError("Combo 属性缺失，无法更新描述")
+
         alpha = await alpha_dal.update(
             session=session,
             entity=alpha,
@@ -853,7 +875,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             category=alpha.category,
             tags=alpha.tags,
             color=alpha.color,
-            description=alpha.regular.description,
+            description=alpha.regular.description if alpha.regular else None,
             emoji=LoggingEmoji.FINISHED.value,
         )
         await self.log.adebug(
@@ -863,7 +885,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             category=alpha.category,
             tags=alpha.tags,
             color=alpha.color,
-            description=alpha.regular.description,
+            description=alpha.regular.description if alpha.regular else None,
             emoji=LoggingEmoji.DEBUG.value,
         )
         await self.log.ainfo(
@@ -935,10 +957,12 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
             session.begin(),
         ):
             for alpha, properties in zip(alphas, properties_list):
-                result[alpha.alpha_id] = await self._save_alpha_properties_in_transaction(
-                    session=session,
-                    alpha_id=alpha.alpha_id,
-                    properties=properties,
+                result[alpha.alpha_id] = (
+                    await self._save_alpha_properties_in_transaction(
+                        session=session,
+                        alpha_id=alpha.alpha_id,
+                        properties=properties,
+                    )
                 )
                 await self.log.adebug(
                     event="批量保存属性",
@@ -947,7 +971,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
                     category=alpha.category,
                     tags=alpha.tags,
                     color=alpha.color,
-                    description=alpha.regular.description,
+                    description=alpha.regular.description if alpha.regular else None,
                     emoji=LoggingEmoji.DEBUG.value,
                 )
 
@@ -960,7 +984,7 @@ class AlphaManager(BaseProcessSafeClass, AbstractAlphaManager):
                     "category": alpha.category,
                     "tags": alpha.tags,
                     "color": alpha.color,
-                    "description": alpha.regular.description,
+                    "description": alpha.regular.description if alpha.regular else None,
                 }
                 for alpha in alphas
             ],

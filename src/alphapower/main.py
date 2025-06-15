@@ -22,7 +22,7 @@ from alphapower.dal.session_manager import session_manager
 from alphapower.internal.logging import get_logger
 from alphapower.internal.utils import safe_async_run
 from alphapower.manager.alpha_manager import AlphaManagerFactory
-from alphapower.manager.datasets_manager import DatasetsManagerFactory
+from alphapower.manager.data_sets_manager import DataSetsManagerFactory
 from alphapower.manager.options_manager import OptionsManagerFactory
 from alphapower.services.alpha import AlphaServiceFactory
 from alphapower.services.alpha_abc import AbstractAlphaService
@@ -404,7 +404,7 @@ async def datasets_v1() -> None:
         username=settings.credential.username,
         password=settings.credential.password,
     )
-    datasets_manager_factory: DatasetsManagerFactory = DatasetsManagerFactory(
+    datasets_manager_factory: DataSetsManagerFactory = DataSetsManagerFactory(
         brain_client_factory=brain_client_factory,
     )
     options_manager_factory: OptionsManagerFactory = OptionsManagerFactory(

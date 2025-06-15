@@ -8,10 +8,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 from alphapower.client import WorldQuantClient, wq_client
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClient
 from alphapower.constants import (
+    AlphaType,
     CorrelationType,
     Database,
     RefreshPolicy,
-    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -35,10 +35,9 @@ from alphapower.engine.evaluate.base_evaluate_stages import (
 from alphapower.engine.evaluate.base_evaluator import BaseEvaluator
 from alphapower.engine.evaluate.correlation_calculator import CorrelationCalculator
 from alphapower.engine.evaluate.evaluate_stage_abc import AbstractEvaluateStage
-from alphapower.engine.evaluate.scoring_evaluate_stage import ScoringEvaluateStage
 from alphapower.entity import Alpha, EvaluateRecord
 from alphapower.internal.logging import get_logger
-from alphapower.manager.record_sets_manager import RecordSetsManager
+from alphapower.manager.alpha_manager import AbstractAlphaManager, AlphaManager
 from alphapower.settings import settings
 from alphapower.view.alpha import AlphaPropertiesPayload
 
@@ -46,12 +45,12 @@ from alphapower.view.alpha import AlphaPropertiesPayload
 log = get_logger(module_name=__name__)
 
 
-class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
+class SACInSampleEvaluateStage(InSampleChecksEvaluateStage):
 
     def __init__(
         self,
         client: WorldQuantClient,
-        brain_client: WorldQuantBrainClient,
+        alpha_manager: AbstractAlphaManager,
         next_stage: Optional[AbstractEvaluateStage] = None,
         check_pass_result_map: Optional[
             Dict[SubmissionCheckType, Set[SubmissionCheckResult]]
@@ -70,7 +69,7 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
             next_stage=next_stage,
             check_pass_result_map=check_pass_result_map,
         )
-        self.brain_client: WorldQuantBrainClient = brain_client
+        self.alpha_manager: AbstractAlphaManager = alpha_manager
 
     async def _evaluate_stage(
         self,
@@ -79,53 +78,41 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
-        if alpha.in_sample and alpha.in_sample.checks:
-            for check in alpha.in_sample.checks:
-                if (
-                    check.name == SubmissionCheckType.MATCHES_PYRAMID.value
-                    and check.pyramids
-                ):
-                    for pyramid in check.pyramids:
-                        if (
-                            "MODEL" in pyramid.name or "ANALYST" in pyramid.name
-                        ) and alpha.region == Region.USA:
-                            # 如果因子在模型或分析中，评估失败
-                            await log.aerror(
-                                event="PPAC2025 评估失败，因子在模型或分析中",
-                                alpha_id=alpha.alpha_id,
-                                pyramid=pyramid.name,
-                                emoji="❌",
-                            )
-                            return False
-
         result: bool = await super()._evaluate_stage(alpha, policy, record, **kwargs)
 
         # 顺便更新一下评估记录的其他字段
-        ppac_description: str = (
-            "Idea: Power Pool Alphas Competition 2025\n"
-            "Rationale for data used: Power Pool Alphas Competition 2025\n"
-            "Rationale for operators used: Power Pool Alphas Competition 2025"
+        selection_description: str = (
+            "Select Alpha with low correlation coefficient and fixed turnover rate to make factors have similar attributes, "
+            "which is convenient for exploring the impact of other attributes on performance"
+        )
+        combo_description: str = (
+            "This expression weights each Alpha by the maximum correlation with all other selected "
+            "Alphas over a 2 year period, with more correlated Alphas receiving less weight."
         )
 
         if result and (
-            (alpha.regular and alpha.regular.description != ppac_description)
+            (alpha.selection and alpha.selection.description != selection_description)
+            or (alpha.combo and alpha.combo.description != combo_description)
             or alpha.name != alpha.alpha_id
         ):
             payload: AlphaPropertiesPayload = AlphaPropertiesPayload(
                 name=alpha.alpha_id,
-                regular=AlphaPropertiesPayload.Code(
-                    description=ppac_description,
+                selection=AlphaPropertiesPayload.Code(
+                    description=selection_description,
+                ),
+                combo=AlphaPropertiesPayload.Code(
+                    description=combo_description,
                 ),
                 tags=alpha.tags,
             )
 
-            await self.brain_client.update_alpha_properties(
-                alpha_id=alpha.alpha_id,
-                payload=payload,
+            await self.alpha_manager.save_alpha_properties(
+                alpha=alpha,
+                properties=payload,
             )
 
             await self.log.ainfo(
-                event="PPAC2025 初筛通过，更新 Power Pool 专用描述",
+                event="SAC 初筛通过，更新专用描述",
                 alpha_id=alpha.alpha_id,
                 properties=payload,
                 emoji="✅",
@@ -137,9 +124,6 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
 if __name__ == "__main__":
 
     async def main() -> None:
-        """
-        测试 PPAC2025Evaluator 的功能。
-        """
         alpha_dal: AlphaDAL = DALFactory.create_dal(dal_class=AlphaDAL)
         aggregate_data_dal: AggregateDataDAL = DALFactory.create_dal(
             dal_class=AggregateDataDAL,
@@ -160,6 +144,9 @@ if __name__ == "__main__":
             username=settings.credential.username,
             password=settings.credential.password,
         )
+        alpha_manager: AbstractAlphaManager = AlphaManager(
+            brain_client=brain_client,
+        )
 
         async with session_manager.get_session(Database.ALPHAS) as session:
             os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
@@ -169,17 +156,19 @@ if __name__ == "__main__":
 
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
             for alpha in os_alphas:
+                power_pool_eligible: bool = False
                 for classification in alpha.classifications:
-                    if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
-                        # 仅处理 Power Pool 的因子
-                        yield alpha
+                    if classification.id.startswith("POWER_POOL"):
+                        # 不处理 Power Pool 的因子
+                        power_pool_eligible = True
                         break
+                if not power_pool_eligible:
+                    yield alpha
                 else:
                     await log.ainfo(
-                        event="Alpha 策略不符合 Power Pool 条件",
+                        event="跳过 Power Pool 因子",
                         alpha_id=alpha.alpha_id,
-                        classifications=alpha.classifications,
-                        emoji="❌",
+                        emoji="⏭️",
                     )
 
         async with wq_client as client:
@@ -195,52 +184,18 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 17, 0, 0),
-                # end_time=datetime(2025, 6, 14, 23, 59, 59),
-            )
-
-            record_set_manager: RecordSetsManager = RecordSetsManager(
-                brain_client=brain_client,
-                record_set_dal=record_set_dal,
+                start_time=datetime(2025, 6, 1, 0, 0),
             )
 
             check_pass_result_map: Dict[
                 SubmissionCheckType, Set[SubmissionCheckResult]
-            ] = {
-                SubmissionCheckType.UNITS: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.LOW_2Y_SHARPE: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.CONCENTRATED_WEIGHT: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.MATCHES_COMPETITION: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-                SubmissionCheckType.MATCHES_THEMES: {
-                    SubmissionCheckResult.PASS,
-                    SubmissionCheckResult.WARNING,
-                    SubmissionCheckResult.PENDING,
-                },
-            }
+            ] = {}
 
-            in_sample_stage: PPAC2025InSampleEvaluateStage = (
-                PPAC2025InSampleEvaluateStage(
-                    client=client,
-                    next_stage=None,
-                    brain_client=brain_client,
-                    check_pass_result_map=check_pass_result_map,
-                )
+            in_sample_stage: SACInSampleEvaluateStage = SACInSampleEvaluateStage(
+                client=client,
+                next_stage=None,
+                alpha_manager=alpha_manager,
+                check_pass_result_map=check_pass_result_map,
             )
             await in_sample_stage.initialize()
 
@@ -248,7 +203,7 @@ if __name__ == "__main__":
                 CorrelationLocalEvaluateStage(
                     next_stage=None,
                     correlation_calculator=correlation_calculator,
-                    threshold=0.5,
+                    threshold=0.7,
                     same_region=True,
                     inner=False,
                 )
@@ -256,25 +211,19 @@ if __name__ == "__main__":
             platform_self_correlation_stage: AbstractEvaluateStage = (
                 CorrelationPlatformEvaluateStage(
                     next_stage=None,
-                    correlation_type=CorrelationType.POWER_POOL,
+                    correlation_type=CorrelationType.PROD,
                     check_record_dal=check_record_dal,
                     correlation_dal=correlation_dal,
                     client=brain_client,
-                    threshold=0.5,
+                    threshold=0.7,
                 )
-            )
-
-            scoring_stage: ScoringEvaluateStage = ScoringEvaluateStage(
-                next_stage=None,
-                record_sets_manager=record_set_manager,
             )
 
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = platform_self_correlation_stage
-            platform_self_correlation_stage.next_stage = scoring_stage
 
             evaluator = BaseEvaluator(
-                name="ppac2025",
+                name="sac",
                 fetcher=fetcher,
                 evaluate_stage_chain=in_sample_stage,
                 evaluate_record_dal=evaluate_record_dal,
@@ -283,6 +232,7 @@ if __name__ == "__main__":
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
                 concurrency=3,
+                type=AlphaType.SUPER,
                 status=Status.UNSUBMITTED,
             ):
                 print(alpha)

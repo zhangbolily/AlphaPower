@@ -497,7 +497,7 @@ class Alpha(Base):
             )
 
     @hybrid_property
-    def regular(self) -> Optional[ExpressionView]:
+    def regular(self) -> Optional[ExpressionView]:  # type: ignore[no-redef]
 
         if self._regular is None:
             return None

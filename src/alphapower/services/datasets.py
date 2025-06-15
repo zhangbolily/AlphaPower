@@ -5,8 +5,8 @@ from alphapower.internal.multiprocessing import (
     BaseProcessSafeClass,
     BaseProcessSafeFactory,
 )
-from alphapower.manager.datasets_manager import DatasetsManagerFactory
-from alphapower.manager.datasets_manager_abc import AbstractDatasetsManager
+from alphapower.manager.data_sets_manager import DataSetsManagerFactory
+from alphapower.manager.data_sets_manager_abc import AbstractDataSetsManager
 from alphapower.manager.options_manager import OptionsManagerFactory
 from alphapower.manager.options_manager_abc import AbstractOptionsManager
 from alphapower.view.data import DataCategoryView, DatasetView
@@ -18,7 +18,7 @@ from .datasets_abc import AbstractDatasetsService
 class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
     def __init__(
         self,
-        datasets_manager: AbstractDatasetsManager,
+        datasets_manager: AbstractDataSetsManager,
         options_manager: AbstractOptionsManager,
     ) -> None:
         self._datasets_manager = datasets_manager
@@ -87,7 +87,7 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
             )
 
             datasets: List[DatasetView] = (
-                await self._datasets_manager.fetch_datasets_from_platform(
+                await self._datasets_manager.fetch_data_sets_from_platform(
                     category=category,
                     delay=delay,
                     instrumentType=instrument_type,
@@ -116,7 +116,7 @@ class DatasetsServiceFactory(BaseProcessSafeFactory[AbstractDatasetsService]):
 
     def __init__(
         self,
-        datasets_manager_factory: DatasetsManagerFactory,
+        datasets_manager_factory: DataSetsManagerFactory,
         options_manager_factory: OptionsManagerFactory,
         **kwargs: Any,
     ) -> None:
@@ -124,8 +124,8 @@ class DatasetsServiceFactory(BaseProcessSafeFactory[AbstractDatasetsService]):
         Initialize the factory with a DatasetsManager instance.
         """
         super().__init__(**kwargs)
-        self._datasets_manager: Optional[AbstractDatasetsManager] = None
-        self._datasets_manager_factory: DatasetsManagerFactory = (
+        self._datasets_manager: Optional[AbstractDataSetsManager] = None
+        self._datasets_manager_factory: DataSetsManagerFactory = (
             datasets_manager_factory
         )
         self._options_manager: Optional[AbstractOptionsManager] = None
@@ -165,14 +165,14 @@ class DatasetsServiceFactory(BaseProcessSafeFactory[AbstractDatasetsService]):
 
         if self._datasets_manager is None:
             await self.log.aerror(
-                event=f"{AbstractDatasetsManager.__name__} 未初始化",
+                event=f"{AbstractDataSetsManager.__name__} 未初始化",
                 message=(
-                    f"{AbstractDatasetsManager.__name__} 依赖未注入，"
+                    f"{AbstractDataSetsManager.__name__} 依赖未注入，"
                     f"无法创建 {AbstractDatasetsService.__name__} 实例"
                 ),
                 emoji=LoggingEmoji.ERROR.value,
             )
-            raise ValueError(f"{AbstractDatasetsManager.__name__} 未初始化")
+            raise ValueError(f"{AbstractDataSetsManager.__name__} 未初始化")
 
         if self._options_manager is None:
             await self.log.aerror(
@@ -194,7 +194,7 @@ class DatasetsServiceFactory(BaseProcessSafeFactory[AbstractDatasetsService]):
             event=f"{AbstractDatasetsService.__name__} 实例创建成功",
             message=(
                 f"成功创建 {AbstractDatasetsService.__name__} 实例，"
-                f"使用的 {AbstractDatasetsManager.__name__} 工厂为 {self._datasets_manager_factory.__class__.__name__}"
+                f"使用的 {AbstractDataSetsManager.__name__} 工厂为 {self._datasets_manager_factory.__class__.__name__}"
             ),
             emoji=LoggingEmoji.SUCCESS.value,
         )

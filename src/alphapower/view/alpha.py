@@ -529,14 +529,16 @@ class SelfTagListView(BaseModel):
 
 class AlphaPropertiesPayload(PayloadBase):
 
-    class Regular(BaseModel):
+    class Code(BaseModel):
         description: Optional[str] = None
 
     color: Optional[Color] = None
     name: Optional[str] = None
     tags: List[str] = []  # tags 不能为 null
     category: Optional[str] = None
-    regular: Regular = Regular()
+    regular: Code = Code()
+    selection: Code = Code()
+    combo: Code = Code()
 
 
 class SelfCorrelationView(BaseModel):

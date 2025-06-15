@@ -10,10 +10,10 @@ from alphapower.internal.multiprocessing import (
 )
 from alphapower.view.data import DataCategoryView, DatasetsQuery, DatasetView
 
-from .datasets_manager_abc import AbstractDatasetsManager
+from .data_sets_manager_abc import AbstractDataSetsManager
 
 
-class DatasetsManager(BaseProcessSafeClass, AbstractDatasetsManager):
+class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
     """
     Concrete implementation of DatasetManagerABC.
     This class manages datasets and data categories.
@@ -62,10 +62,10 @@ class DatasetsManager(BaseProcessSafeClass, AbstractDatasetsManager):
         return data_categories
 
     @async_exception_handler
-    async def fetch_datasets_from_platform(self, **kwargs: Any) -> List[DatasetView]:
+    async def fetch_data_sets_from_platform(self, **kwargs: Any) -> List[DatasetView]:
         await self.log.ainfo(
             event="开始从平台获取数据集",
-            message=f"进入 {self.fetch_datasets_from_platform.__qualname__} 方法",
+            message=f"进入 {self.fetch_data_sets_from_platform.__qualname__} 方法",
             emoji=LoggingEmoji.STEP_IN_FUNC.value,
         )
 
@@ -81,13 +81,13 @@ class DatasetsManager(BaseProcessSafeClass, AbstractDatasetsManager):
         datasets: List[DatasetView] = await brain_client.fetch_datasets(query=query)
         await self.log.ainfo(
             event="成功获取数据集",
-            message=f"退出 {self.fetch_datasets_from_platform.__qualname__} 方法",
+            message=f"退出 {self.fetch_data_sets_from_platform.__qualname__} 方法",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return datasets
 
 
-class DatasetsManagerFactory(BaseProcessSafeFactory[AbstractDatasetsManager]):
+class DataSetsManagerFactory(BaseProcessSafeFactory[AbstractDataSetsManager]):
     def __init__(
         self,
         brain_client_factory: WorldQuantBrainClientFactory,
@@ -125,7 +125,7 @@ class DatasetsManagerFactory(BaseProcessSafeFactory[AbstractDatasetsManager]):
         return factories
 
     @async_exception_handler
-    async def _build(self, *args: Any, **kwargs: Any) -> AbstractDatasetsManager:
+    async def _build(self, *args: Any, **kwargs: Any) -> AbstractDataSetsManager:
         await self.log.ainfo(
             event=f"进入 {self._build.__qualname__} 方法",
             message="开始构建 AbstractDatasetManager 实例",
@@ -147,7 +147,7 @@ class DatasetsManagerFactory(BaseProcessSafeFactory[AbstractDatasetsManager]):
             )
             raise ValueError("WorldQuant Brain client is not set.")
 
-        manager: AbstractDatasetsManager = DatasetsManager(
+        manager: AbstractDataSetsManager = DataSetsManager(
             brain_client=self._brain_client
         )
         await self.log.adebug(

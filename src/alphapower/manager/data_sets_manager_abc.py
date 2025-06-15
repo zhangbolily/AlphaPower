@@ -4,7 +4,7 @@ from typing import Any, List
 from alphapower.view.data import DataCategoryView, DatasetView
 
 
-class AbstractDatasetsManager(ABC):
+class AbstractDataSetsManager(ABC):
     @abstractmethod
     async def fetch_categories_from_platform(self) -> List[DataCategoryView]:
         """
@@ -14,7 +14,7 @@ class AbstractDatasetsManager(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
-    async def fetch_datasets_from_platform(
+    async def fetch_data_sets_from_platform(
         self, **kwargs: Any
     ) -> List[DatasetView]:
         """
