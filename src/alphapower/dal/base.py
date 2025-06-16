@@ -522,25 +522,73 @@ class BaseDAL(Generic[T]):
 
     async def find_ids_by(
         self,
+        *args: ColumnElement,
         session: Optional[AsyncSession] = None,
-        **kwargs: Any,
-    ) -> Optional[int]:
-        """
-        按条件查找单个实体的 ID。
+        order_by: Optional[Union[ColumnElement, List[ColumnElement]]] = None,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+        **kwargs: Union[str, int, float, bool],
+    ) -> List[int]:
+        # 按条件批量查询实体 ID，支持 ORM 表达式、排序、分页、等值过滤
+        log: BoundLogger = self.log
+        await log.adebug(
+            "find_ids_by 查询入参",
+            args=args,
+            order_by=order_by,
+            offset=offset,
+            limit=limit,
+            kwargs=kwargs,
+            emoji="🔎",
+        )
 
-        Args:
-            session: 可选的会话对象，若提供则优先使用。
-            **kwargs: 查询条件的键值对。
-
-        Returns:
-            符合条件的第一个实体的 ID，如果未找到则返回 None。
-        """
         actual_session: AsyncSession = self._actual_session(session)
         query: Select = select(self.entity_type.id)
+        criteria: List[ColumnElement] = []
+
+        # 处理 args 作为 SQLAlchemy 条件表达式
+        for arg in args:
+            if isinstance(arg, ColumnElement):
+                criteria.append(arg)
+            else:
+                await log.awarning("无效的条件表达式", arg=arg, emoji="⚠️")
+
+        # 处理 kwargs 等值过滤
         for key, value in kwargs.items():
-            query = query.where(getattr(self.entity_type, key) == value)
-        result = await actual_session.execute(query.limit(1))
-        return result.scalars().first()
+            if not isinstance(key, str):
+                await log.awarning("过滤条件字段名必须为字符串", field=key, emoji="⚠️")
+                continue
+            if hasattr(self.entity_type, key):
+                column = getattr(self.entity_type, key)
+                criteria.append(column == value)
+            else:
+                await log.awarning("无效的字段名", field=key, emoji="⚠️")
+
+        # 应用所有过滤条件
+        if criteria:
+            query = query.filter(*criteria)
+
+        # 排序
+        if order_by is not None:
+            if isinstance(order_by, list):
+                query = query.order_by(*order_by)
+            elif isinstance(order_by, ColumnElement):
+                query = query.order_by(order_by)
+
+        # 分页
+        if offset is not None:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await actual_session.execute(query)
+        ids: List[int] = list(result.scalars().all())
+
+        await log.ainfo(
+            "find_ids_by 查询完成",
+            result_count=len(ids),
+            emoji="✅",
+        )
+        return ids
 
     async def find_one_id_by(
         self,

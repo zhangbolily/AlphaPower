@@ -288,7 +288,7 @@ if __name__ == "__main__":
 
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
-                concurrency=3,
+                concurrency=64,
                 status=Status.UNSUBMITTED,
                 type=AlphaType.REGULAR,
             ):

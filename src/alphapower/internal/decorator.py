@@ -8,6 +8,7 @@ from alphapower.internal.logging import get_logger
 
 F = TypeVar("F", bound=Callable[..., Coroutine[Any, Any, Any]])
 E = TypeVar("E", bound=Callable[..., Coroutine[Any, Any, Any]])
+G = TypeVar("G", bound=Callable[..., Any])
 
 logger: BoundLogger = get_logger(__name__)
 
@@ -39,6 +40,35 @@ def async_timed(func: F) -> F:
         return result
 
     return cast(F, wrapper)
+
+
+def sync_timed(func: G) -> G:
+    """
+    同步函数耗时统计装饰器，自动记录函数执行耗时到日志
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        timed_function: str = func.__qualname__  # 确保获取到被装饰函数的名字
+        logger.debug(
+            "函数耗时统计开始",
+            timed_function=timed_function,
+            args=args,
+            kwargs=kwargs,
+            emoji="⏱️",
+        )
+        start_time: float = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed: float = time.perf_counter() - start_time
+        logger.info(
+            "函数耗时统计结束",
+            timed_function=timed_function,
+            elapsed=f"{elapsed:.4f} seconds",
+            emoji="⏱️",
+        )
+        return result
+
+    return cast(G, wrapper)
 
 
 def async_exception_handler(func: E) -> E:

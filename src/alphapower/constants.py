@@ -154,7 +154,7 @@ FAST_EXPRESSION_GRAMMAR: Final[
 ] = r"""
     start: statement_list
 
-    statement_list: statement (";" statement)*
+    statement_list: (statement? ";")* statement?
 
     ?statement: assignment | expr
 
@@ -189,6 +189,7 @@ FAST_EXPRESSION_GRAMMAR: Final[
            | NUMBER        -> number
            | "-" factor    -> neg
            | "(" expr ")"
+           | "{" expr "}"
 
     ?member_expr: base ("." NAME)*   -> member
 
@@ -210,14 +211,17 @@ FAST_EXPRESSION_GRAMMAR: Final[
     ESCAPED_STRING : "\"" _STRING_ESC_INNER "\"" | "'" _STRING_INNER "'"
 
     %import common.NUMBER
-    %import common.WS_INLINE
-    %ignore WS_INLINE
+    %import common.WS
+    %import common.SH_COMMENT
+    %import common.C_COMMENT
+    %import common.CPP_COMMENT
+    %import common.SQL_COMMENT
 
-    // C风格多行注释：/* ... */
-    %ignore /\/\*.*?\*\//s
-
-    // 单行注释：//
-    %ignore /\/\/.*/
+    %ignore WS
+    %ignore SH_COMMENT  # 忽略Shell风格单行注释：# ...
+    %ignore C_COMMENT   # 忽略C风格注释：/* ... */
+    %ignore CPP_COMMENT  # 忽略C++风格单行注释：// ...
+    %ignore SQL_COMMENT  # 忽略SQL风格单行注释：-- ...
 """
 
 
