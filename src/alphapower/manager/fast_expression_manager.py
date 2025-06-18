@@ -27,9 +27,9 @@ class FastExpression:
         normalized_tree: ParseTree,
         type: FastExpressionType,
         used_operators: Set[str],
-        used_datafields: Set[str],
+        used_data_fields: Set[str],
         fingerprint: str,
-        structure_hash: str,
+        normalized_fingerprint: str,
     ) -> None:
         self.tree: ParseTree = tree
         self.normalized_tree: ParseTree = normalized_tree
@@ -37,9 +37,9 @@ class FastExpression:
         self.normalized_expression: str = normalized_expression
         self.type: FastExpressionType = type
         self.used_operators: Set[str] = used_operators
-        self.used_datafields: Set[str] = used_datafields
+        self.used_data_fields: Set[str] = used_data_fields
         self.fingerprint: str = fingerprint
-        self.structure_hash: str = structure_hash
+        self.normalized_fingerprint: str = normalized_fingerprint
 
     def __repr__(self) -> str:
         return f"FastExpression(expression={self.expression}, type={self.type})"
@@ -248,7 +248,7 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
     ) -> None:
         self.agent = agent
 
-    def parse(self, expression: str, type: FastExpressionType) -> FastExpression:
+    async def parse(self, expression: str, type: FastExpressionType) -> FastExpression:
         parser: Lark = Lark(
             FAST_EXPRESSION_GRAMMAR, parser="lalr", maybe_placeholders=False
         )
@@ -257,7 +257,7 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
         reconstructor: Reconstructor = Reconstructor(parser)
         usage_collector: UsageCollector = UsageCollector()
 
-        used_datafields: Set[str] = set()
+        used_data_fields: Set[str] = set()
 
         tree: ParseTree = parser.parse(expression)
         tree_dict: ParseTree = ast_to_dict_transformer.transform(tree)
@@ -265,7 +265,7 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
         fingerprint: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
 
         usage_collector.transform(tree)
-        used_datafields = (
+        used_data_fields = (
             usage_collector.referenced_vars - usage_collector.assigned_vars
         )
 
@@ -282,9 +282,9 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
             normalized_tree=normalized_tree,
             type=type,
             used_operators=usage_collector.used_operators,
-            used_datafields=used_datafields,
+            used_data_fields=used_data_fields,
             fingerprint=fingerprint,
-            structure_hash=structure_hash,
+            normalized_fingerprint=structure_hash,
         )
 
     async def explain(self, expression: FastExpression) -> str:
@@ -301,6 +301,10 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
 class FastExpressionManagerFactory(BaseProcessSafeFactory):
     def __init__(self, agent: Agent) -> None:
         self.agent = agent
+        super().__init__()
+
+    async def _dependency_factories(self) -> Dict[str, "BaseProcessSafeFactory"]:
+        return {}
 
     async def _build(self, *args: Any, **kwargs: Any) -> AbstractFastExpressionManager:
         """

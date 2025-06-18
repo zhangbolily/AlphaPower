@@ -12,7 +12,6 @@ from alphapower.constants import (
     CorrelationType,
     Database,
     RefreshPolicy,
-    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -82,24 +81,53 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
+        if (
+            alpha.regular
+            and alpha.regular.operator_count is not None
+            and alpha.regular.operator_count > 8
+        ):
+            # 如果因子使用的运算符超过 8 个，评估失败
+            await log.aerror(
+                event="PPAC2025 评估失败，因子使用的运算符超过 8 个",
+                alpha_id=alpha.alpha_id,
+                operator_count=alpha.regular.operator_count,
+                emoji="❌",
+            )
+            return False
+
         if alpha.in_sample and alpha.in_sample.checks:
             for check in alpha.in_sample.checks:
-                if (
-                    check.name == SubmissionCheckType.MATCHES_PYRAMID.value
-                    and check.pyramids
-                ):
-                    for pyramid in check.pyramids:
-                        if (
-                            "MODEL" in pyramid.name or "ANALYST" in pyramid.name
-                        ) and alpha.region == Region.USA:
-                            # 如果因子在模型或分析中，评估失败
-                            await log.aerror(
-                                event="PPAC2025 评估失败，因子在模型或分析中",
-                                alpha_id=alpha.alpha_id,
-                                pyramid=pyramid.name,
-                                emoji="❌",
-                            )
-                            return False
+                # if (
+                #     check.name == SubmissionCheckType.MATCHES_PYRAMID.value
+                #     and check.pyramids
+                # ):
+                #     for pyramid in check.pyramids:
+                #         if (
+                #             "MODEL" in pyramid.name or "ANALYST" in pyramid.name
+                #         ) and alpha.region == Region.USA:
+                #             # 如果因子在模型或分析中，评估失败
+                #             await log.aerror(
+                #                 event="PPAC2025 评估失败，因子在模型或分析中",
+                #                 alpha_id=alpha.alpha_id,
+                #                 pyramid=pyramid.name,
+                #                 emoji="❌",
+                #             )
+                #             return False
+
+                if check.name == SubmissionCheckType.LOW_2Y_SHARPE.value:
+                    if (
+                        check.result == SubmissionCheckResult.WARNING
+                        and check.value is not None
+                        and check.value < 0.5
+                    ):
+                        # 如果 2 年夏普率低于 0.5，评估失败
+                        await log.aerror(
+                            event="PPAC2025 评估失败，2 年夏普率低于 0.5",
+                            alpha_id=alpha.alpha_id,
+                            value=check.value,
+                            emoji="❌",
+                        )
+                        return False
 
         result: bool = await super()._evaluate_stage(alpha, policy, record, **kwargs)
 
@@ -167,7 +195,22 @@ if __name__ == "__main__":
             brain_client=brain_client,
         )
 
-        async with session_manager.get_session(Database.ALPHAS) as session:
+        async with (
+            session_manager.get_session(Database.ALPHAS) as session,
+            session.begin(),
+        ):
+            # 清理旧的评估记录
+            deleted: int = await evaluate_record_dal.delete_by_filter(
+                session=session,
+                evaluator="ppac2025",
+            )
+            if deleted > 0:
+                await log.ainfo(
+                    event="清理旧的评估记录",
+                    count=deleted,
+                    emoji="🧹",
+                )
+
             os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
                 session=session,
                 stage=Stage.OS,
@@ -286,11 +329,19 @@ if __name__ == "__main__":
                 evaluate_record_dal=evaluate_record_dal,
             )
 
+            user_id: str = await brain_client.get_user_id()
+            await log.ainfo(
+                event="PPAC2025 评估开始",
+                user_id=user_id,
+                emoji="🚀",
+            )
+
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
-                concurrency=64,
+                concurrency=32,
                 status=Status.UNSUBMITTED,
                 type=AlphaType.REGULAR,
+                author=user_id,
             ):
                 print(alpha)
 

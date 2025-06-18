@@ -6,5 +6,5 @@ from alphapower.constants import FastExpressionType
 
 class AbstractFastExpressionManager(ABC):
     @abstractmethod
-    def parse(self, expression: str, type: FastExpressionType) -> Any:
+    async def parse(self, expression: str, type: FastExpressionType) -> Any:
         pass

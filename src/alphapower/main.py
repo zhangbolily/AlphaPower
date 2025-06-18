@@ -22,10 +22,14 @@ from alphapower.dal.session_manager import session_manager
 from alphapower.internal.logging import get_logger
 from alphapower.internal.utils import safe_async_run
 from alphapower.manager.alpha_manager import AlphaManagerFactory
+from alphapower.manager.alpha_profile_manager import AlphaProfileManagerFactory
 from alphapower.manager.data_sets_manager import DataSetsManagerFactory
+from alphapower.manager.fast_expression_manager import FastExpressionManagerFactory
 from alphapower.manager.options_manager import OptionsManagerFactory
 from alphapower.services.alpha import AlphaServiceFactory
 from alphapower.services.alpha_abc import AbstractAlphaService
+from alphapower.services.alpha_profiles import AlphaProfilesServiceFactory
+from alphapower.services.alpha_profiles_abc import AbstractAlphaProfilesService
 from alphapower.services.datasets import DatasetsServiceFactory
 from alphapower.services.datasets_abc import AbstractDatasetsService
 from alphapower.services.sync_alphas import AlphaSyncService
@@ -104,6 +108,19 @@ async def alpha() -> None:
         None
     """
     await logger.adebug("因子命令组初始化完成。")
+
+
+@alpha.group()
+async def profiles() -> None:
+    """
+    因子配置文件命令组。
+
+    提供用于构建和管理因子配置文件的子命令。
+
+    Returns:
+        None
+    """
+    await logger.adebug("因子配置文件命令组初始化完成。")
 
 
 @cli.group()
@@ -502,6 +519,80 @@ async def start_worker_pool(
             exc_info=True,
         )
         raise
+
+
+@profiles.command()
+@click.option(
+    "--date_created_gt",
+    type=click.DateTime(),
+    default=None,
+    help="创建时间大于等于",
+)
+@click.option(
+    "--date_created_lt",
+    type=click.DateTime(),
+    default=None,
+    help="创建时间小于等于",
+)
+@click.option(
+    "--parallel",
+    default=1,
+    type=int,
+    help="并行数，默认为 1",
+)
+async def build(
+    date_created_gt: Optional[datetime],
+    date_created_lt: Optional[datetime],
+    parallel: int = 1,
+) -> None:
+    """
+    构建因子配置文件。
+
+    Args:
+        date_created_gt (Optional[datetime]): 创建时间大于等于。
+        date_created_lt (Optional[datetime]): 创建时间小于等于。
+        parallel (int): 并行数，默认为 1。
+
+    Returns:
+        None
+
+    Raises:
+        Exception: 如果构建过程中发生错误。
+    """
+    await logger.ainfo(
+        f"开始构建因子配置文件，参数: date_created_gt={date_created_gt}, "
+        f"date_created_lt={date_created_lt}, parallel={parallel}",
+        emoji="🛠️",
+    )
+
+    alpha_manager_factory: AlphaManagerFactory = AlphaManagerFactory(
+        brain_client_factory=WorldQuantBrainClientFactory(
+            username=settings.credential.username,
+            password=settings.credential.password,
+        )
+    )
+    fast_expression_manager_factory: FastExpressionManagerFactory = (
+        FastExpressionManagerFactory(agent=None)
+    )
+    alpha_profile_manager_factory: AlphaProfileManagerFactory = (
+        AlphaProfileManagerFactory()
+    )
+
+    alpha_profile_service: AbstractAlphaProfilesService = (
+        await AlphaProfilesServiceFactory(
+            alpha_manager_factory=alpha_manager_factory,
+            fast_expression_manager_factory=fast_expression_manager_factory,
+            alpha_profile_manager_factory=alpha_profile_manager_factory,
+        )()
+    )
+
+    await alpha_profile_service.build_alpha_profiles(
+        fast_expression_manager_factory=fast_expression_manager_factory,
+        alpha_profile_manager_factory=alpha_profile_manager_factory,
+        date_created_gt=date_created_gt,
+        date_created_lt=date_created_lt,
+        parallel=parallel,
+    )
 
 
 if __name__ == "__main__":

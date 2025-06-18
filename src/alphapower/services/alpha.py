@@ -7,12 +7,9 @@ from alphapower.constants import (
     MAX_COUNT_IN_SINGLE_ALPHA_LIST_QUERY,
     MAX_PAGE_SIZE_IN_ALPHA_LIST_QUERY,
     Color,
-    Database,
     LoggingEmoji,
     Status,
 )
-from alphapower.dal import alpha_dal
-from alphapower.dal.session_manager import session_manager
 from alphapower.entity.alphas import Alpha
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.multiprocessing import (
@@ -21,10 +18,6 @@ from alphapower.internal.multiprocessing import (
 )
 from alphapower.manager.alpha_manager import AlphaManagerFactory
 from alphapower.manager.alpha_manager_abc import AbstractAlphaManager
-from alphapower.manager.alpha_profile_manager import AlphaProfileManagerFactory
-from alphapower.manager.alpha_profile_manager_abc import AbstractAlphaProfileManager
-from alphapower.manager.fast_expression_manager import FastExpressionManagerFactory
-from alphapower.manager.fast_expression_manager_abc import AbstractFastExpressionManager
 from alphapower.view.alpha import AlphaPropertiesPayload, AlphaView
 
 from .alpha_abc import AbstractAlphaService
@@ -39,17 +32,11 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
     def __init__(
         self,
         alpha_manager: AbstractAlphaManager,
-        alpha_profile_manager: AbstractAlphaProfileManager,
-        fast_expression_manager: AbstractFastExpressionManager,
     ) -> None:
         """
         Initialize the AlphaService with an AlphaManager instance.
         """
         self.alpha_manager: AbstractAlphaManager = alpha_manager
-        self.fast_expression_manager: AbstractFastExpressionManager = (
-            fast_expression_manager
-        )
-        self.alpha_profile_manager: AbstractAlphaProfileManager = alpha_profile_manager
         super().__init__()
 
     async def sync_alphas(
@@ -575,57 +562,6 @@ class AlphaService(AbstractAlphaService, BaseProcessSafeClass):
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
 
-    @async_exception_handler
-    async def build_alpha_profiles(
-        self,
-        date_created_gt: datetime | None = None,
-        date_created_lt: datetime | None = None,
-        parallel: int = 1,
-        **kwargs: Any,
-    ) -> None:
-        await self.log.ainfo(
-            event=f"进入 {self.build_alpha_profiles.__qualname__}",
-            emoji=LoggingEmoji.STEP_IN_FUNC.value,
-        )
-        await self.log.adebug(
-            event=f"{self.build_alpha_profiles.__qualname__} 入参",
-            method=self.build_alpha_profiles.__qualname__,
-            date_created_gt=date_created_gt,
-            date_created_lt=date_created_lt,
-            parallel=parallel,
-            emoji=LoggingEmoji.DEBUG.value,
-        )
-
-        if date_created_gt is None:
-            first_alpha: Optional[AlphaView] = (
-                await self.alpha_manager.fetch_first_alpha_from_platform()
-            )
-            date_created_gt = first_alpha.date_created if first_alpha else datetime.min
-
-        if date_created_lt is None:
-            last_alpha: Optional[AlphaView] = (
-                await self.alpha_manager.fetch_last_alpha_from_platform()
-            )
-            date_created_lt = last_alpha.date_created if last_alpha else datetime.max
-
-        async with session_manager.get_session(
-            db=Database.ALPHAS,
-            readonly=True,
-        ) as session:
-            alpha_ids: List[int] = await alpha_dal.find_ids_by(
-                Alpha.date_created >= date_created_gt,
-                Alpha.date_created <= date_created_lt,
-                session=session,
-            )
-            if not alpha_ids:
-                await self.log.ainfo(
-                    event="没有符合条件的 alpha 数据",
-                    message="无法构建 AlphaProfile，因为没有符合条件的 alpha 数据",
-                    date_created_gt=date_created_gt,
-                    date_created_lt=date_created_lt,
-                    emoji=LoggingEmoji.INFO.value,
-                )
-                return
 
 class AlphaServiceFactory(BaseProcessSafeFactory[AbstractAlphaService]):
     """
@@ -635,8 +571,6 @@ class AlphaServiceFactory(BaseProcessSafeFactory[AbstractAlphaService]):
     def __init__(
         self,
         alpha_manager_factory: AlphaManagerFactory,
-        fast_expression_manager_factory: FastExpressionManagerFactory,
-        alpha_profile_manager_factory: AlphaProfileManagerFactory,
         **kwargs: Any,
     ) -> None:
         """
@@ -645,14 +579,6 @@ class AlphaServiceFactory(BaseProcessSafeFactory[AbstractAlphaService]):
         super().__init__(**kwargs)
         self._alpha_manager: Optional[AbstractAlphaManager] = None
         self._alpha_manager_factory: AlphaManagerFactory = alpha_manager_factory
-        self._alpha_profile_manager: Optional[AbstractAlphaProfileManager] = None
-        self._alpha_profile_manager_factory: AlphaProfileManagerFactory = (
-            alpha_profile_manager_factory
-        )
-        self._fast_expression_manager: Optional[AbstractFastExpressionManager] = None
-        self._fast_expression_manager_factory: FastExpressionManagerFactory = (
-            fast_expression_manager_factory
-        )
 
     def __getstate__(self) -> Dict[str, Any]:
         state: Dict[str, Any] = super().__getstate__()
@@ -670,8 +596,6 @@ class AlphaServiceFactory(BaseProcessSafeFactory[AbstractAlphaService]):
         )
         factories: Dict[str, BaseProcessSafeFactory[Any]] = {
             "_alpha_manager": self._alpha_manager_factory,
-            "_alpha_profile_manager": self._alpha_profile_manager_factory,
-            "_fast_expression_manager": self._fast_expression_manager_factory,
         }
         await self.log.ainfo(
             event=f"退出 {self._dependency_factories.__qualname__}",
@@ -695,32 +619,8 @@ class AlphaServiceFactory(BaseProcessSafeFactory[AbstractAlphaService]):
             )
             raise ValueError(f"{AbstractAlphaManager.__name__} 未初始化")
 
-        if self._alpha_profile_manager is None:
-            await self.log.aerror(
-                event=f"{AbstractAlphaProfileManager.__name__} 未初始化",
-                message=(
-                    f"{AbstractAlphaProfileManager.__name__} 依赖未注入，"
-                    f"无法创建 {AbstractAlphaService.__name__} 实例"
-                ),
-                emoji=LoggingEmoji.ERROR.value,
-            )
-            raise ValueError(f"{AbstractAlphaProfileManager.__name__} 未初始化")
-
-        if self._fast_expression_manager is None:
-            await self.log.aerror(
-                event=f"{AbstractFastExpressionManager.__name__} 未初始化",
-                message=(
-                    f"{AbstractFastExpressionManager.__name__} 依赖未注入，"
-                    f"无法创建 {AbstractAlphaService.__name__} 实例"
-                ),
-                emoji=LoggingEmoji.ERROR.value,
-            )
-            raise ValueError(f"{AbstractFastExpressionManager.__name__} 未初始化")
-
         service: AbstractAlphaService = AlphaService(
             alpha_manager=self._alpha_manager,
-            alpha_profile_manager=self._alpha_profile_manager,
-            fast_expression_manager=self._fast_expression_manager,
         )
 
         await self.log.ainfo(

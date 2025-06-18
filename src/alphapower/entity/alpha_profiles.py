@@ -26,10 +26,10 @@ class AlphaProfile(Base):
         Enum(AlphaType), nullable=False, default=AlphaType.DEFAULT
     )
     _used_data_fields: MappedColumn[JSON] = mapped_column(
-        JSON, nullable=False, default=dict
+        JSON, nullable=False, default=dict, name="used_data_fields"
     )
     _used_operators: MappedColumn[JSON] = mapped_column(
-        JSON, nullable=False, default=dict
+        JSON, nullable=False, default=dict, name="used_operators"
     )
     regular_fingerprint: MappedColumn[str] = mapped_column(
         String(64),
@@ -90,6 +90,7 @@ class AlphaProfile(Base):
     updated_at: MappedColumn[datetime] = mapped_column(
         DateTime,
         nullable=False,
+        insert_default=func.now(),  # pylint: disable=E1102
         onupdate=func.now(),  # pylint: disable=E1102
         comment="最后更新时间",  # 添加字段注释
     )
@@ -101,10 +102,10 @@ class AlphaProfile(Base):
     )
 
     def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+        used_data_fields: List[str] = kwargs.pop("used_data_fields", [])
+        used_operators: List[str] = kwargs.pop("used_operators", [])
 
-        used_data_fields: List[str] = kwargs.get("used_data_fields", [])
-        used_operators: List[str] = kwargs.get("used_operators", [])
+        super().__init__(**kwargs)
 
         if isinstance(used_data_fields, list):
             self.used_data_fields = used_data_fields  # type: ignore[method-assign]

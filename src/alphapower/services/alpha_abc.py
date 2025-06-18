@@ -72,16 +72,3 @@ class AbstractAlphaService(abc.ABC):
         Fix alphas properties.
         """
         raise NotImplementedError("fix_alphas_properties method not implemented")
-
-    @abc.abstractmethod
-    async def build_alpha_profiles(
-        self,
-        date_created_gt: Optional[datetime] = None,
-        date_created_lt: Optional[datetime] = None,
-        parallel: int = 1,
-        **kwargs: Any,
-    ) -> None:
-        """
-        Build alpha profiles.
-        """
-        raise NotImplementedError("build_alpha_profiles method not implemented")

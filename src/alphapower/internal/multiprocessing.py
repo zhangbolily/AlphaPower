@@ -1,8 +1,28 @@
+import asyncio
 import os
 from abc import abstractmethod
-from typing import Any, Dict, Generic, Optional, TypeVar
+from collections.abc import Coroutine
+from typing import Any, Callable, Dict, Generic, Optional, TypeVar
 
 from .logging import BaseLogger
+
+
+def process_async_runner(
+    async_func: Callable[..., Coroutine[Any, Any, Any]],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """
+    在进程池中安全运行异步函数，阻塞直到返回结果。
+    async_func 必须是协程函数（coroutine function）。
+    必须在新进程中新建 event loop，避免继承父进程的 loop 导致报错。
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(async_func(*args, **kwargs))
+    finally:
+        loop.close()
 
 
 # 进程安全、可序列化的基类，所有子类都应继承此类

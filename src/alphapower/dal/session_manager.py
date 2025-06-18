@@ -1,5 +1,7 @@
 import asyncio
+import contextvars
 import logging
+import multiprocessing
 import traceback
 import uuid
 from contextlib import asynccontextmanager
@@ -33,14 +35,21 @@ class SessionManager:
     """数据库会话管理器，支持多个数据库的引擎注册、初始化和会话获取功能"""
 
     def __init__(self) -> None:
-        self._engines: Dict[Database, AsyncEngine] = {}
-        self._session_factories: Dict[Database, async_sessionmaker[AsyncSession]] = {}
-        self._readonly_engines: Dict[Database, AsyncEngine] = {}
+        # 多进程隔离，pid -> {Database: AsyncEngine}
+        self._engines: Dict[int, Dict[Database, AsyncEngine]] = {}
+        self._session_factories: Dict[
+            int, Dict[Database, async_sessionmaker[AsyncSession]]
+        ] = {}
+        self._readonly_engines: Dict[int, Dict[Database, AsyncEngine]] = {}
         self._readonly_session_factories: Dict[
-            Database, async_sessionmaker[AsyncSession]
+            int, Dict[Database, async_sessionmaker[AsyncSession]]
         ] = {}
         self._lock: asyncio.Lock = asyncio.Lock()
         self.log: BoundLogger = get_logger(self.__class__.__name__)
+        self._session_ctx: Dict[
+            tuple[int, int, Database, bool],
+            contextvars.ContextVar[Optional[AsyncSession]],
+        ] = {}
 
     async def register_database(
         self,
@@ -69,9 +78,23 @@ class SessionManager:
             readonly = False
 
         # 1. 先注册数据库引擎
+        raw_pid: Optional[int] = multiprocessing.current_process().pid
+        if raw_pid is None:
+            raise RuntimeError("当前进程没有有效的 pid，无法注册数据库引擎")
+        pid: int = raw_pid
         try:
             async with self._lock:
-                if db in self._engines and not force_recreate:
+                # 初始化多进程隔离的 dict
+                if pid not in self._engines:
+                    self._engines[pid] = {}
+                if pid not in self._session_factories:
+                    self._session_factories[pid] = {}
+                if pid not in self._readonly_engines:
+                    self._readonly_engines[pid] = {}
+                if pid not in self._readonly_session_factories:
+                    self._readonly_session_factories[pid] = {}
+
+                if db in self._engines[pid] and not force_recreate:
                     await self.log.awarning(
                         "数据库引擎已注册，跳过注册", alias=db, emoji="⚠️"
                     )
@@ -150,11 +173,11 @@ class SessionManager:
 
                 # 注册数据库引擎和会话工厂
                 if readonly:
-                    self._readonly_engines[db] = engine
-                    self._readonly_session_factories[db] = session_factory
+                    self._readonly_engines[pid][db] = engine
+                    self._readonly_session_factories[pid][db] = session_factory
                 else:
-                    self._engines[db] = engine
-                    self._session_factories[db] = session_factory
+                    self._engines[pid][db] = engine
+                    self._session_factories[pid][db] = session_factory
 
                 await self.log.adebug(
                     "数据库引擎注册信息",
@@ -195,7 +218,7 @@ class SessionManager:
         # 2. 注册好的引擎需要创建表
         try:
             async with self._lock:
-                if db in self._engines:
+                if db in self._engines[pid]:
                     await self.log.adebug(
                         "创建数据库表",
                         alias=db,
@@ -251,6 +274,44 @@ class SessionManager:
         返回:
             AsyncSession: 数据库会话对象
         """
+        # 获取当前进程和 event loop 标识
+        pid_raw: Optional[int] = multiprocessing.current_process().pid
+        if pid_raw is None:
+            raise RuntimeError("当前进程没有有效的 pid，无法获取数据库会话")
+        pid: int = pid_raw
+        try:
+            loop_id: int = id(asyncio.get_running_loop())
+        except RuntimeError:
+            # 没有 event loop
+            raise RuntimeError("get_session 必须在异步 event loop 中调用")
+        ctx_key = (pid, loop_id, db, readonly)
+
+        # 获取/创建 contextvar
+        if ctx_key not in self._session_ctx:
+            self._session_ctx[ctx_key] = contextvars.ContextVar(
+                f"session_{pid}_{loop_id}_{db}_{readonly}", default=None
+            )
+        session_var = self._session_ctx[ctx_key]
+
+        session: Optional[AsyncSession] = session_var.get()
+        if session is not None and not session.is_active:
+            # 已有 session，直接复用
+            await self.log.adebug(
+                event="复用协程上下文 session",
+                message=f"复用已存在 session，方法名 {self.get_session.__qualname__} "
+                f"类名 {self.__class__.__name__} 模块名 {__name__}",
+                database=db,
+                session_id=session.info.get("session_id"),
+                readonly=readonly,
+                emoji="🔁",
+            )
+            try:
+                yield session
+            finally:
+                # 不关闭，交由首次创建时关闭
+                pass
+            return
+
         if readonly:
             # TODO: 只读模式需要重构
             readonly = False
@@ -260,17 +321,28 @@ class SessionManager:
                 emoji="⚠️",
             )
 
-        if (readonly and db not in self._readonly_session_factories) or (
-            not readonly and db not in self._session_factories
+        # 懒加载注册数据库
+        if (
+            readonly
+            and (
+                pid not in self._readonly_session_factories
+                or db not in self._readonly_session_factories[pid]
+            )
+        ) or (
+            not readonly
+            and (
+                pid not in self._session_factories
+                or db not in self._session_factories[pid]
+            )
         ):
             # 懒加载注册数据库
             await self.log.ainfo(
-                "懒加载注册数据库",
+                event="懒加载注册数据库",
+                message=f"懒加载数据库 {db}，方法名 {self.get_session.__qualname__}",
                 alias=db,
                 readonly=readonly,
                 emoji="🔄",
             )
-
             try:
                 config: Optional[DatabaseConfig] = settings.databases.get(db)
                 base_class: Optional[Type[DeclarativeBase]] = (
@@ -278,7 +350,8 @@ class SessionManager:
                 )
                 if not config:
                     await self.log.aerror(
-                        "数据库配置不存在",
+                        event="数据库配置不存在",
+                        message=f"数据库配置不存在: {db}",
                         alias=db,
                         emoji="❌",
                     )
@@ -286,7 +359,8 @@ class SessionManager:
 
                 if not base_class:
                     await self.log.aerror(
-                        "数据库基础类不存在",
+                        event="数据库基础类不存在",
+                        message=f"数据库基础类不存在: {db}",
                         alias=db,
                         emoji="❌",
                     )
@@ -300,7 +374,8 @@ class SessionManager:
                 )
             except Exception as e:
                 await self.log.aerror(
-                    "懒加载注册数据库失败",
+                    event="懒加载注册数据库失败",
+                    message=f"懒加载注册数据库失败: {e}",
                     alias=db,
                     error=str(e),
                     emoji="❌",
@@ -308,22 +383,27 @@ class SessionManager:
                 raise
             finally:
                 await self.log.adebug(
-                    "懒加载注册数据库完成",
+                    event="懒加载注册数据库完成",
+                    message=f"懒加载注册数据库完成，方法名 {self.get_session.__qualname__}",
                     alias=db,
                     readonly=readonly,
                 )
 
         session_factory = (
-            self._readonly_session_factories[db]
+            self._readonly_session_factories[pid][db]
             if readonly
-            else self._session_factories[db]
+            else self._session_factories[pid][db]
         )
-        session: AsyncSession = session_factory()
+        session = session_factory()
         session_id: uuid.UUID = uuid.uuid4()
         session.info["session_id"] = session_id
 
+        # 设置 contextvar
+        token = session_var.set(session)
+
         await self.log.ainfo(
-            "成功获取数据库会话",
+            event="成功获取数据库会话",
+            message=f"新建 session，方法名 {self.get_session.__qualname__}",
             database=db,
             session_id=session_id,
             session=session,
@@ -336,7 +416,8 @@ class SessionManager:
         except Exception as e:
             await session.rollback()
             await self.log.aerror(
-                "会话执行出现异常，回滚事务",
+                event="会话执行出现异常，回滚事务",
+                message=f"会话异常回滚，方法名 {self.get_session.__qualname__}",
                 database=db,
                 session_id=session_id,
                 error=str(e),
@@ -346,13 +427,18 @@ class SessionManager:
             raise
         finally:
             await session.close()
+            session_var.reset(token)
             await self.log.ainfo(
-                "会话关闭",
+                event="会话关闭",
+                message=f"会话关闭并清理 contextvar，方法名 {self.get_session.__qualname__}",
                 database=db,
                 session_id=session_id,
                 readonly=readonly,
                 emoji="✅",
             )
+            # 清理 contextvar 对象，避免内存泄漏
+            if session_var.get() is None:
+                del self._session_ctx[ctx_key]
 
     async def release_database(self, db: Database) -> None:
         """释放数据库引擎和会话工厂"""
@@ -363,10 +449,14 @@ class SessionManager:
             emoji="🔧",
         )
 
+        raw_pid: Optional[int] = multiprocessing.current_process().pid
+        if raw_pid is None:
+            raise RuntimeError("当前进程没有有效的 pid，无法释放数据库资源")
+        pid: int = raw_pid
         try:
             async with self._lock:
-                if db in self._engines:
-                    engine = self._engines.pop(db)
+                if pid in self._engines and db in self._engines[pid]:
+                    engine = self._engines[pid].pop(db)
                     await engine.dispose()
                     await self.log.ainfo(
                         "数据库引擎释放成功",
@@ -379,8 +469,11 @@ class SessionManager:
                         alias=db,
                         emoji="⚠️",
                     )
-                if db in self._session_factories:
-                    session_factory = self._session_factories.pop(db)
+                if (
+                    pid in self._session_factories
+                    and db in self._session_factories[pid]
+                ):
+                    session_factory = self._session_factories[pid].pop(db)
                     await self.log.ainfo(
                         "数据库会话工厂释放成功",
                         alias=db,
@@ -393,8 +486,8 @@ class SessionManager:
                         alias=db,
                         emoji="⚠️",
                     )
-                if db in self._readonly_engines:
-                    engine = self._readonly_engines.pop(db)
+                if pid in self._readonly_engines and db in self._readonly_engines[pid]:
+                    engine = self._readonly_engines[pid].pop(db)
                     await engine.dispose()
                     await self.log.ainfo(
                         "只读数据库引擎释放成功",
@@ -407,8 +500,11 @@ class SessionManager:
                         alias=db,
                         emoji="⚠️",
                     )
-                if db in self._readonly_session_factories:
-                    session_factory = self._readonly_session_factories.pop(db)
+                if (
+                    pid in self._readonly_session_factories
+                    and db in self._readonly_session_factories[pid]
+                ):
+                    session_factory = self._readonly_session_factories[pid].pop(db)
                     await self.log.ainfo(
                         "只读数据库会话工厂释放成功",
                         alias=db,
@@ -445,9 +541,15 @@ class SessionManager:
             emoji="🔧",
         )
 
-        all_dbs: Set[Database] = set(self._engines.keys()).union(
-            set(self._readonly_engines.keys())
-        )
+        raw_pid: Optional[int] = multiprocessing.current_process().pid
+        if raw_pid is None:
+            raise RuntimeError("当前进程没有有效的 pid，无法释放所有数据库资源")
+        pid: int = raw_pid
+        all_dbs: Set[Database] = set()
+        if pid in self._engines:
+            all_dbs.update(self._engines[pid].keys())
+        if pid in self._readonly_engines:
+            all_dbs.update(self._readonly_engines[pid].keys())
 
         if not all_dbs:
             await self.log.ainfo(
@@ -463,7 +565,7 @@ class SessionManager:
 
         try:
             async with self._lock:
-                for db in all_dbs:
+                for db in list(all_dbs):
                     await self.release_database(db)
                 await self.log.ainfo(
                     "所有数据库引擎和会话工厂释放成功",
