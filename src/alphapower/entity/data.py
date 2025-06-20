@@ -4,9 +4,9 @@
 这些模型类用于定义数据的结构和关系，便于在应用中统一管理和操作数据。
 
 典型用法:
-    dataset = Dataset(dataset_id="DS001", name="金融数据集")
+    data_set = DataSet(data_set_id="DS001", name="金融数据集")
     category = DataCategory(category_id="CAT001", name="金融数据")
-    dataset.category = category
+    data_set.category = category
 """
 
 from sqlalchemy import (
@@ -33,37 +33,26 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 
 # 定义所有中间表
-# 中间表，用于表示Dataset和ResearchPaper之间的多对多关系
-dataset_research_papers = Table(
-    "dataset_research_papers",
+# 中间表，用于表示DataSet和ResearchPaper之间的多对多关系
+data_set_research_papers = Table(
+    "data_set_research_papers",
     Base.metadata,
-    Column("dataset_id", Integer, ForeignKey("datasets.id"), primary_key=True),
+    Column("data_set_id", Integer, ForeignKey("data_sets.id"), primary_key=True),
     Column(
         "research_paper_id", Integer, ForeignKey("research_papers.id"), primary_key=True
     ),
 )
 
-# 中间表，用于表示Dataset和Category之间的多对多关系
-dataset_categories = Table(
-    "dataset_categories",
+# 中间表，用于表示DataSet和Category之间的多对多关系
+data_set_categories = Table(
+    "data_set_categories",
     Base.metadata,
-    Column("dataset_id", Integer, ForeignKey("datasets.id"), primary_key=True),
+    Column("data_set_id", Integer, ForeignKey("data_sets.id"), primary_key=True),
     Column("category_id", Integer, ForeignKey("categories.id"), primary_key=True),
 )
 
-# 复用dataset_categories作为subcategory关系表
-dataset_subcategories = dataset_categories
-
-# 中间表，用于表示DataField和Category之间的多对多关系
-datafield_categories = Table(
-    "datafield_categories",
-    Base.metadata,
-    Column("datafield_id", Integer, ForeignKey("data_fields.id"), primary_key=True),
-    Column("category_id", Integer, ForeignKey("categories.id"), primary_key=True),
-)
-
-# 复用datafield_categories作为subcategory关系表
-datafield_subcategories = datafield_categories
+# 复用data_set_categories作为subcategory关系表
+data_set_subcategories = data_set_categories
 
 
 class Category(Base):
@@ -79,7 +68,7 @@ class Category(Base):
         parent_id: 父分类ID，用于维护分类的层级关系。
         parent: 父分类(关联Category)。
         children: 子分类列表(关联Category)。
-        datasets: 与该分类关联的数据集列表。
+        data_sets: 与该分类关联的数据集列表。
         data_fields: 与该分类关联的数据字段列表。
     """
 
@@ -95,11 +84,8 @@ class Category(Base):
 
     # 关系字段
     parent = relationship("Category", remote_side=[id], backref="children")
-    datasets = relationship(
-        "Dataset", secondary=dataset_categories, back_populates="categories"
-    )
-    data_fields = relationship(
-        "DataField", secondary=datafield_categories, back_populates="categories"
+    data_sets = relationship(
+        "DataSet", secondary=data_set_categories, back_populates="categories"
     )
 
 
@@ -137,7 +123,7 @@ class Pyramid(Base):
     category = relationship("Category", backref="pyramids")  # 分类关系
 
 
-class Dataset(Base):
+class DataSet(Base):
     """数据集类，用于表示具体的数据集信息。
 
     数据集包含了完整的元数据信息，如数据来源、覆盖范围、延迟等，
@@ -145,7 +131,7 @@ class Dataset(Base):
 
     Attributes:
         id: 自增主键ID。
-        dataset_id: 数据集唯一标识。
+        data_set_id: 数据集唯一标识。
         name: 数据集名称。
         description: 数据集详细描述。
         region: 数据集所属地理区域。
@@ -165,7 +151,7 @@ class Dataset(Base):
         pyramid_multiplier: 金字塔乘数。
     """
 
-    __tablename__ = "datasets"
+    __tablename__ = "data_sets"
 
     # 标识符字段
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -182,7 +168,7 @@ class Dataset(Base):
     )  # 数据集覆盖范围
 
     # 基础数据字段
-    dataset_id = mapped_column(String)  # 数据集唯一标识
+    data_set_id = mapped_column(String)  # 数据集唯一标识
     name = mapped_column(String)  # 数据集名称
     description = mapped_column(String)  # 数据集描述
     coverage = mapped_column(Float)  # 数据覆盖率(0.0-1.0)
@@ -194,28 +180,28 @@ class Dataset(Base):
 
     # 关系字段
     categories = relationship(
-        "Category", secondary=dataset_categories, back_populates="datasets"
+        "Category", secondary=data_set_categories, back_populates="data_sets"
     )
     subcategories = relationship(
         "Category",
-        secondary=dataset_subcategories,
+        secondary=data_set_subcategories,
         overlaps="categories",  # 指示这个关系与categories重叠
     )
-    data_fields = relationship("DataField", back_populates="dataset")  # 数据字段关系
+    data_fields = relationship("DataField", back_populates="data_set")  # 数据字段关系
     stats_data = relationship("StatsData", back_populates="data_set")  # 统计数据关系
     research_papers = relationship(
         "ResearchPaper",
-        secondary=dataset_research_papers,
-        back_populates="datasets",
+        secondary=data_set_research_papers,
+        back_populates="data_sets",
     )  # 研究论文关系
 
     __table_args__ = (
         UniqueConstraint(
-            "dataset_id",
+            "data_set_id",
             "region",
             "universe",
             "delay",
-            name="_dataset_region_universe_delay_uc",
+            name="_data_set_region_universe_delay_uc",
         ),
     )
 
@@ -229,8 +215,8 @@ class DataField(Base):
         id: 自增主键ID。
         field_id: 字段唯一标识。
         description: 字段描述。
-        dataset_id: 外键，关联到datasets表。
-        dataset: 字段所属的数据集(关联Dataset)。
+        data_set_id: 外键，关联到data_sets表。
+        data_set: 字段所属的数据集(关联DataSet)。
         categories: 字段所属的分类列表(多对多关联 Category)。
         subcategories: 字段所属的子分类列表(多对多关联 Category)。
         region: 字段所属地理区域。
@@ -267,22 +253,16 @@ class DataField(Base):
     # 基础数据字段
     field_id = mapped_column(String)  # 字段唯一标识
     description = mapped_column(String)  # 字段描述
-    dataset_id = mapped_column(Integer, ForeignKey("datasets.id"))  # 数据集 ID
+    data_set_id = mapped_column(Integer, ForeignKey("data_sets.id"))  # 数据集 ID
     coverage = mapped_column(Float)  # 字段覆盖率
     user_count = mapped_column(Integer)  # 用户数量
     alpha_count = mapped_column(Integer)  # Alpha 数量
     pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
 
     # 关系字段
-    dataset = relationship("Dataset", back_populates="data_fields")  # 数据集关系
-    categories = relationship(
-        "Category", secondary=datafield_categories, back_populates="data_fields"
-    )
-    subcategories = relationship(
-        "Category",
-        secondary=datafield_subcategories,
-        overlaps="categories",  # 指示这个关系与categories重叠
-    )
+    data_set = relationship("DataSet", back_populates="data_fields")  # 数据集关系
+    category_id = mapped_column(String(64), nullable=False, index=True)
+    subcategory_id = mapped_column(String(64), nullable=False, index=True)
     stats_data = relationship("StatsData", back_populates="data_field")  # 统计数据关系
 
 
@@ -293,8 +273,8 @@ class StatsData(Base):
 
     Attributes:
         id: 自增主键ID。
-        data_set_id: 外键，关联到datasets表。
-        data_set: 统计数据所属的数据集(关联Dataset)。
+        data_set_id: 外键，关联到data_sets表。
+        data_set: 统计数据所属的数据集(关联DataSet)。
         data_field_id: 外键，关联到data_fields表。
         data_field: 统计数据所属的数据字段(关联DataField)。
         region: 统计数据所属地理区域。
@@ -325,7 +305,7 @@ class StatsData(Base):
     )  # 统计数据覆盖范围
 
     # 基础数据字段
-    data_set_id = mapped_column(Integer, ForeignKey("datasets.id"))  # 数据集 ID
+    data_set_id = mapped_column(Integer, ForeignKey("data_sets.id"))  # 数据集 ID
     data_field_id = mapped_column(Integer, ForeignKey("data_fields.id"))  # 数据字段 ID
     coverage = mapped_column(Float)  # 统计数据覆盖率
     value_score = mapped_column(Float)  # 统计数据价值评分
@@ -334,7 +314,7 @@ class StatsData(Base):
     field_count = mapped_column(Integer)  # 字段数量
 
     # 关系字段
-    data_set = relationship("Dataset", back_populates="stats_data")  # 数据集关系
+    data_set = relationship("DataSet", back_populates="stats_data")  # 数据集关系
     data_field = relationship("DataField", back_populates="stats_data")  # 数据字段关系
 
 
@@ -348,7 +328,7 @@ class ResearchPaper(Base):
         type: 论文类型。
         title: 论文标题。
         url: 论文链接。
-        datasets: 与论文关联的数据集列表。
+        data_sets: 与论文关联的数据集列表。
     """
 
     __tablename__ = "research_papers"
@@ -362,6 +342,6 @@ class ResearchPaper(Base):
     url = mapped_column(String)  # 论文链接
 
     # 关系字段
-    datasets = relationship(
-        "Dataset", secondary=dataset_research_papers, back_populates="research_papers"
+    data_sets = relationship(
+        "DataSet", secondary=data_set_research_papers, back_populates="research_papers"
     )  # 数据集关系

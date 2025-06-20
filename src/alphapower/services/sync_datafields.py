@@ -25,7 +25,7 @@ from alphapower.client import (
 )
 from alphapower.constants import Database
 from alphapower.dal.session_manager import session_manager
-from alphapower.entity import Category, DataField, Dataset
+from alphapower.entity import Category, DataField, DataSet
 from alphapower.internal.logging import get_logger  # 修复导入
 
 from .common import get_or_create_entity
@@ -141,7 +141,7 @@ async def fetch_datafields(
 async def process_datafields_concurrently(
     session: AsyncSession,
     client: WorldQuantClient,
-    dataset: Dataset,
+    dataset: DataSet,
     instrument_type: Optional[str],
     parallel: int,
     progress_bar: tqdm,
@@ -224,11 +224,11 @@ async def sync_datafields(
     async with wq_client:
         async with session_manager.get_session(Database.DATA) as session, session.begin():
             try:
-                datasets: List[Dataset] = []
+                datasets: List[DataSet] = []
 
                 if dataset_id:
                     # 根据 dataset_id 查询特定数据集
-                    query = select(Dataset).filter_by(dataset_id=dataset_id)
+                    query = select(DataSet).filter_by(dataset_id=dataset_id)
                     result = await session.execute(query)
                     datasets = list(result.scalars().all())
                     if not datasets:
@@ -239,7 +239,7 @@ async def sync_datafields(
                     )
                 else:
                     # 查询所有数据集
-                    query = select(Dataset)
+                    query = select(DataSet)
                     result = await session.execute(query)
                     datasets = list(result.scalars().all())
                     console_logger.info("找到 %d 个数据集。", len(datasets))

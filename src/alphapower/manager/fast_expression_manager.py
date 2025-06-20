@@ -28,8 +28,8 @@ class FastExpression:
         type: FastExpressionType,
         used_operators: Set[str],
         used_data_fields: Set[str],
+        hash: str,
         fingerprint: str,
-        normalized_fingerprint: str,
     ) -> None:
         self.tree: ParseTree = tree
         self.normalized_tree: ParseTree = normalized_tree
@@ -38,8 +38,8 @@ class FastExpression:
         self.type: FastExpressionType = type
         self.used_operators: Set[str] = used_operators
         self.used_data_fields: Set[str] = used_data_fields
+        self.hash: str = hash
         self.fingerprint: str = fingerprint
-        self.normalized_fingerprint: str = normalized_fingerprint
 
     def __repr__(self) -> str:
         return f"FastExpression(expression={self.expression}, type={self.type})"
@@ -262,7 +262,7 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
         tree: ParseTree = parser.parse(expression)
         tree_dict: ParseTree = ast_to_dict_transformer.transform(tree)
         encoded_tree: str = tree_dict.pretty()
-        fingerprint: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
+        code_hash: str = hashlib.sha256(encoded_tree.encode()).hexdigest()
 
         usage_collector.transform(tree)
         used_data_fields = (
@@ -283,8 +283,8 @@ class FastExpressionManager(BaseProcessSafeClass, AbstractFastExpressionManager)
             type=type,
             used_operators=usage_collector.used_operators,
             used_data_fields=used_data_fields,
-            fingerprint=fingerprint,
-            normalized_fingerprint=structure_hash,
+            hash=code_hash,
+            fingerprint=structure_hash,
         )
 
     async def explain(self, expression: FastExpression) -> str:

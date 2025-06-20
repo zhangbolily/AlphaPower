@@ -78,6 +78,18 @@ class SACInSampleEvaluateStage(InSampleChecksEvaluateStage):
         record: EvaluateRecord,
         **kwargs: Any,
     ) -> bool:
+        if (
+            alpha.selection
+            and alpha.selection.code
+            and "ACE2023" not in alpha.selection.code
+        ):
+            await self.log.awarning(
+                event="SAC 评估阶段不支持 ACE2023 选择代码",
+                alpha_id=alpha.alpha_id,
+                emoji="⚠️",
+            )
+            return False
+
         result: bool = await super()._evaluate_stage(alpha, policy, record, **kwargs)
 
         # 顺便更新一下评估记录的其他字段
@@ -148,10 +160,29 @@ if __name__ == "__main__":
             brain_client=brain_client,
         )
 
-        async with session_manager.get_session(Database.ALPHAS) as session:
-            os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
+        user_id: str = await brain_client.get_user_id()
+        async with (
+            session_manager.get_session(Database.EVALUATE) as session,
+            session.begin(),
+        ):
+            # 清理旧的评估记录
+            deleted: int = await evaluate_record_dal.delete_by_filter(
                 session=session,
-                stage=Stage.OS,
+                evaluator="sac",
+                author=user_id,
+            )
+            if deleted > 0:
+                await log.ainfo(
+                    event="清理旧的评估记录",
+                    count=deleted,
+                    emoji="🧹",
+                )
+
+        async with session_manager.get_session(Database.ALPHAS) as session:
+            os_alphas: List[Alpha] = await alpha_dal.find_by(
+                Alpha.stage == Stage.OS,
+                Alpha.author == user_id,
+                session=session,
             )
 
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
@@ -220,7 +251,7 @@ if __name__ == "__main__":
             )
 
             in_sample_stage.next_stage = local_correlation_stage
-            # local_correlation_stage.next_stage = platform_self_correlation_stage
+            local_correlation_stage.next_stage = platform_self_correlation_stage
 
             evaluator = BaseEvaluator(
                 name="sac",
@@ -234,6 +265,7 @@ if __name__ == "__main__":
                 concurrency=3,
                 type=AlphaType.SUPER,
                 status=Status.UNSUBMITTED,
+                author=user_id,
             ):
                 print(alpha)
 

@@ -1,20 +1,13 @@
 from __future__ import annotations  # 解决类型前向引用问题
 
 import asyncio
-from typing import (
-    Any,
-    AsyncGenerator,
-    Optional,
-)
+from typing import Any, AsyncGenerator, Optional
 
 import aiostream.stream as stream
 from aiostream import Stream
 from structlog.stdlib import BoundLogger
 
-from alphapower.constants import (
-    Database,
-    RefreshPolicy,
-)
+from alphapower.constants import Database, RefreshPolicy
 from alphapower.dal.evaluate import EvaluateRecordDAL
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity import Alpha, EvaluateRecord
@@ -256,6 +249,7 @@ class BaseEvaluator(AbstractEvaluator):
         try:
             evaluate_record: EvaluateRecord = EvaluateRecord(
                 alpha_id=alpha.alpha_id,
+                author=alpha.author,
                 region=alpha.region,
                 delay=alpha.delay,
                 universe=alpha.universe,

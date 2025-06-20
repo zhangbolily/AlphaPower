@@ -437,7 +437,7 @@ class SessionManager:
                 emoji="✅",
             )
             # 清理 contextvar 对象，避免内存泄漏
-            if session_var.get() is None:
+            if session_var.get() is None and ctx_key in self._session_ctx:
                 del self._session_ctx[ctx_key]
 
     async def release_database(self, db: Database) -> None:

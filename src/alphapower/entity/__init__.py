@@ -18,8 +18,8 @@ __all__ = [
     "Correlation",
     "DataBase",
     "DataField",
-    "dataset_research_papers",
-    "Dataset",
+    "data_set_research_papers",
+    "DataSet",
     "EvaluateRecord",
     "Pyramid",
     "RecordSet",
@@ -53,11 +53,11 @@ from .data import Base as DataBase
 from .data import (
     Category,
     DataField,
-    Dataset,
+    DataSet,
     Pyramid,
     ResearchPaper,
     StatsData,
-    dataset_research_papers,
+    data_set_research_papers,
 )
 from .evaluate import Base as EvaluateBase
 from .evaluate import CheckRecord, Correlation, EvaluateRecord, RecordSet

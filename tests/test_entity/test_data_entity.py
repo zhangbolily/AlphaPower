@@ -25,7 +25,7 @@ from alphapower.constants import Database, DataFieldType, Delay, Region, Univers
 from alphapower.entity.data import (
     Category,
     DataField,
-    Dataset,
+    DataSet,
     Pyramid,
     ResearchPaper,
     StatsData,
@@ -123,7 +123,7 @@ class TestDataset:
         await db_session.commit()
 
         # 创建数据集
-        dataset: Dataset = Dataset(
+        dataset: DataSet = DataSet(
             dataset_id="DS001",
             name="GDP数据集",
             description="包含全球各国GDP数据",
@@ -145,9 +145,9 @@ class TestDataset:
 
         # 查询数据集
         result: Result = await db_session.execute(
-            select(Dataset).where(Dataset.dataset_id == "DS001")
+            select(DataSet).where(DataSet.dataset_id == "DS001")
         )
-        retrieved_dataset: Dataset = result.scalar_one()
+        retrieved_dataset: DataSet = result.scalar_one()
 
         # 验证数据集数据
         assert retrieved_dataset.id is not None
@@ -167,9 +167,9 @@ class TestDataset:
 
         # 验证更新后的数据
         result = await db_session.execute(
-            select(Dataset).where(Dataset.dataset_id == "DS001")
+            select(DataSet).where(DataSet.dataset_id == "DS001")
         )
-        updated_dataset: Dataset = result.scalar_one()
+        updated_dataset: DataSet = result.scalar_one()
         assert updated_dataset.value_score == 9.0
 
 
@@ -190,7 +190,7 @@ class TestDataField:
         category: Category = Category(category_id="CAT003", name="股票数据")
         db_session.add(category)
 
-        dataset: Dataset = Dataset(
+        dataset: DataSet = DataSet(
             dataset_id="DS002",
             name="股价数据集",
             description="包含股票价格数据",
@@ -256,7 +256,7 @@ class TestStatsData:
             db_session: 数据库会话对象。
         """
         # 创建数据集和数据字段
-        dataset: Dataset = Dataset(
+        dataset: DataSet = DataSet(
             dataset_id="DS003",
             name="经济指标",
             description="经济指标数据集",
@@ -358,7 +358,7 @@ class TestResearchPaper:
             db_session: 数据库会话对象。
         """
         # 创建数据集
-        dataset1: Dataset = Dataset(
+        dataset1: DataSet = DataSet(
             dataset_id="DS004",
             name="金融市场数据",
             description="金融市场分析数据",
@@ -372,7 +372,7 @@ class TestResearchPaper:
             field_count=40,
         )
 
-        dataset2: Dataset = Dataset(
+        dataset2: DataSet = DataSet(
             dataset_id="DS005",
             name="宏观经济数据",
             description="宏观经济分析数据",
@@ -409,18 +409,18 @@ class TestResearchPaper:
 
         # 验证数据集与论文的多对多关系
         result: Result = await db_session.execute(
-            select(Dataset).where(Dataset.dataset_id == "DS004")
+            select(DataSet).where(DataSet.dataset_id == "DS004")
         )
-        ds1: Dataset = result.scalar_one()
+        ds1: DataSet = result.scalar_one()
         await ds1.awaitable_attrs.research_papers
         assert len(ds1.research_papers) == 2
         assert any(p.title == "金融市场波动性研究" for p in ds1.research_papers)
         assert any(p.title == "宏观经济趋势分析" for p in ds1.research_papers)
 
         result = await db_session.execute(
-            select(Dataset).where(Dataset.dataset_id == "DS005")
+            select(DataSet).where(DataSet.dataset_id == "DS005")
         )
-        ds2: Dataset = result.scalar_one()
+        ds2: DataSet = result.scalar_one()
         await ds2.awaitable_attrs.research_papers
         assert len(ds2.research_papers) == 1
         assert ds2.research_papers[0].title == "宏观经济趋势分析"
@@ -456,7 +456,7 @@ class TestCategoryRelationships:
         await db_session.commit()
 
         # 创建数据集和数据字段
-        dataset: Dataset = Dataset(
+        dataset: DataSet = DataSet(
             dataset_id="DS006",
             name="政府债券数据",
             description="政府债券相关数据",

@@ -421,30 +421,28 @@ async def datasets_v1() -> None:
         username=settings.credential.username,
         password=settings.credential.password,
     )
-    datasets_manager_factory: DataSetsManagerFactory = DataSetsManagerFactory(
+    data_sets_manager_factory: DataSetsManagerFactory = DataSetsManagerFactory(
         brain_client_factory=brain_client_factory,
     )
     options_manager_factory: OptionsManagerFactory = OptionsManagerFactory(
         brain_client_factory=brain_client_factory,
     )
-    datasets_service_factory: DatasetsServiceFactory = DatasetsServiceFactory(
-        datasets_manager_factory=datasets_manager_factory,
+    data_sets_service_factory: DatasetsServiceFactory = DatasetsServiceFactory(
+        datasets_manager_factory=data_sets_manager_factory,
         options_manager_factory=options_manager_factory,
     )
 
-    datasets_service: AbstractDatasetsService = await datasets_service_factory()
+    datasets_service: AbstractDatasetsService = await data_sets_service_factory()
 
     await datasets_service.sync_datasets(
         category=None,
         delay=None,
-        instrumentType=None,
+        instrument_type=None,
         limit=None,
         offset=None,
         region=None,
         universe=None,
-        # 这里可以添加更多参数
-        # 例如: custom_param1=value1, custom_param2=value2
-        # 这将传递给 sync_datasets 方法
+        data_sets_manager_factory=data_sets_manager_factory,
     )
 
 

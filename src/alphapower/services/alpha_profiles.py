@@ -1,14 +1,14 @@
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from structlog.stdlib import BoundLogger
 
 from alphapower.constants import Database, FastExpressionType, LoggingEmoji
 from alphapower.dal import alpha_dal
 from alphapower.dal.session_manager import session_manager
-from alphapower.entity.alpha_profiles import AlphaProfile
+from alphapower.entity.alpha_profiles import AlphaProfile, AlphaProfileDataFields
 from alphapower.entity.alphas import Alpha
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.logging import get_logger
@@ -69,7 +69,6 @@ async def build_alpha_profiles_process_runner(
             alpha_ids=batch_alpha_ids,
             emoji=LoggingEmoji.DEBUG.value,
         )
-
         try:
             async with session_manager.get_session(
                 db=Database.ALPHAS,
@@ -98,14 +97,18 @@ async def build_alpha_profiles_process_runner(
             continue
 
         alpha_profiles: List[AlphaProfile] = []
+        alphas_data_fields: Dict[AlphaProfile, List[AlphaProfileDataFields]] = {}
         for alpha in alphas:
-            profile: Optional[AlphaProfile] = await _build_alpha_profile(
+            profile, alpha_data_fields = await _build_alpha_profile(
                 alpha=alpha,
                 fast_expression_manager=fast_expression_manager,
                 logger=logger,
             )
             if profile:
                 alpha_profiles.append(profile)
+
+                if alpha_data_fields:
+                    alphas_data_fields[profile] = alpha_data_fields
 
         if alpha_profiles:
             await logger.ainfo(
@@ -127,17 +130,30 @@ async def build_alpha_profiles_process_runner(
                     emoji=LoggingEmoji.ERROR.value,
                 )
 
+            try:
+                await alpha_profile_manager.bulk_save_profile_data_fields_to_db(
+                    profile_data_fields=alphas_data_fields
+                )
+            except Exception as e:
+                await logger.aerror(
+                    event="批量保存 AlphaProfileDataFields 失败",
+                    batch_index=batch_idx,
+                    error=str(e),
+                    emoji=LoggingEmoji.ERROR.value,
+                )
+
     await logger.ainfo(
         event=f"退出 {build_alpha_profiles_process_runner.__qualname__}",
         emoji=LoggingEmoji.STEP_OUT_FUNC.value,
     )
 
 
+@async_exception_handler
 async def _build_alpha_profile(
     alpha: Alpha,
     fast_expression_manager: AbstractFastExpressionManager,
     logger: BoundLogger,
-) -> Optional[AlphaProfile]:
+) -> Tuple[Optional[AlphaProfile], List[AlphaProfileDataFields]]:
     try:
         # 解析正则表达式（regular/selection/combo）
         regular: Optional[FastExpression] = (
@@ -162,27 +178,33 @@ async def _build_alpha_profile(
             else None
         )
 
-        return AlphaProfile(
+        alpha_profile: AlphaProfile = AlphaProfile(
             alpha_id=alpha.alpha_id,
             type=alpha.type,
-            regular_fingerprint=regular.fingerprint if regular else None,
             normalized_regular=regular.normalized_expression if regular else None,
-            normalized_regular_fingerprint=(
-                regular.normalized_fingerprint if regular else None
-            ),
-            selection_fingerprint=selection.fingerprint if selection else None,
+            regular_hash=regular.hash if regular else None,
+            regular_fingerprint=regular.fingerprint if regular else None,
             normalized_selection=selection.normalized_expression if selection else None,
-            normalized_selection_fingerprint=(
-                selection.normalized_fingerprint if selection else None
-            ),
-            combo_fingerprint=combo.fingerprint if combo else None,
+            selection_hash=selection.hash if selection else None,
+            selection_fingerprint=selection.fingerprint if selection else None,
             normalized_combo=combo.normalized_expression if combo else None,
-            normalized_combo_fingerprint=(
-                combo.normalized_fingerprint if combo else None
-            ),
+            combo_hash=combo.hash if combo else None,
+            combo_fingerprint=combo.fingerprint if combo else None,
             used_data_fields=list(regular.used_data_fields) if regular else [],
             used_operators=list(regular.used_operators) if regular else [],
         )
+
+        alpha_data_fields: List[AlphaProfileDataFields] = []
+        if regular:
+            for data_field in regular.used_data_fields:
+                alpha_data_fields.append(
+                    AlphaProfileDataFields(
+                        alpha_id=alpha.alpha_id,
+                        data_field=data_field,
+                    )
+                )
+
+        return (alpha_profile, alpha_data_fields)
     except Exception as e:
         await logger.aerror(
             event="解析正则表达式失败",
@@ -190,7 +212,7 @@ async def _build_alpha_profile(
             error=str(e),
             emoji=LoggingEmoji.ERROR.value,
         )
-        return None
+        return (None, [])
 
 
 class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
@@ -200,9 +222,6 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
         alpha_profile_manager: AbstractAlphaProfileManager,
         fast_expression_manager: AbstractFastExpressionManager,
     ) -> None:
-        """
-        Initialize the AlphaService with an AlphaManager instance.
-        """
         self.alpha_manager: AbstractAlphaManager = alpha_manager
         self.fast_expression_manager: AbstractFastExpressionManager = (
             fast_expression_manager
@@ -215,8 +234,8 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
         self,
         fast_expression_manager_factory: FastExpressionManagerFactory,
         alpha_profile_manager_factory: AlphaProfileManagerFactory,
-        date_created_gt: datetime | None = None,
-        date_created_lt: datetime | None = None,
+        date_created_gt: Optional[datetime] = None,
+        date_created_lt: Optional[datetime] = None,
         parallel: int = 1,
         **kwargs: Any,
     ) -> None:
@@ -233,12 +252,12 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
             emoji=LoggingEmoji.DEBUG.value,
         )
 
+        # 自动获取时间范围
         if date_created_gt is None:
             first_alpha: Optional[AlphaView] = (
                 await self.alpha_manager.fetch_first_alpha_from_platform()
             )
             date_created_gt = first_alpha.date_created if first_alpha else datetime.min
-
         if date_created_lt is None:
             last_alpha: Optional[AlphaView] = (
                 await self.alpha_manager.fetch_last_alpha_from_platform()
@@ -289,13 +308,12 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
                 )
                 for group in alpha_groups
             ]
+            await asyncio.gather(*tasks)
 
-        await asyncio.gather(*tasks)
         await self.log.ainfo(
             event="AlphaProfile 构建完成",
             emoji=LoggingEmoji.SUCCESS.value,
         )
-
         await self.log.ainfo(
             event=f"退出 {self.build_alpha_profiles.__qualname__}",
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
@@ -303,10 +321,6 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
 
 
 class AlphaProfilesServiceFactory(BaseProcessSafeFactory[AbstractAlphaProfilesService]):
-    """
-    Factory class for creating AlphaService instances.
-    """
-
     def __init__(
         self,
         alpha_manager_factory: AlphaManagerFactory,
@@ -314,9 +328,6 @@ class AlphaProfilesServiceFactory(BaseProcessSafeFactory[AbstractAlphaProfilesSe
         alpha_profile_manager_factory: AlphaProfileManagerFactory,
         **kwargs: Any,
     ) -> None:
-        """
-        Initialize the factory with an AlphaManager instance.
-        """
         super().__init__(**kwargs)
         self._alpha_manager: Optional[AbstractAlphaManager] = None
         self._alpha_manager_factory: AlphaManagerFactory = alpha_manager_factory

@@ -11,7 +11,7 @@ from sqlalchemy.sql.expression import Select
 
 from alphapower.constants import Stage, Status
 from alphapower.dal.base import EntityDAL
-from alphapower.entity.alpha_profiles import AlphaProfile
+from alphapower.entity.alpha_profiles import AlphaProfile, AlphaProfileDataFields
 from alphapower.entity.alphas import AggregateData, Alpha, Competition
 
 
@@ -327,3 +327,13 @@ class AlphaProfileDAL(EntityDAL[AlphaProfile]):
     """
 
     entity_class: Type[AlphaProfile] = AlphaProfile
+
+
+class AlphaProfileDataFieldsDAL(EntityDAL[AlphaProfileDataFields]):
+    """
+    AlphaProfileDataFields 数据访问层类，提供对 AlphaProfileDataFields 实体的特定操作。
+
+    管理 AlphaProfileDataFields 的数据访问，包括查询和更新。
+    """
+
+    entity_class: Type[AlphaProfileDataFields] = AlphaProfileDataFields

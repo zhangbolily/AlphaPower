@@ -2,13 +2,29 @@ from typing import Any, Dict, List, Optional
 
 from alphapower.client.worldquant_brain_client import WorldQuantBrainClientFactory
 from alphapower.client.worldquant_brain_client_abc import AbstractWorldQuantBrainClient
-from alphapower.constants import LoggingEmoji
+from alphapower.constants import (
+    Database,
+    Delay,
+    InstrumentType,
+    LoggingEmoji,
+    Region,
+    Universe,
+)
+from alphapower.dal import data_field_dal, data_set_dal
+from alphapower.dal.session_manager import session_manager
+from alphapower.entity.data import DataField, DataSet
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.multiprocessing import (
     BaseProcessSafeClass,
     BaseProcessSafeFactory,
 )
-from alphapower.view.data import DataCategoryView, DatasetsQuery, DatasetView
+from alphapower.view.data import (
+    DataCategoryView,
+    DataFieldListQuery,
+    DataFieldView,
+    DatasetsQuery,
+    DatasetView,
+)
 
 from .data_sets_manager_abc import AbstractDataSetsManager
 
@@ -62,7 +78,19 @@ class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
         return data_categories
 
     @async_exception_handler
-    async def fetch_data_sets_from_platform(self, **kwargs: Any) -> List[DatasetView]:
+    async def fetch_data_sets_from_platform(
+        self,
+        instrument_type: Optional[InstrumentType] = None,
+        region: Optional[Region] = None,
+        delay: Optional[Delay] = None,
+        universe: Optional[Universe] = None,
+        category: Optional[str] = None,
+        subcategory: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[DatasetView]:
         await self.log.ainfo(
             event="开始从平台获取数据集",
             message=f"进入 {self.fetch_data_sets_from_platform.__qualname__} 方法",
@@ -75,7 +103,17 @@ class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
             emoji=LoggingEmoji.INFO.value,
         )
 
-        query: DatasetsQuery = DatasetsQuery(**kwargs)
+        query: DatasetsQuery = DatasetsQuery(
+            instrument_type=instrument_type,
+            region=region,
+            delay=delay,
+            universe=universe,
+            category=category,
+            subcategory=subcategory,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
 
         brain_client: AbstractWorldQuantBrainClient = await self.brain_client()
         datasets: List[DatasetView] = await brain_client.fetch_datasets(query=query)
@@ -85,6 +123,169 @@ class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return datasets
+
+    @async_exception_handler
+    async def fetch_data_fields_from_platform(
+        self,
+        dataset_id: str,
+        instrument_type: Optional[InstrumentType] = None,
+        region: Optional[Region] = None,
+        universe: Optional[Universe] = None,
+        delay: Optional[Delay] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        **kwargs: Any,
+    ) -> List[DataFieldView]:
+        await self.log.ainfo(
+            event="开始从平台获取数据字段",
+            message=f"进入 {self.fetch_data_fields_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        query: DataFieldListQuery = DataFieldListQuery(
+            dataset_id=dataset_id,
+            instrument_type=instrument_type,
+            region=region,
+            universe=universe,
+            delay=delay,
+            limit=limit,
+            offset=offset,
+        )
+
+        brain_client: AbstractWorldQuantBrainClient = await self.brain_client()
+        fields: List[DataFieldView] = await brain_client.fetch_data_fields(
+            query=query,
+        )
+        await self.log.ainfo(
+            event="成功获取数据字段",
+            message=f"退出 {self.fetch_data_fields_from_platform.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return fields
+
+    @async_exception_handler
+    async def build_data_field_entity_from_view(
+        self,
+        data_field_view: DataFieldView,
+        **kwargs: Any,
+    ) -> DataField:
+        await self.log.ainfo(
+            event="开始构建数据字段实体",
+            message=f"进入 {self.build_data_field_entity_from_view.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        async with session_manager.get_session(
+            db=Database.DATA,
+            readonly=True,
+        ) as session:
+            data_set: Optional[DataSet] = await data_set_dal.find_one_by(
+                session=session,
+                data_set_id=data_field_view.dataset.id,
+            )
+
+            if data_set is None:
+                await self.log.aerror(
+                    event="数据集未找到",
+                    message=f"数据集 ID {data_field_view.dataset.id} 在数据库中不存在",
+                    emoji=LoggingEmoji.ERROR.value,
+                )
+                raise ValueError(
+                    f"DataSet with ID {data_field_view.dataset.id} not found."
+                )
+
+            data_field: DataField = DataField(
+                region=data_field_view.region,
+                delay=data_field_view.delay,
+                universe=data_field_view.universe,
+                type=data_field_view.type,
+                field_id=data_field_view.id,
+                description=data_field_view.description,
+                dataset=data_set,
+                coverage=data_field_view.coverage,
+                user_count=data_field_view.user_count,
+                alpha_count=data_field_view.alpha_count,
+                pyramid_multiplier=data_field_view.pyramid_multiplier,
+                category_id=data_field_view.category.id,
+                subcategory_id=data_field_view.subcategory.id,
+            )
+
+        await self.log.ainfo(
+            event="成功构建数据字段实体",
+            message=f"退出 {self.build_data_field_entity_from_view.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return data_field
+
+    @async_exception_handler
+    async def build_data_field_entities_from_views(
+        self,
+        data_field_views: List[DataFieldView],
+        **kwargs: Any,
+    ) -> List[DataField]:
+        await self.log.ainfo(
+            event="开始构建数据字段实体列表",
+            message=f"进入 {self.build_data_field_entities_from_views.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        data_fields: List[DataField] = []
+        for view in data_field_views:
+            data_field: DataField = await self.build_data_field_entity_from_view(
+                data_field_view=view, **kwargs
+            )
+            data_fields.append(data_field)
+
+        await self.log.ainfo(
+            event="成功构建数据字段实体列表",
+            message=f"退出 {self.build_data_field_entities_from_views.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+        return data_fields
+
+    @async_exception_handler
+    async def bulk_save_data_fields_to_db(
+        self, data_fields: List[DataField], **kwargs: Any
+    ) -> None:
+        await self.log.ainfo(
+            event="开始批量保存数据字段到数据库",
+            message=f"进入 {self.bulk_save_data_fields_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        async with (
+            session_manager.get_session(db=Database.DATA) as session,
+            session.begin(),
+        ):
+            await data_field_dal.bulk_upsert(
+                entities=data_fields,
+                session=session,
+            )
+
+        await self.log.ainfo(
+            event="成功批量保存数据字段到数据库",
+            message=f"退出 {self.bulk_save_data_fields_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+    @async_exception_handler
+    async def save_data_field_to_db(self, data_field: DataField, **kwargs: Any) -> None:
+        await self.log.ainfo(
+            event="开始保存数据字段到数据库",
+            message=f"进入 {self.save_data_field_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.bulk_save_data_fields_to_db(
+            data_fields=[data_field],
+            **kwargs,
+        )
+
+        await self.log.ainfo(
+            event="成功保存数据字段到数据库",
+            message=f"退出 {self.save_data_field_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
 
 
 class DataSetsManagerFactory(BaseProcessSafeFactory[AbstractDataSetsManager]):

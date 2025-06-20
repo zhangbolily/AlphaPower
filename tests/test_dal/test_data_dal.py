@@ -13,7 +13,7 @@ from alphapower.constants import Database, DataFieldType, Delay, Region, Univers
 from alphapower.dal.data import (
     CategoryDAL,
     DataFieldDAL,
-    DatasetDAL,
+    DataSetDAL,
     PyramidDAL,
     ResearchPaperDAL,
     StatsDataDAL,
@@ -21,7 +21,7 @@ from alphapower.dal.data import (
 from alphapower.entity import (
     Category,
     DataField,
-    Dataset,
+    DataSet,
     Pyramid,
     ResearchPaper,
     StatsData,
@@ -54,10 +54,10 @@ class TestDatasetDAL:
             data_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        dataset_dal = DatasetDAL(data_session)
+        dataset_dal = DataSetDAL(data_session)
 
         # 创建测试数据
-        dataset = Dataset(
+        dataset = DataSet(
             dataset_id="TEST_DATASET_ID",
             name="测试数据集",
             description="数据集描述",
@@ -88,11 +88,11 @@ class TestDatasetDAL:
             data_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        dataset_dal = DatasetDAL(data_session)
+        dataset_dal = DataSetDAL(data_session)
 
         # 创建测试数据
         datasets = [
-            Dataset(
+            DataSet(
                 dataset_id=f"REGION_TEST_{i}",
                 name=f"区域测试_{i}",
                 description=f"区域测试描述_{i}",
@@ -124,11 +124,11 @@ class TestDatasetDAL:
             data_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        dataset_dal = DatasetDAL(data_session)
+        dataset_dal = DataSetDAL(data_session)
 
         # 创建测试数据
         datasets = [
-            Dataset(
+            DataSet(
                 dataset_id=f"VALUE_TEST_{i}",
                 name=f"价值测试_{i}",
                 description=f"价值测试描述_{i}",
@@ -160,11 +160,11 @@ class TestDatasetDAL:
             data_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        dataset_dal = DatasetDAL(data_session)
+        dataset_dal = DataSetDAL(data_session)
 
         # 创建测试数据
         datasets = [
-            Dataset(
+            DataSet(
                 dataset_id=f"FIELDS_TEST_{i}",
                 name=f"字段测试_{i}",
                 description=f"字段测试描述_{i}",
@@ -198,7 +198,7 @@ class TestDatasetDAL:
             data_session: 数据库会话对象。
         """
         # 创建 DAL 实例
-        dataset_dal = DatasetDAL(data_session)
+        dataset_dal = DataSetDAL(data_session)
 
         # 创建测试数据 - 分类
         category = Category(category_id="DATASET_CAT_TEST", name="数据集分类测试")
@@ -206,7 +206,7 @@ class TestDatasetDAL:
         await data_session.flush()
 
         # 创建测试数据 - 数据集
-        dataset = Dataset(
+        dataset = DataSet(
             dataset_id="CAT_DS_TEST",
             name="分类关联数据集",
             description="测试数据集-分类关联",

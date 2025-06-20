@@ -1,18 +1,103 @@
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
+from structlog.stdlib import BoundLogger
+
 from alphapower.constants import Delay, InstrumentType, LoggingEmoji, Region, Universe
+from alphapower.entity.data import DataField
+from alphapower.internal.decorator import async_exception_handler
+from alphapower.internal.logging import get_logger
 from alphapower.internal.multiprocessing import (
     BaseProcessSafeClass,
     BaseProcessSafeFactory,
+    process_async_runner,
 )
 from alphapower.manager.data_sets_manager import DataSetsManagerFactory
 from alphapower.manager.data_sets_manager_abc import AbstractDataSetsManager
 from alphapower.manager.options_manager import OptionsManagerFactory
 from alphapower.manager.options_manager_abc import AbstractOptionsManager
-from alphapower.view.data import DataCategoryView, DatasetView
+from alphapower.view.data import DataCategoryView, DataFieldView, DatasetView
 from alphapower.view.options import AlphasOptions, SimulationsOptions
 
 from .datasets_abc import AbstractDatasetsService
+
+
+@async_exception_handler
+async def sync_data_fields_process_runner(
+    data_sets: List[Tuple[InstrumentType, DatasetView]],
+    data_sets_manager_factory: DataSetsManagerFactory,
+) -> None:
+    logger: BoundLogger = get_logger(sync_data_fields_process_runner.__qualname__)
+
+    await logger.ainfo(
+        event=f"进入 {sync_data_fields_process_runner.__qualname__}",
+        emoji=LoggingEmoji.STEP_IN_FUNC.value,
+    )
+
+    data_sets_manager: AbstractDataSetsManager = await data_sets_manager_factory()
+    await logger.ainfo(
+        event=f"获取 {AbstractDataSetsManager.__name__} 实例成功",
+        message=(
+            f"使用的 {AbstractDataSetsManager.__name__} 工厂为 {data_sets_manager_factory.__class__.__name__}"
+        ),
+        emoji=LoggingEmoji.SUCCESS.value,
+    )
+
+    for instrument_type, data_set in data_sets:
+        await logger.ainfo(
+            event=f"处理数据集: {data_set.name}",
+            emoji=LoggingEmoji.INFO.value,
+        )
+
+        all_data_field_views: List[DataFieldView] = []
+        offset: int = 0
+
+        while True:
+            data_field_views: List[DataFieldView] = (
+                await data_sets_manager.fetch_data_fields_from_platform(
+                    dataset_id=data_set.id,
+                    instrument_type=instrument_type,
+                    region=data_set.region,
+                    universe=data_set.universe,
+                    delay=data_set.delay,
+                    limit=50,
+                    offset=offset,
+                )
+            )
+
+            await logger.ainfo(
+                event=f"获取到 {len(data_field_views)} 个数据字段",
+                emoji=LoggingEmoji.INFO.value,
+            )
+
+            if not data_field_views or len(data_field_views) < 50:
+                break
+
+            all_data_field_views.extend(data_field_views)
+            offset += 50
+
+        data_fields: List[DataField] = (
+            await data_sets_manager.build_data_field_entities_from_views(
+                data_field_views=all_data_field_views,
+            )
+        )
+        await logger.ainfo(
+            event=f"成功构建 {len(data_fields)} 个数据字段实体",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+        await data_sets_manager.bulk_save_data_fields_to_db(data_fields=data_fields)
+
+        await logger.ainfo(
+            event=f"成功保存 {len(data_fields)} 个数据字段实体到数据库",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+    await logger.ainfo(
+        event=f"退出 {sync_data_fields_process_runner.__qualname__}",
+        emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+    )
 
 
 class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
@@ -26,13 +111,15 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
 
     async def sync_datasets(
         self,
+        data_sets_manager_factory: DataSetsManagerFactory,
         category: Optional[str] = None,
         delay: Optional[Delay] = None,
-        instrumentType: Optional[InstrumentType] = None,
+        instrument_type: Optional[InstrumentType] = None,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         region: Optional[Region] = None,
         universe: Optional[Universe] = None,
+        parallel: int = 1,
         **kwargs: Any,
     ) -> None:
         await self.log.ainfo(
@@ -80,13 +167,14 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
             emoji=LoggingEmoji.INFO.value,
         )
 
+        all_data_sets: List[Tuple[InstrumentType, DatasetView]] = []
         for instrument_type, region, delay, universe in combinations:
             await self.log.ainfo(
                 event=f"处理 {instrument_type} - {region} - {delay} - {universe}",
                 emoji=LoggingEmoji.INFO.value,
             )
 
-            datasets: List[DatasetView] = (
+            data_sets: List[DatasetView] = (
                 await self._datasets_manager.fetch_data_sets_from_platform(
                     category=category,
                     delay=delay,
@@ -97,11 +185,37 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
                     universe=universe,
                 )
             )
+
+            all_data_sets.extend(
+                [(instrument_type, data_set) for data_set in data_sets]
+            )
+
             await self.log.ainfo(
-                event=f"获取到 {len(datasets)} 个数据集",
-                message=f"数据集: {[dataset.name for dataset in datasets]}",
+                event=f"获取到 {len(data_sets)} 个数据集",
+                message=f"数据集: {[data_set.name for data_set in data_sets]}",
                 emoji=LoggingEmoji.INFO.value,
             )
+
+        # 将 all_data_sets 均匀分成 parallel 个组别
+        data_sets_groups: List[List[Tuple[InstrumentType, DatasetView]]] = [
+            [] for _ in range(parallel)
+        ]
+        for idx, item in enumerate(all_data_sets):
+            data_sets_groups[idx % parallel].append(item)
+
+        loop = asyncio.get_running_loop()
+        with ProcessPoolExecutor(max_workers=parallel) as executor:
+            tasks = [
+                loop.run_in_executor(
+                    executor,
+                    process_async_runner,
+                    sync_data_fields_process_runner,
+                    group,
+                    data_sets_manager_factory,
+                )
+                for group in data_sets_groups
+            ]
+            await asyncio.gather(*tasks)
 
         await self.log.ainfo(
             event=f"退出 {self.sync_datasets.__qualname__}",

@@ -21,7 +21,7 @@ from alphapower.client import (
 )
 from alphapower.constants import Database
 from alphapower.dal.session_manager import session_manager
-from alphapower.entity import Category, Dataset, ResearchPaper, StatsData
+from alphapower.entity import Category, DataSet, ResearchPaper, StatsData
 from alphapower.internal.logging import get_logger
 from alphapower.internal.wraps import log_time_elapsed  # 引入公共方法
 
@@ -100,7 +100,7 @@ async def process_dataset(
 
     # 查询数据库中是否已存在该数据集（改为异步查询）
     query_result = await session.execute(
-        select(Dataset).filter_by(
+        select(DataSet).filter_by(
             dataset_id=dataset.id,
             region=dataset.region,
             universe=dataset.universe,
@@ -108,7 +108,7 @@ async def process_dataset(
         )
     )
 
-    existing_dataset: Optional[Dataset] = query_result.scalar_one_or_none()
+    existing_dataset: Optional[DataSet] = query_result.scalar_one_or_none()
 
     # 获取或创建数据集的分类和子分类
     category: Category = await get_or_create_entity(
@@ -119,7 +119,7 @@ async def process_dataset(
     )
 
     # 创建新的数据集对象
-    new_dataset = Dataset(
+    new_dataset = DataSet(
         dataset_id=dataset.id,
         name=dataset.name,
         description=dataset.description,

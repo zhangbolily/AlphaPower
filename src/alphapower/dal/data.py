@@ -14,25 +14,25 @@ from alphapower.dal.base import EntityDAL
 from alphapower.entity.data import (
     Category,
     DataField,
-    Dataset,
+    DataSet,
     Pyramid,
     ResearchPaper,
     StatsData,
 )
 
 
-class DatasetDAL(EntityDAL[Dataset]):
+class DataSetDAL(EntityDAL[DataSet]):
     """
     Dataset 数据访问层类，提供对 Dataset 实体的特定操作。
 
     管理数据集的CRUD操作，支持按区域、价值、分类等多种方式查询数据集。
     """
 
-    entity_class: Type[Dataset] = Dataset
+    entity_class: Type[DataSet] = DataSet
 
     async def find_by_dataset_id(
         self, dataset_id: str, session: Optional[AsyncSession] = None
-    ) -> Optional[Dataset]:
+    ) -> Optional[DataSet]:
         """
         通过 dataset_id 查询数据集。
 
@@ -47,7 +47,7 @@ class DatasetDAL(EntityDAL[Dataset]):
 
     async def find_by_region(
         self, region: Region, session: Optional[AsyncSession] = None
-    ) -> List[Dataset]:
+    ) -> List[DataSet]:
         """
         查询特定区域的所有数据集。
 
@@ -64,7 +64,7 @@ class DatasetDAL(EntityDAL[Dataset]):
 
     async def find_high_value_datasets(
         self, min_value: float, session: Optional[AsyncSession] = None
-    ) -> List[Dataset]:
+    ) -> List[DataSet]:
         """
         查询价值分数高于指定值的数据集。
 
@@ -78,13 +78,13 @@ class DatasetDAL(EntityDAL[Dataset]):
             符合条件的数据集列表。
         """
         actual_session: AsyncSession = self._actual_session(session)
-        query: Select = select(Dataset).where(Dataset.value_score >= min_value)
+        query: Select = select(DataSet).where(DataSet.value_score >= min_value)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
 
     async def find_by_category(
         self, category_id: str, session: Optional[AsyncSession] = None
-    ) -> List[Dataset]:
+    ) -> List[DataSet]:
         """
         查询属于特定分类的所有数据集。
 
@@ -99,8 +99,8 @@ class DatasetDAL(EntityDAL[Dataset]):
         """
         actual_session: AsyncSession = self._actual_session(session)
         query: Select = (
-            select(Dataset)
-            .join(Dataset.categories)
+            select(DataSet)
+            .join(DataSet.categories)
             .where(Category.category_id == category_id)
         )
         result = await actual_session.execute(query)
@@ -108,7 +108,7 @@ class DatasetDAL(EntityDAL[Dataset]):
 
     async def find_with_fields_count(
         self, min_count: int, session: Optional[AsyncSession] = None
-    ) -> List[Dataset]:
+    ) -> List[DataSet]:
         """
         查询包含至少指定数量字段的数据集。
 
@@ -122,7 +122,7 @@ class DatasetDAL(EntityDAL[Dataset]):
             符合条件的数据集列表。
         """
         actual_session: AsyncSession = self._actual_session(session)
-        query: Select = select(Dataset).where(Dataset.field_count >= min_count)
+        query: Select = select(DataSet).where(DataSet.field_count >= min_count)
         result = await actual_session.execute(query)
         return list(result.scalars().all())
 

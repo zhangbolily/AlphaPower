@@ -14,6 +14,7 @@ from alphapower.constants import (
     ENDPOINT_ALPHAS_OPTIONS,
     ENDPOINT_AUTHENTICATION,
     ENDPOINT_DATA_CATEGORIES,
+    ENDPOINT_DATA_FIELDS,
     ENDPOINT_DATA_SETS,
     ENDPOINT_RECORD_SETS,
     ENDPOINT_SIMULATIONS_OPTIONS,
@@ -43,9 +44,12 @@ from alphapower.view.alpha import (
 from alphapower.view.data import (
     DataCategoryListView,
     DataCategoryView,
+    DataFieldListQuery,
+    DataFieldView,
     DatasetListView,
     DatasetsQuery,
     DatasetView,
+    PaginatedDataFieldListView,
 )
 from alphapower.view.options import AlphasOptions, SimulationsOptions
 from alphapower.view.user import AuthenticationView
@@ -1222,6 +1226,61 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
         return response.results
 
     @async_exception_handler
+    async def fetch_data_fields(self, query: DataFieldListQuery) -> List[DataFieldView]:
+        """
+        获取数据字段列表。
+        """
+        await self.log.ainfo(
+            event=f"进入 {self.fetch_data_fields.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.log.ainfo(
+            "获取数据字段列表",
+            emoji=LoggingEmoji.INFO.value,
+            query=query.to_params(),
+        )
+
+        http_client: HttpXClient = await self.http_client()
+        response, _ = await http_client.request(
+            method="GET",
+            url=ENDPOINT_DATA_FIELDS,
+            api_name=WorldQuantBrainClient.fetch_data_fields.__qualname__,
+            params=query.to_params(),
+            response_model=PaginatedDataFieldListView,
+        )
+
+        if not isinstance(response, PaginatedDataFieldListView):
+            await self.log.aerror(
+                "获取数据字段列表响应类型错误",
+                emoji=LoggingEmoji.ERROR.value,
+                expected=PaginatedDataFieldListView.__name__,
+                got=type(response).__name__,
+            )
+            raise TypeError(
+                f"期望返回类型为 {PaginatedDataFieldListView.__name__}，实际为 {type(response).__name__}"
+            )
+
+        if not response.results:
+            await self.log.awarning(
+                "获取数据字段列表为空",
+                emoji=LoggingEmoji.WARNING.value,
+            )
+            return []
+
+        await self.log.ainfo(
+            "获取数据字段列表成功",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
+        await self.log.ainfo(
+            event=f"退出 {self.fetch_data_fields.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+        return response.results
+
+    @async_exception_handler
     async def fetch_alphas_options(self, user_id: str) -> AlphasOptions:
         """
         获取 Alphas 的动态配置选项。
@@ -1296,7 +1355,7 @@ class WorldQuantBrainClient(AbstractWorldQuantBrainClient, BaseLogger):
             raise TypeError(
                 f"期望返回类型为 {SimulationsOptions.__name__}，实际为 {type(response).__name__}"
             )
-        
+
         await self.log.ainfo(
             "获取 Simulations 动态配置选项成功",
             emoji=LoggingEmoji.SUCCESS.value,

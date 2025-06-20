@@ -250,7 +250,9 @@ class BaseDAL(Generic[T]):
         return await self.create(entity, session=actual_session)
 
     async def bulk_upsert(
-        self, entities: List[T], session: Optional[AsyncSession] = None
+        self,
+        entities: List[T],
+        session: Optional[AsyncSession] = None,
     ) -> List[T]:
         """
         批量插入或更新实体对象。

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, List
 
-from sqlalchemy import JSON, DateTime, Enum, Integer, String, Text, func
+from sqlalchemy import JSON, DateTime, Enum, Index, Integer, String, Text, func
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import MappedColumn, mapped_column
 
@@ -31,7 +31,7 @@ class AlphaProfile(Base):
     _used_operators: MappedColumn[JSON] = mapped_column(
         JSON, nullable=False, default=dict, name="used_operators"
     )
-    regular_fingerprint: MappedColumn[str] = mapped_column(
+    regular_hash: MappedColumn[str] = mapped_column(
         String(64),
         nullable=True,
         unique=False,
@@ -42,14 +42,14 @@ class AlphaProfile(Base):
         nullable=True,
         comment="Normalized Regular 表达式",  # 添加字段注释
     )
-    normalized_regular_fingerprint: MappedColumn[str] = mapped_column(
+    regular_fingerprint: MappedColumn[str] = mapped_column(
         String(64),
         nullable=True,
         unique=False,
         index=True,
         comment="Normalized Regular 表达式指纹",  # 添加字段注释
     )
-    selection_fingerprint: MappedColumn[str] = mapped_column(
+    selection_hash: MappedColumn[str] = mapped_column(
         String(64),
         nullable=True,
         unique=False,
@@ -61,14 +61,14 @@ class AlphaProfile(Base):
         nullable=True,
         comment="Normalized Selection 表达式",  # 添加字段注释
     )
-    normalized_selection_fingerprint: MappedColumn[str] = mapped_column(
+    selection_fingerprint: MappedColumn[str] = mapped_column(
         String(64),
         nullable=True,
         unique=False,
         index=True,
         comment="Normalized Selection 表达式指纹",  # 添加字段注释
     )
-    combo_fingerprint: MappedColumn[str] = mapped_column(
+    combo_hash: MappedColumn[str] = mapped_column(
         String(64),
         nullable=True,
         unique=False,
@@ -80,7 +80,7 @@ class AlphaProfile(Base):
         nullable=True,
         comment="Normalized Combo 表达式",  # 添加字段注释
     )
-    normalized_combo_fingerprint: MappedColumn[str] = mapped_column(
+    combo_fingerprint: MappedColumn[str] = mapped_column(
         String(64),
         nullable=True,
         unique=False,
@@ -123,7 +123,7 @@ class AlphaProfile(Base):
         )
         return used_data_fields
 
-    @used_data_fields.setter
+    @used_data_fields.setter  # type: ignore[no-redef]
     def used_data_fields(self, value: List[str]) -> None:
         if value is None:
             self._used_data_fields = None
@@ -143,7 +143,7 @@ class AlphaProfile(Base):
         )
         return used_operators
 
-    @used_operators.setter
+    @used_operators.setter  # type: ignore[no-redef]
     def used_operators(self, value: List[str]) -> None:
         if value is None:
             self._used_operators = None
@@ -152,3 +152,37 @@ class AlphaProfile(Base):
                 value,
                 mode="json",
             )
+
+
+class AlphaProfileDataFields(Base):
+    __tablename__ = "alpha_profile_data_fields"
+
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alpha_id: MappedColumn[str] = mapped_column(
+        String(ALPHA_ID_LENGTH),
+        nullable=False,
+        index=True,
+        comment="Alpha ID",  # 添加字段注释
+    )
+    data_field: MappedColumn[str] = mapped_column(
+        String(256),
+        nullable=False,
+        index=True,
+    )
+    updated_at: MappedColumn[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        insert_default=func.now(),  # pylint: disable=E1102
+        onupdate=func.now(),  # pylint: disable=E1102
+        comment="最后更新时间",  # 添加字段注释
+    )
+    created_at: MappedColumn[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        insert_default=func.now(),  # pylint: disable=E1102
+        comment="创建时间",  # 添加字段注释
+    )
+
+    __table_args__ = (
+        Index("idx_alpha_id_data_field", "alpha_id", "data_field", unique=True),
+    )

@@ -248,6 +248,7 @@ class EvaluateRecord(Base):
         nullable=False,
         comment="Alpha ID",  # 添加字段注释
     )
+    author: MappedColumn[str] = mapped_column(String(16), nullable=False)
     region: MappedColumn[Region] = mapped_column(
         Enum(Region),
         nullable=False,

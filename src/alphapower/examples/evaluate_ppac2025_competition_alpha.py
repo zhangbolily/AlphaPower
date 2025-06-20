@@ -12,6 +12,7 @@ from alphapower.constants import (
     CorrelationType,
     Database,
     RefreshPolicy,
+    Region,
     Stage,
     Status,
     SubmissionCheckResult,
@@ -97,22 +98,22 @@ class PPAC2025InSampleEvaluateStage(InSampleChecksEvaluateStage):
 
         if alpha.in_sample and alpha.in_sample.checks:
             for check in alpha.in_sample.checks:
-                # if (
-                #     check.name == SubmissionCheckType.MATCHES_PYRAMID.value
-                #     and check.pyramids
-                # ):
-                #     for pyramid in check.pyramids:
-                #         if (
-                #             "MODEL" in pyramid.name or "ANALYST" in pyramid.name
-                #         ) and alpha.region == Region.USA:
-                #             # 如果因子在模型或分析中，评估失败
-                #             await log.aerror(
-                #                 event="PPAC2025 评估失败，因子在模型或分析中",
-                #                 alpha_id=alpha.alpha_id,
-                #                 pyramid=pyramid.name,
-                #                 emoji="❌",
-                #             )
-                #             return False
+                if (
+                    check.name == SubmissionCheckType.MATCHES_PYRAMID.value
+                    and check.pyramids
+                ):
+                    for pyramid in check.pyramids:
+                        if (
+                            "MODEL" in pyramid.name or "ANALYST" in pyramid.name
+                        ) and alpha.region == Region.USA:
+                            # 如果因子在模型或分析中，评估失败
+                            await log.aerror(
+                                event="PPAC2025 评估失败，因子在模型或分析中",
+                                alpha_id=alpha.alpha_id,
+                                pyramid=pyramid.name,
+                                emoji="❌",
+                            )
+                            return False
 
                 if check.name == SubmissionCheckType.LOW_2Y_SHARPE.value:
                     if (
@@ -195,14 +196,22 @@ if __name__ == "__main__":
             brain_client=brain_client,
         )
 
+        user_id: str = await brain_client.get_user_id()
+        await log.ainfo(
+            event="PPAC2025 评估开始",
+            user_id=user_id,
+            emoji="🚀",
+        )
+
         async with (
-            session_manager.get_session(Database.ALPHAS) as session,
+            session_manager.get_session(Database.EVALUATE) as session,
             session.begin(),
         ):
             # 清理旧的评估记录
             deleted: int = await evaluate_record_dal.delete_by_filter(
                 session=session,
                 evaluator="ppac2025",
+                author=user_id,
             )
             if deleted > 0:
                 await log.ainfo(
@@ -210,6 +219,8 @@ if __name__ == "__main__":
                     count=deleted,
                     emoji="🧹",
                 )
+
+        async with session_manager.get_session(Database.ALPHAS) as session:
 
             os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
                 session=session,
@@ -219,7 +230,7 @@ if __name__ == "__main__":
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
             for alpha in os_alphas:
                 for classification in alpha.classifications:
-                    if classification.id == "POWER_POOL:POWER_POOL_ELIGIBLE":
+                    if classification.id.startswith("POWER_POOL"):
                         # 仅处理 Power Pool 的因子
                         yield alpha
                         break
@@ -327,13 +338,6 @@ if __name__ == "__main__":
                 fetcher=fetcher,
                 evaluate_stage_chain=in_sample_stage,
                 evaluate_record_dal=evaluate_record_dal,
-            )
-
-            user_id: str = await brain_client.get_user_id()
-            await log.ainfo(
-                event="PPAC2025 评估开始",
-                user_id=user_id,
-                emoji="🚀",
             )
 
             async for alpha in evaluator.evaluate_many(

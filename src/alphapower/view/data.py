@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field, RootModel
 
-from alphapower.constants import Delay, InstrumentType, Region, Universe
+from alphapower.constants import DataFieldType, Delay, InstrumentType, Region, Universe
 
 from .common import QueryBase
 
@@ -58,7 +58,7 @@ class DataCategoryListView(RootModel):
 
 class DatasetsQuery(QueryBase):
 
-    instrumentType: Optional[InstrumentType] = Field(
+    instrument_type: Optional[InstrumentType] = Field(
         validation_alias=AliasChoices("instrumentType", "instrument_type"),
         serialization_alias="instrumentType",
     )
@@ -118,6 +118,29 @@ class DatasetListView(BaseModel):
     results: List[DatasetView] = []
 
 
+class DataFieldListQuery(QueryBase):
+    dataset_id: str = Field(
+        validation_alias=AliasChoices("datasetId", "dataset_id"),
+        serialization_alias="dataset.id",
+    )
+    instrument_type: Optional[InstrumentType] = Field(
+        validation_alias=AliasChoices("instrumentType", "instrument_type"),
+        serialization_alias="instrumentType",
+    )
+    region: Optional[Region] = None
+    universe: Optional[Universe] = None
+    delay: Optional[Delay] = None
+    limit: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=50,
+    )
+    offset: Optional[int] = Field(
+        default=None,
+        ge=0,
+    )
+
+
 class DataFieldView(BaseModel):
 
     id: str
@@ -128,8 +151,8 @@ class DataFieldView(BaseModel):
     region: Region
     delay: Delay
     universe: Universe
-    type: InstrumentType
-    coverage: str
+    type: DataFieldType
+    coverage: Optional[float] = None
     user_count: int = Field(
         validation_alias=AliasChoices("userCount", "user_count"),
         serialization_alias="userCount",
@@ -143,3 +166,8 @@ class DataFieldView(BaseModel):
         validation_alias=AliasChoices("pyramidMultiplier", "pyramid_multiplier"),
         serialization_alias="pyramidMultiplier",
     )
+
+
+class PaginatedDataFieldListView(BaseModel):
+    count: int
+    results: List[DataFieldView] = []
