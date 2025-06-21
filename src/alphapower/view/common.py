@@ -1,12 +1,17 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from structlog.stdlib import BoundLogger
 
+from alphapower.constants import Region
 from alphapower.internal.logging import get_logger
 
 # 全局复用日志对象，避免每次调用都新建
 logger: BoundLogger = get_logger(__name__)
+
+RegionListAdaptor: TypeAdapter[List[Region]] = TypeAdapter(
+    List[Region],
+)
 
 
 class QueryBase(BaseModel):

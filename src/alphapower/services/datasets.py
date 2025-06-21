@@ -136,6 +136,12 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
             emoji=LoggingEmoji.INFO.value,
         )
 
+        await self._datasets_manager.bulk_save_categories_to_db(categories=categories)
+        await self.log.ainfo(
+            event=f"成功保存 {len(categories)} 个数据类别到数据库",
+            emoji=LoggingEmoji.SUCCESS.value,
+        )
+
         alphas_options: AlphasOptions = (
             await self._options_manager.fetch_alphas_options_from_platform(
                 user_id="BZ71543"
@@ -186,6 +192,19 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
                 )
             )
 
+            await self.log.ainfo(
+                event=f"成功获取 {len(data_sets)} 个数据集",
+                message=f"数据集: {[data_set.name for data_set in data_sets]}",
+                emoji=LoggingEmoji.INFO.value,
+            )
+
+            await self._datasets_manager.bulk_save_data_sets_to_db(data_sets=data_sets)
+
+            await self.log.ainfo(
+                event=f"成功保存 {len(data_sets)} 个数据集到数据库",
+                emoji=LoggingEmoji.SUCCESS.value,
+            )
+
             all_data_sets.extend(
                 [(instrument_type, data_set) for data_set in data_sets]
             )
@@ -205,7 +224,7 @@ class DatasetsService(AbstractDatasetsService, BaseProcessSafeClass):
 
         loop = asyncio.get_running_loop()
         with ProcessPoolExecutor(max_workers=parallel) as executor:
-            tasks = [
+            tasks = [ 
                 loop.run_in_executor(
                     executor,
                     process_async_runner,

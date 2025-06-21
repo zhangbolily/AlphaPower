@@ -407,7 +407,13 @@ async def alphas_v1(
 
 
 @sync.command()
-async def datasets_v1() -> None:
+@click.option(
+    "--parallel",
+    default=1,
+    type=int,
+    help="并行数，默认为 1",
+)
+async def datasets_v1(parallel: int) -> None:
     """
     同步数据集。
 
@@ -443,6 +449,7 @@ async def datasets_v1() -> None:
         region=None,
         universe=None,
         data_sets_manager_factory=data_sets_manager_factory,
+        parallel=parallel,
     )
 
 

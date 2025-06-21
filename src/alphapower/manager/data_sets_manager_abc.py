@@ -16,6 +16,28 @@ class AbstractDataSetsManager(ABC):
         raise NotImplementedError("Subclasses must implement this method.")
 
     @abstractmethod
+    async def bulk_save_categories_to_db(
+        self,
+        categories: List[DataCategoryView],
+        **kwargs: Any,
+    ) -> None:
+        """
+        Bulk save data categories to the database.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def save_category_to_db(
+        self,
+        category: DataCategoryView,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Save a single data category to the database.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
     async def fetch_data_sets_from_platform(
         self,
         instrument_type: Optional[InstrumentType] = None,
@@ -32,6 +54,28 @@ class AbstractDataSetsManager(ABC):
         """
         Fetch datasets from the platform.
         Returns a list of datasets.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def bulk_save_data_sets_to_db(
+        self,
+        data_sets: List[DatasetView],
+        **kwargs: Any,
+    ) -> None:
+        """
+        Bulk save datasets to the database.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    @abstractmethod
+    async def save_data_set_to_db(
+        self,
+        data_set: DatasetView,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Save a single dataset to the database.
         """
         raise NotImplementedError("Subclasses must implement this method.")
 

@@ -27,8 +27,8 @@ class DataCategoryView(BaseModel):
 
     id: str
     name: str
-    dataset_count: int = Field(
-        validation_alias=AliasChoices("datasetCount", "dataset_count"),
+    data_set_count: int = Field(
+        validation_alias=AliasChoices("datasetCount", "data_set_count"),
         serialization_alias="datasetCount",
     )
     field_count: int = Field(

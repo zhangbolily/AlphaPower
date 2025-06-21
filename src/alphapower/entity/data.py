@@ -9,7 +9,10 @@
     data_set.category = category
 """
 
+from typing import Any, List, Optional
+
 from sqlalchemy import (
+    JSON,
     Column,
     Enum,
     Float,
@@ -17,12 +20,16 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from alphapower.constants import DataFieldType, Delay, Region, Universe
+from alphapower.view.alpha import StringListAdapter
+from alphapower.view.common import RegionListAdaptor
 
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -37,22 +44,13 @@ class Base(AsyncAttrs, DeclarativeBase):
 data_set_research_papers = Table(
     "data_set_research_papers",
     Base.metadata,
-    Column("data_set_id", Integer, ForeignKey("data_sets.id"), primary_key=True),
-    Column(
-        "research_paper_id", Integer, ForeignKey("research_papers.id"), primary_key=True
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("data_set_id", Integer, ForeignKey("data_sets.id")),
+    Column("research_paper_id", Integer, ForeignKey("research_papers.id")),
+    UniqueConstraint(
+        "data_set_id", "research_paper_id", name="uq_data_set_research_paper"
     ),
 )
-
-# 中间表，用于表示DataSet和Category之间的多对多关系
-data_set_categories = Table(
-    "data_set_categories",
-    Base.metadata,
-    Column("data_set_id", Integer, ForeignKey("data_sets.id"), primary_key=True),
-    Column("category_id", Integer, ForeignKey("categories.id"), primary_key=True),
-)
-
-# 复用data_set_categories作为subcategory关系表
-data_set_subcategories = data_set_categories
 
 
 class Category(Base):
@@ -69,7 +67,6 @@ class Category(Base):
         parent: 父分类(关联Category)。
         children: 子分类列表(关联Category)。
         data_sets: 与该分类关联的数据集列表。
-        data_fields: 与该分类关联的数据字段列表。
     """
 
     __tablename__ = "categories"
@@ -78,15 +75,43 @@ class Category(Base):
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # 基础数据字段
-    category_id = mapped_column(String, unique=True)  # 分类唯一标识
-    name = mapped_column(String)  # 分类名称
-    parent_id = mapped_column(Integer, ForeignKey("categories.id"), nullable=True)
-
-    # 关系字段
-    parent = relationship("Category", remote_side=[id], backref="children")
-    data_sets = relationship(
-        "DataSet", secondary=data_set_categories, back_populates="categories"
+    category_id = mapped_column(String(64), unique=True)  # 分类唯一标识
+    name = mapped_column(String(256))  # 分类名称
+    _region = mapped_column(
+        JSON,
+        nullable=False,
+        name="region",  # 使用JSON存储Region枚举列表
     )
+    data_set_count = mapped_column(Integer, default=0, nullable=False)
+    field_count = mapped_column(Integer, default=0, nullable=False)
+    alpha_count = mapped_column(Integer, default=0, nullable=False)
+    user_count = mapped_column(Integer, default=0, nullable=False)
+    value_score = mapped_column(Float, default=0.0, nullable=False)
+    parent_id = mapped_column(Integer, ForeignKey("categories.id"), nullable=True)
+    parent = relationship("Category", remote_side=[id], backref="children")
+
+    def __init__(self, **kw: Any):
+        region: Any = kw.pop("region", None)
+
+        super().__init__(**kw)
+
+        if isinstance(region, list):
+            self._region = RegionListAdaptor.dump_python(region, mode="json")
+
+    @hybrid_property
+    def region(self) -> List[Region]:
+        region: List[Region] = []
+        if self._region:
+            region = RegionListAdaptor.validate_python(self._region)
+        return region
+
+    @region.setter  # type: ignore[no-redef]
+    def region(self, value: List[Region]) -> None:
+        """设置region属性，确保传入的值是Region枚举类型的列表。"""
+        if isinstance(value, list):
+            self._region = RegionListAdaptor.dump_python(value, mode="json")
+        else:
+            raise ValueError("Region must be a list of Region enums.")
 
 
 class Pyramid(Base):
@@ -154,45 +179,55 @@ class DataSet(Base):
     __tablename__ = "data_sets"
 
     # 标识符字段
-    id = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # 枚举类型字段
-    region = mapped_column(
+    region: Mapped[Region] = mapped_column(
         Enum(Region), nullable=False, default=Region.DEFAULT
     )  # 数据集所属区域
-    delay = mapped_column(
+    delay: Mapped[Delay] = mapped_column(
         Enum(Delay), nullable=False, default=Delay.DEFAULT
     )  # 数据集延迟
-    universe = mapped_column(
+    universe: Mapped[Universe] = mapped_column(
         Enum(Universe), nullable=False, default=Universe.DEFAULT
     )  # 数据集覆盖范围
 
     # 基础数据字段
-    data_set_id = mapped_column(String)  # 数据集唯一标识
-    name = mapped_column(String)  # 数据集名称
-    description = mapped_column(String)  # 数据集描述
-    coverage = mapped_column(Float)  # 数据覆盖率(0.0-1.0)
-    value_score = mapped_column(Float)  # 数据价值评分(0.0-10.0)
-    user_count = mapped_column(Integer)  # 用户数量
-    alpha_count = mapped_column(Integer)  # Alpha数量
-    field_count = mapped_column(Integer)  # 字段数量
-    pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
+    data_set_id: Mapped[str] = mapped_column(String(64))  # 数据集唯一标识
+    name: Mapped[str] = mapped_column(String(256))  # 数据集名称
+    description: Mapped[str] = mapped_column(Text)  # 数据集描述
+    coverage: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # 数据覆盖率(0.0-1.0)
+    value_score: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # 数据价值评分(0.0-10.0)
+    user_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # 用户数量
+    alpha_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # Alpha数量
+    field_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )  # 字段数量
+    pyramid_multiplier: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # 金字塔乘数
+    _themes: Mapped[JSON] = mapped_column(
+        JSON, nullable=True, name="themes"
+    )  # 数据集主题
 
     # 关系字段
-    categories = relationship(
-        "Category", secondary=data_set_categories, back_populates="data_sets"
-    )
-    subcategories = relationship(
-        "Category",
-        secondary=data_set_subcategories,
-        overlaps="categories",  # 指示这个关系与categories重叠
-    )
+    category_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    subcategory_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     data_fields = relationship("DataField", back_populates="data_set")  # 数据字段关系
     stats_data = relationship("StatsData", back_populates="data_set")  # 统计数据关系
     research_papers = relationship(
         "ResearchPaper",
         secondary=data_set_research_papers,
         back_populates="data_sets",
+        cascade="all",
     )  # 研究论文关系
 
     __table_args__ = (
@@ -204,6 +239,40 @@ class DataSet(Base):
             name="_data_set_region_universe_delay_uc",
         ),
     )
+
+    def __init__(self, **kw: Any):
+        themes: Any = kw.pop("themes", None)
+
+        super().__init__(**kw)
+
+        if isinstance(themes, list):
+            self._themes = StringListAdapter.dump_python(themes, mode="json")
+
+    @hybrid_property
+    def themes(self) -> List[str]:
+        """获取数据集主题列表。
+
+        返回:
+            List[str]: 数据集主题列表。
+        """
+        themes: List[str] = []
+        if self._themes:
+            themes = StringListAdapter.validate_python(self._themes)
+        return themes
+
+    @themes.setter  # type: ignore[no-redef]
+    def themes(self, value: List[str]) -> None:
+        """设置数据集主题列表。
+
+        确保传入的值是字符串列表，并将其转换为JSON格式存储。
+
+        Args:
+            value (List[str]): 数据集主题列表。
+        """
+        if isinstance(value, list):
+            self._themes = StringListAdapter.dump_python(value, mode="json")
+        else:
+            raise ValueError("Themes must be a list of strings.")
 
 
 class DataField(Base):
@@ -251,15 +320,17 @@ class DataField(Base):
     )  # 字段类型
 
     # 基础数据字段
-    field_id = mapped_column(String)  # 字段唯一标识
-    description = mapped_column(String)  # 字段描述
-    data_set_id = mapped_column(Integer, ForeignKey("data_sets.id"))  # 数据集 ID
+    field_id = mapped_column(String(256))  # 字段唯一标识
+    description = mapped_column(Text)  # 字段描述
     coverage = mapped_column(Float)  # 字段覆盖率
     user_count = mapped_column(Integer)  # 用户数量
     alpha_count = mapped_column(Integer)  # Alpha 数量
     pyramid_multiplier = mapped_column(Float, nullable=True)  # 金字塔乘数
 
     # 关系字段
+    data_set_id = mapped_column(
+        Integer, ForeignKey("data_sets.id"), nullable=False, index=True
+    )  # 数据集 ID
     data_set = relationship("DataSet", back_populates="data_fields")  # 数据集关系
     category_id = mapped_column(String(64), nullable=False, index=True)
     subcategory_id = mapped_column(String(64), nullable=False, index=True)
@@ -337,9 +408,8 @@ class ResearchPaper(Base):
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # 基础数据字段
-    type = mapped_column(String)  # 论文类型
-    title = mapped_column(String)  # 论文标题
-    url = mapped_column(String)  # 论文链接
+    title = mapped_column(String(256))  # 论文标题
+    url = mapped_column(Text)  # 论文链接
 
     # 关系字段
     data_sets = relationship(

@@ -10,9 +10,9 @@ from alphapower.constants import (
     Region,
     Universe,
 )
-from alphapower.dal import data_field_dal, data_set_dal
+from alphapower.dal import category_dal, data_field_dal, data_set_dal
 from alphapower.dal.session_manager import session_manager
-from alphapower.entity.data import DataField, DataSet
+from alphapower.entity.data import Category, DataField, DataSet, ResearchPaper
 from alphapower.internal.decorator import async_exception_handler
 from alphapower.internal.multiprocessing import (
     BaseProcessSafeClass,
@@ -78,6 +78,128 @@ class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
         return data_categories
 
     @async_exception_handler
+    async def bulk_save_categories_to_db(
+        self,
+        categories: List[DataCategoryView],
+        **kwargs: Any,
+    ) -> None:
+        await self.log.ainfo(
+            event="开始批量保存数据类别到数据库",
+            message=f"进入 {self.bulk_save_categories_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        category_entities: List[Category] = []
+        category_id_dict: Dict[str, Category] = {}
+        category_id_subcategory_dict: Dict[str, List[Category]] = {}
+        subcategory_entities: List[Category] = []
+        for category_view in categories:
+            category_entity: Category = Category(
+                category_id=category_view.id,
+                name=category_view.name,
+                data_set_count=category_view.data_set_count,
+                field_count=category_view.field_count,
+                alpha_count=category_view.alpha_count,
+                user_count=category_view.user_count,
+                value_score=category_view.value_score,
+                region=category_view.region,
+            )
+            category_entities.append(category_entity)
+            category_id_dict[category_view.id] = category_entity
+
+            for subcategory_view in category_view.children:
+                subcategory_entity: Category = Category(
+                    category_id=subcategory_view.id,
+                    name=subcategory_view.name,
+                    data_set_count=subcategory_view.data_set_count,
+                    field_count=subcategory_view.field_count,
+                    alpha_count=subcategory_view.alpha_count,
+                    user_count=subcategory_view.user_count,
+                    value_score=subcategory_view.value_score,
+                    region=subcategory_view.region,
+                )
+                category_id_subcategory_dict.setdefault(category_view.id, []).append(
+                    subcategory_entity
+                )
+
+        async with (
+            session_manager.get_session(db=Database.DATA) as session,
+            session.begin(),
+        ):
+            await category_dal.bulk_upsert_by_unique_key(
+                entities=category_entities,
+                session=session,
+                unique_key="category_id",
+            )
+
+        for parent_id, subcategories in category_id_subcategory_dict.items():
+            if parent_id in category_id_dict:
+                parent_entity: Category = category_id_dict[parent_id]
+                for subcategory in subcategories:
+                    subcategory.parent = parent_entity
+                subcategory_entities.extend(subcategories)
+            else:
+                await self.log.aerror(
+                    event="父类别未找到",
+                    message=f"子类别 {parent_id} 的父类别在数据库中不存在",
+                    emoji=LoggingEmoji.ERROR.value,
+                )
+                raise ValueError(f"Parent category with ID {parent_id} not found.")
+
+        async with (
+            session_manager.get_session(db=Database.DATA) as session,
+            session.begin(),
+        ):
+            await category_dal.bulk_upsert_by_unique_key(
+                entities=subcategory_entities,
+                session=session,
+                unique_key="category_id",
+            )
+
+        await self.log.ainfo(
+            event="成功批量保存数据类别到数据库",
+            message=f"退出 {self.bulk_save_categories_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+    @async_exception_handler
+    async def save_category_to_db(
+        self, category: DataCategoryView, **kwargs: Any
+    ) -> None:
+        await self.log.ainfo(
+            event="开始保存数据类别到数据库",
+            message=f"进入 {self.save_category_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        category_entity: Category = Category(
+            category_id=category.id,
+            name=category.name,
+            dataset_count=category.data_set_count,
+            field_count=category.field_count,
+            alpha_count=category.alpha_count,
+            user_count=category.user_count,
+            value_score=category.value_score,
+            region=category.region,
+        )
+
+        async with (
+            session_manager.get_session(db=Database.DATA) as session,
+            session.begin(),
+        ):
+            await category_dal.upsert_by_unique_key(
+                entity=category_entity,
+                session=session,
+                unique_key="category_id",
+            )
+
+        await self.log.ainfo(
+            event="成功保存数据类别到数据库",
+            message=f"退出 {self.save_category_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+    @async_exception_handler
     async def fetch_data_sets_from_platform(
         self,
         instrument_type: Optional[InstrumentType] = None,
@@ -123,6 +245,97 @@ class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
             emoji=LoggingEmoji.STEP_OUT_FUNC.value,
         )
         return datasets
+
+    @async_exception_handler
+    async def bulk_save_data_sets_to_db(
+        self,
+        data_sets: List[DatasetView],
+        **kwargs: Any,
+    ) -> None:
+        await self.log.ainfo(
+            event="开始批量保存数据集到数据库",
+            message=f"进入 {self.bulk_save_data_sets_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        data_set_entities: List[DataSet] = []
+        for data_set_view in data_sets:
+            research_papers: List[ResearchPaper] = []
+            for research_paper_view in data_set_view.research_papers:
+                research_paper: ResearchPaper = ResearchPaper(
+                    title=research_paper_view.title,
+                    url=research_paper_view.url,
+                )
+                research_papers.append(research_paper)
+
+            data_set_entity: DataSet = DataSet(
+                data_set_id=data_set_view.id,
+                name=data_set_view.name,
+                description=data_set_view.description,
+                category_id=data_set_view.category.id,
+                subcategory_id=data_set_view.subcategory.id,
+                region=data_set_view.region,
+                delay=data_set_view.delay,
+                universe=data_set_view.universe,
+                coverage=data_set_view.coverage,
+                value_score=data_set_view.value_score,
+                user_count=data_set_view.user_count,
+                alpha_count=data_set_view.alpha_count,
+                field_count=data_set_view.field_count,
+                pyramid_multiplier=data_set_view.pyramid_multiplier,
+                themes=data_set_view.themes,
+                research_papers=research_papers,
+            )
+            data_set_entities.append(data_set_entity)
+
+            for research_paper in research_papers:
+                research_paper.data_sets = [data_set_entity]
+
+        async with (
+            session_manager.get_session(db=Database.DATA) as session,
+            session.begin(),
+        ):
+            for data_set in data_set_entities:
+                existed_data_set: Optional[DataSet] = await data_set_dal.find_one_by(
+                    session=session,
+                    region=data_set.region,
+                    universe=data_set.universe,
+                    delay=data_set.delay,
+                    data_set_id=data_set.data_set_id,
+                )
+
+                if existed_data_set is not None:
+                    data_set.id = existed_data_set.id
+
+            await data_set_dal.bulk_upsert(
+                entities=data_set_entities,
+                session=session,
+            )
+
+        await self.log.ainfo(
+            event="成功批量保存数据集到数据库",
+            message=f"退出 {self.bulk_save_data_sets_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
+
+    @async_exception_handler
+    async def save_data_set_to_db(self, data_set: DatasetView, **kwargs: Any) -> None:
+        await self.log.ainfo(
+            event="开始保存数据集到数据库",
+            message=f"进入 {self.save_data_set_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_IN_FUNC.value,
+        )
+
+        await self.bulk_save_data_sets_to_db(
+            data_sets=[data_set],
+            **kwargs,
+        )
+
+        await self.log.ainfo(
+            event="成功保存数据集到数据库",
+            message=f"退出 {self.save_data_set_to_db.__qualname__} 方法",
+            emoji=LoggingEmoji.STEP_OUT_FUNC.value,
+        )
 
     @async_exception_handler
     async def fetch_data_fields_from_platform(
@@ -201,7 +414,7 @@ class DataSetsManager(BaseProcessSafeClass, AbstractDataSetsManager):
                 type=data_field_view.type,
                 field_id=data_field_view.id,
                 description=data_field_view.description,
-                dataset=data_set,
+                data_set_id=data_set.id,
                 coverage=data_field_view.coverage,
                 user_count=data_field_view.user_count,
                 alpha_count=data_field_view.alpha_count,
