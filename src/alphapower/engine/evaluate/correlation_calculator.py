@@ -764,16 +764,6 @@ class CorrelationCalculator:
 
         start_time: datetime = datetime.now()
 
-        # TODO: 特殊调试代码
-        if alpha.alpha_id == "ZANArd8":
-            # 特例处理，ZANArd8 需要特殊处理
-            await self.log.ainfo(
-                event="ZANArd8 策略的自相关性计算",
-                alpha_id=alpha.alpha_id,
-                emoji="🔄",
-                module=__name__,
-            )
-
         matched_alpha_map: Dict[str, Alpha] = {}
 
         if same_region:

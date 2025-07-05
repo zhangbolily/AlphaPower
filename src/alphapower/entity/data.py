@@ -12,12 +12,12 @@
 from typing import Any, List, Optional
 
 from sqlalchemy import (
-    JSON,
     Column,
     Enum,
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Table,
     Text,
@@ -331,7 +331,11 @@ class DataField(Base):
     data_set_id = mapped_column(
         Integer, ForeignKey("data_sets.id"), nullable=False, index=True
     )  # 数据集 ID
-    data_set = relationship("DataSet", back_populates="data_fields")  # 数据集关系
+    data_set = relationship(
+        "DataSet",
+        back_populates="data_fields",
+        lazy="joined",  # 使用 joined 方式实现立即加载（eager loading）
+    )  # 数据集关系
     category_id = mapped_column(String(64), nullable=False, index=True)
     subcategory_id = mapped_column(String(64), nullable=False, index=True)
     stats_data = relationship("StatsData", back_populates="data_field")  # 统计数据关系

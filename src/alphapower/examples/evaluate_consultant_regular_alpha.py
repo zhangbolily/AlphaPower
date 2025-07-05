@@ -92,7 +92,7 @@ class ConsultantInSampleEvaluateStage(InSampleChecksEvaluateStage):
                         ) and alpha.region == Region.USA:
                             # 如果因子在模型或分析中，评估失败
                             await log.aerror(
-                                event="PPAC2025 评估失败，因子在模型或分析中",
+                                event="评估失败，因子在模型或分析中",
                                 alpha_id=alpha.alpha_id,
                                 pyramid=pyramid.name,
                                 emoji="❌",
@@ -142,6 +142,7 @@ class ConsultantSubmissionEvaluateStage(SubmissionEvaluateStage):
             if check.name in (
                 SubmissionCheckType.POWER_POOL_CORRELATION.value,
                 SubmissionCheckType.MATCHES_THEMES.value,
+                SubmissionCheckType.MATCHES_COMPETITION.value,
             ):
                 continue
 
@@ -152,7 +153,7 @@ class ConsultantSubmissionEvaluateStage(SubmissionEvaluateStage):
             ):
                 # 如果有任何一个检查不通过，直接返回 False
                 await log.aerror(
-                    event="PPAC2025 提交评估失败",
+                    event="提交检查评估失败",
                     check=check.name,
                     result=check.result,
                     emoji="❌",
@@ -183,10 +184,40 @@ if __name__ == "__main__":
             dal_class=EvaluateRecordDAL,
         )
 
-        async with session_manager.get_session(Database.ALPHAS) as session:
-            os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
+        wqb_client: WorldQuantBrainClient = WorldQuantBrainClient(
+            username=settings.credential.username,
+            password=settings.credential.password,
+        )
+
+        user_id: str = await wqb_client.get_user_id()
+
+        await log.ainfo(
+            event="评估开始",
+            user_id=user_id,
+            emoji="🚀",
+        )
+
+        async with (
+            session_manager.get_session(Database.EVALUATE) as session,
+            session.begin(),
+        ):
+            # 清理旧的评估记录
+            deleted: int = await evaluate_record_dal.delete_by_filter(
                 session=session,
-                stage=Stage.OS,
+                evaluator="consultant",
+            )
+            if deleted > 0:
+                await log.ainfo(
+                    event="清理旧的评估记录",
+                    count=deleted,
+                    emoji="🧹",
+                )
+
+        async with session_manager.get_session(Database.ALPHAS) as session:
+            os_alphas: List[Alpha] = await alpha_dal.find_by(
+                Alpha.stage == Stage.OS,
+                Alpha.author == user_id,
+                session=session,
             )
 
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
@@ -246,11 +277,6 @@ if __name__ == "__main__":
                 },
             }
 
-            wqb_client: WorldQuantBrainClient = WorldQuantBrainClient(
-                username=settings.credential.username,
-                password=settings.credential.password,
-            )
-
             in_sample_stage: ConsultantInSampleEvaluateStage = (
                 ConsultantInSampleEvaluateStage(
                     client=client,
@@ -298,8 +324,9 @@ if __name__ == "__main__":
 
             async for alpha in evaluator.evaluate_many(
                 policy=RefreshPolicy.REFRESH_ASYNC_IF_MISSING,
-                concurrency=64,
+                concurrency=32,
                 status=Status.UNSUBMITTED,
+                author=user_id,
             ):
                 print(alpha)
 

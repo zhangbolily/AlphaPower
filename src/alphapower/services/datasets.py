@@ -28,6 +28,8 @@ async def sync_data_fields_process_runner(
     data_sets: List[Tuple[InstrumentType, DatasetView]],
     data_sets_manager_factory: DataSetsManagerFactory,
 ) -> None:
+    from alphapower.dal.session_manager import session_manager
+
     logger: BoundLogger = get_logger(sync_data_fields_process_runner.__qualname__)
 
     await logger.ainfo(
@@ -47,6 +49,11 @@ async def sync_data_fields_process_runner(
     for instrument_type, data_set in data_sets:
         await logger.ainfo(
             event=f"处理数据集: {data_set.name}",
+            data_set_id=data_set.id,
+            instrument_type=instrument_type.value,
+            region=data_set.region,
+            universe=data_set.universe,
+            delay=data_set.delay,
             emoji=LoggingEmoji.INFO.value,
         )
 
@@ -71,11 +78,12 @@ async def sync_data_fields_process_runner(
                 emoji=LoggingEmoji.INFO.value,
             )
 
+            all_data_field_views.extend(data_field_views)
+            offset += 50
+            
             if not data_field_views or len(data_field_views) < 50:
                 break
 
-            all_data_field_views.extend(data_field_views)
-            offset += 50
 
         data_fields: List[DataField] = (
             await data_sets_manager.build_data_field_entities_from_views(

@@ -545,10 +545,16 @@ async def start_worker_pool(
     type=int,
     help="并行数，默认为 1",
 )
+@click.option(
+    "--fix-missing",
+    is_flag=True,
+    default=False,
+)
 async def build(
     date_created_gt: Optional[datetime],
     date_created_lt: Optional[datetime],
     parallel: int = 1,
+    fix_missing: bool = False,
 ) -> None:
     """
     构建因子配置文件。
@@ -597,6 +603,7 @@ async def build(
         date_created_gt=date_created_gt,
         date_created_lt=date_created_lt,
         parallel=parallel,
+        fix_missing=fix_missing,
     )
 
 

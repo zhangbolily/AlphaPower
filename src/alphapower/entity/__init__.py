@@ -11,6 +11,8 @@
 __all__ = [
     "Alpha",
     "AlphaBase",
+    "AlphaProfile",
+    "AlphaProfileDataFields",
     "Category",
     "CheckRecord",
     "EvaluateBase",
@@ -38,15 +40,12 @@ from sqlalchemy.orm import DeclarativeBase
 
 from alphapower.constants import Database
 
+from .alpha_profiles import AlphaProfile, AlphaProfileDataFields
+
 # Alpha 策略相关实体
-from .alphas import (
-    AggregateData,
-    Alpha,
-)
+from .alphas import AggregateData, Alpha
 from .alphas import Base as AlphaBase
-from .alphas import (
-    Competition,
-)
+from .alphas import Competition
 
 # 数据相关实体
 from .data import Base as DataBase
@@ -60,14 +59,16 @@ from .data import (
     data_set_research_papers,
 )
 from .evaluate import Base as EvaluateBase
-from .evaluate import CheckRecord, Correlation, EvaluateRecord, RecordSet
+from .evaluate import (
+    CheckRecord,
+    Correlation,
+    EvaluateRecord,
+    RecordSet,
+)
 
 # 模拟相关实体
 from .simulation import Base as SimulationBase
-from .simulation import (
-    SimulationTask,
-    SimulationTaskStatus,
-)
+from .simulation import SimulationTask, SimulationTaskStatus
 
 DATABASE_BASE_CLASS_MAP: Final[Dict[Database, Type[DeclarativeBase]]] = {
     Database.ALPHAS: AlphaBase,

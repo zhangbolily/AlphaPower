@@ -211,7 +211,6 @@ if __name__ == "__main__":
             deleted: int = await evaluate_record_dal.delete_by_filter(
                 session=session,
                 evaluator="ppac2025",
-                author=user_id,
             )
             if deleted > 0:
                 await log.ainfo(
@@ -221,10 +220,10 @@ if __name__ == "__main__":
                 )
 
         async with session_manager.get_session(Database.ALPHAS) as session:
-
-            os_alphas: List[Alpha] = await alpha_dal.find_by_stage(
+            os_alphas: List[Alpha] = await alpha_dal.find_by(
+                Alpha.stage == Stage.OS,
+                Alpha.author == user_id,
                 session=session,
-                stage=Stage.OS,
             )
 
         async def alpha_generator() -> AsyncGenerator[Alpha, None]:
@@ -255,7 +254,7 @@ if __name__ == "__main__":
             fetcher = BaseAlphaFetcher(
                 alpha_dal=alpha_dal,
                 aggregate_data_dal=aggregate_data_dal,
-                start_time=datetime(2025, 3, 17, 0, 0),
+                start_time=datetime(2025, 3, 28, 0, 0),
                 # end_time=datetime(2025, 6, 14, 23, 59, 59),
             )
 
@@ -331,7 +330,7 @@ if __name__ == "__main__":
 
             in_sample_stage.next_stage = local_correlation_stage
             local_correlation_stage.next_stage = platform_self_correlation_stage
-            platform_self_correlation_stage.next_stage = scoring_stage
+            # platform_self_correlation_stage.next_stage = scoring_stage
 
             evaluator = BaseEvaluator(
                 name="ppac2025",

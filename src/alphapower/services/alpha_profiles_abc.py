@@ -18,6 +18,7 @@ class AbstractAlphaProfilesService(ABC):
         alpha_profile_manager_factory: AlphaProfileManagerFactory,
         date_created_gt: Optional[datetime] = None,
         date_created_lt: Optional[datetime] = None,
+        fix_missing: bool = False,
         parallel: int = 1,
         **kwargs: Any,
     ) -> None:

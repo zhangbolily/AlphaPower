@@ -382,7 +382,7 @@ MAX_SIMULATION_JOBS_PER_SLOT: Final[Callable[[str], int]] = lambda role: (
 # --- 通用要求 (适用于除中国外的区域) ---
 
 # 适应度 (Fitness) 阈值
-CONSULTANT_FITNESS_THRESHOLD_DELAY_0: Final[float] = 1.5  # 延迟 0 时的最低适应度
+CONSULTANT_FITNESS_THRESHOLD_DELAY_0: Final[float] = 1.0  # 延迟 0 时的最低适应度
 CONSULTANT_FITNESS_THRESHOLD_DELAY_1: Final[float] = 1.0  # 延迟 1 时的最低适应度
 
 # 夏普比率 (Sharpe Ratio) 阈值
@@ -659,6 +659,7 @@ class Universe(Enum):
     TOP2500 = "TOP2500"
     TOP3000 = "TOP3000"
     TOPSP500 = "TOPSP500"
+    TOPDIV3000 = "TOPDIV3000"
 
 
 class Switch(Enum):
@@ -760,6 +761,7 @@ class DataFieldType(Enum):
     VECTOR = "VECTOR"
     GROUP = "GROUP"
     UNIVERSE = "UNIVERSE"
+    SYMBOL = "SYMBOL"
 
 
 class CheckRecordType(Enum):

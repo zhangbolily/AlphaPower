@@ -3,10 +3,11 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy import Select, select
 from structlog.stdlib import BoundLogger
 
 from alphapower.constants import Database, FastExpressionType, LoggingEmoji
-from alphapower.dal import alpha_dal
+from alphapower.dal import alpha_dal, alpha_profile_dal
 from alphapower.dal.session_manager import session_manager
 from alphapower.entity.alpha_profiles import AlphaProfile, AlphaProfileDataFields
 from alphapower.entity.alphas import Alpha
@@ -33,11 +34,14 @@ from .alpha_profiles_abc import AbstractAlphaProfilesService
 
 @async_exception_handler
 async def build_alpha_profiles_process_runner(
-    alpha_ids: List[int],
+    alpha_ids: List[str],
     batch_size: int,
     fast_expression_manager_factory: FastExpressionManagerFactory,
     alpha_profile_manager_factory: AlphaProfileManagerFactory,
+    fix_missing: bool = False,
 ) -> None:
+    from alphapower.dal.session_manager import session_manager
+
     logger: BoundLogger = get_logger(build_alpha_profiles_process_runner.__qualname__)
     await logger.ainfo(
         event=f"进入 {build_alpha_profiles_process_runner.__qualname__}",
@@ -59,9 +63,46 @@ async def build_alpha_profiles_process_runner(
         )
         return
 
+    if fix_missing:
+        # 只修复缺失的 AlphaProfile
+        try:
+            async with session_manager.get_session(
+                db=Database.ALPHAS,
+                readonly=True,
+            ) as session:
+                existing_profiles: List[AlphaProfile] = await alpha_profile_dal.find_by(
+                    AlphaProfile.alpha_id.in_(alpha_ids),
+                    session=session,
+                )
+
+                existing_profile_alpha_ids: List[str] = [
+                    profile.alpha_id for profile in existing_profiles
+                ]
+        except Exception as e:
+            await logger.aerror(
+                event="数据库查询异常",
+                error=str(e),
+                emoji=LoggingEmoji.ERROR.value,
+            )
+            return
+
+        alpha_ids = [
+            alpha_id
+            for alpha_id in alpha_ids
+            if alpha_id not in existing_profile_alpha_ids
+        ]
+
+        await logger.ainfo(
+            event="修复缺失的 AlphaProfile",
+            message=f"将处理 {len(alpha_ids)} 个 Alpha 数据",
+            existing_profiles=len(existing_profiles),
+            total_alpha_ids=len(alpha_ids),
+            emoji=LoggingEmoji.INFO.value,
+        )
+
     total_batches: int = (len(alpha_ids) + batch_size - 1) // batch_size
     for batch_idx, i in enumerate(range(0, len(alpha_ids), batch_size), start=1):
-        batch_alpha_ids: List[int] = alpha_ids[i : i + batch_size]
+        batch_alpha_ids: List[str] = alpha_ids[i : i + batch_size]
         await logger.adebug(
             event="处理 alpha_ids 批次",
             batch_index=batch_idx,
@@ -75,7 +116,7 @@ async def build_alpha_profiles_process_runner(
                 readonly=True,
             ) as session:
                 alphas: List[Alpha] = await alpha_dal.find_by(
-                    Alpha.id.in_(batch_alpha_ids),
+                    Alpha.alpha_id.in_(batch_alpha_ids),
                     session=session,
                 )
         except Exception as e:
@@ -236,6 +277,7 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
         alpha_profile_manager_factory: AlphaProfileManagerFactory,
         date_created_gt: Optional[datetime] = None,
         date_created_lt: Optional[datetime] = None,
+        fix_missing: bool = False,
         parallel: int = 1,
         **kwargs: Any,
     ) -> None:
@@ -268,11 +310,14 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
             db=Database.ALPHAS,
             readonly=True,
         ) as session:
-            alpha_ids: List[int] = await alpha_dal.find_ids_by(
+            query: Select = select(Alpha.alpha_id).where(
                 Alpha.date_created >= date_created_gt,
                 Alpha.date_created <= date_created_lt,
-                session=session,
             )
+
+            result = await session.execute(query)
+            alpha_ids: List[str] = list(result.scalars().all())
+
             if not alpha_ids:
                 await self.log.ainfo(
                     event="没有符合条件的 alpha 数据",
@@ -290,7 +335,7 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
         )
 
         # 按 parallel 分组，分配到 parallel 个子列表
-        alpha_groups: List[List[int]] = [
+        alpha_groups: List[List[str]] = [
             alpha_ids[i::parallel] for i in range(parallel)
         ]
 
@@ -305,6 +350,7 @@ class AlphaProfilesService(AbstractAlphaProfilesService, BaseProcessSafeClass):
                     100,
                     fast_expression_manager_factory,
                     alpha_profile_manager_factory,
+                    fix_missing,
                 )
                 for group in alpha_groups
             ]

@@ -224,8 +224,18 @@ class Worker(AbstractWorker):
             )
             # 因为这里数据更新是个很低频的操作，每次都提交事务即可
 
-        # 更新完成的因子标签
-        if task.status == SimulationTaskStatus.COMPLETE and task.alpha_id:
+        # 更新完成的因子标签，有 alpha_id 才有意义
+        if task.alpha_id:
+            if task.status != SimulationTaskStatus.COMPLETE:
+                await self.log.awarning(
+                    event="任务状态不是 COMPLETE，有错误信息",
+                    emoji="⚠️",
+                    task_id=task.id,
+                    alpha_id=task.alpha_id,
+                    status=task.status.value,
+                    result=task.result,
+                )
+
             async with self._client:
                 try:
                     await self.log.adebug(
@@ -1036,6 +1046,8 @@ class Worker(AbstractWorker):
 
             # 如果没有可用任务，等待后重试
             if not tasks:
+                #! 心跳检查，防止长时间无响应误判
+                await self._heartbeat(name="_fetch_tasks_no_tasks")
                 await self.log.ainfo(
                     event="调度器未返回任务，等待重试",
                     emoji="⏳",
