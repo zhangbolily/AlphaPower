@@ -1,263 +1,239 @@
-# 🌟 Alpha Power
+# Full Stack FastAPI Template
 
-![Python Version](https://img.shields.io/badge/python-%3E%3D3.9-blue)
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-90%25-yellowgreen)
+<a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3ATest" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test/badge.svg" alt="Test"></a>
+<a href="https://coverage-badge.samuelcolvin.workers.dev/redirect/fastapi/full-stack-fastapi-template" target="_blank"><img src="https://coverage-badge.samuelcolvin.workers.dev/fastapi/full-stack-fastapi-template.svg" alt="Coverage"></a>
 
-## 📚 目录
-- [🌟 Alpha Power](#-alpha-power)
-  - [📚 目录](#-目录)
-  - [📖 项目简介](#-项目简介)
-  - [✨ 功能特性](#-功能特性)
-  - [⚙️ 环境要求](#️-环境要求)
-  - [🚀 安装步骤](#-安装步骤)
-  - [🛠️ 使用方法](#️-使用方法)
-    - [命令行工具](#命令行工具)
-    - [测试](#测试)
-  - [📂 项目结构](#-项目结构)
-  - [🤝 贡献指南](#-贡献指南)
-    - [提交规范](#提交规范)
-    - [代码格式化](#代码格式化)
-    - [代码审查流程](#代码审查流程)
-  - [🗺️ 路线图](#️-路线图)
-  - [📜 许可证](#-许可证)
+## Technology Stack and Features
 
-## 📖 项目简介
+- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) for the Python backend API.
+    - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) for the Python SQL database interactions (ORM).
+    - 🔍 [Pydantic](https://docs.pydantic.dev), used by FastAPI, for the data validation and settings management.
+    - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
+- 🚀 [React](https://react.dev) for the frontend.
+    - 💃 Using TypeScript, hooks, Vite, and other parts of a modern frontend stack.
+    - 🎨 [Chakra UI](https://chakra-ui.com) for the frontend components.
+    - 🤖 An automatically generated frontend client.
+    - 🧪 [Playwright](https://playwright.dev) for End-to-End testing.
+    - 🦇 Dark mode support.
+- 🐋 [Docker Compose](https://www.docker.com) for development and production.
+- 🔒 Secure password hashing by default.
+- 🔑 JWT (JSON Web Token) authentication.
+- 📫 Email based password recovery.
+- ✅ Tests with [Pytest](https://pytest.org).
+- 📞 [Traefik](https://traefik.io) as a reverse proxy / load balancer.
+- 🚢 Deployment instructions using Docker Compose, including how to set up a frontend Traefik proxy to handle automatic HTTPS certificates.
+- 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
 
-Alpha Power 是一个用于管理 WorldQuant Brain 数据和操作的工具。它支持以下功能：
-- 同步数据集
-- 同步数据字段
-- 同步因子
-- 提供丰富的 API 接口与数据库交互
-- 提供任务调度功能以自动化数据同步
+### Dashboard Login
 
-## ✨ 功能特性
+[![API docs](img/login.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-- **数据同步**：支持从 WorldQuant API 同步数据集、数据字段和因子。
-- **数据库管理**：
-  - 使用 SQLAlchemy 管理数据存储。
-  - 支持 SQLite（默认配置）、PostgreSQL 和 MySQL 等多种数据库类型。
-- **日志记录**：
-  - 支持控制台和文件日志输出。
-  - 提供多级别日志（DEBUG、INFO、WARNING、ERROR）。
-  - 支持日志文件按日期滚动存储，便于长期监控。
-- **命令行工具**：通过 CLI 快速执行同步任务。
-- **任务调度**：
-  - 支持定时任务的创建、管理和执行。
-  - 提供任务失败的重试机制。
-  - 支持任务执行日志的记录和分析。
+### Dashboard - Admin
 
-## ⚙️ 环境要求
+[![API docs](img/dashboard.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-- Python 版本：`>=3.9`
-- 数据库：支持 SQLite（默认配置）或其他 SQL 数据库。
+### Dashboard - Create User
 
-## 🚀 安装步骤
+[![API docs](img/dashboard-create.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-1. 克隆项目代码：
-   ```bash
-   git clone <项目代码路径>
-   cd alphapower
-   ```
+### Dashboard - Items
 
-2. 安装依赖：
-   检查是否已安装 `poetry`：
-   ```bash
-   poetry --version
-   ```
-   如果未安装，请先安装：
-   ```bash
-   pip install poetry
-   ```
-   如果安装失败，请尝试升级 `pip` 后重新安装：
-   ```bash
-   pip install --upgrade pip
-   pip install poetry
-   ```
-   然后使用 `poetry` 安装项目依赖：
-   ```bash
-   poetry install
-   ```
+[![API docs](img/dashboard-items.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-3. 配置环境变量：
-   创建 `.env` 文件：
-   ```bash
-   touch .env
-   ```
-   根据以下模板配置数据库连接和凭据信息：
-   ```plaintext
-   DATABASE_ALPHAS_URL=sqlite:///alphas.db  # Alpha 数据库连接 URL
-   DATABASE_DATASETS_URL=sqlite:///data.db  # 数据集数据库连接 URL
-   LOG_LEVEL=DEBUG                          # 日志级别，可选值：DEBUG, INFO, WARNING, ERROR
-   LOG_DIR=./logs                           # 日志文件存储目录
+### Dashboard - User Settings
 
-   CREDENTIALS_0_USERNAME=your_username     # 用户 0 的用户名
-   CREDENTIALS_0_PASSWORD=your_password     # 用户 0 的密码
-   CREDENTIALS_1_USERNAME=your_username     # 用户 1 的用户名
-   CREDENTIALS_1_PASSWORD=your_password     # 用户 1 的密码
+[![API docs](img/dashboard-user-settings.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-   SCHEDULER_ENABLED=true                   # 是否启用任务调度器
-   SCHEDULER_INTERVAL=3600                  # 调度器运行间隔（秒）
-   ```
+### Dashboard - Dark Mode
 
-4. 初始化数据库：
-   执行以下命令以初始化数据库：
-   ```bash
-   python -m worldquant init-db
-   ```
-   如果初始化成功，您将看到类似以下的输出：
-   ```
-   Database initialized successfully.
-   ```
+[![API docs](img/dashboard-dark.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-## 🛠️ 使用方法
+### Interactive API Documentation
 
-### 命令行工具
+[![API docs](img/docs.png)](https://github.com/fastapi/full-stack-fastapi-template)
 
-项目提供了一个命令行工具，支持以下操作：
+## How To Use It
 
-1. **同步数据集**：
-   ```bash
-   python -m worldquant sync datasets --dataset_id 123 --region US --universe SP500 --delay 10
-   ```
-   - `--dataset_id`：要同步的数据集 ID。
-   - `--region`：数据集所属的区域，例如 `US`。
-   - `--universe`：数据集的宇宙范围，例如 `SP500`。
-   - `--delay`：同步操作的延迟时间（秒）。
+You can **just fork or clone** this repository and use it as is.
 
-2. **同步因子**：
-   ```bash
-   python -m worldquant sync alphas --start_time 2023-01-01 --end_time 2023-01-31
-   ```
-   - `--start_time`：同步因子的起始时间（格式：YYYY-MM-DD）。
-   - `--end_time`：同步因子的结束时间（格式：YYYY-MM-DD）。
+✨ It just works. ✨
 
-3. **同步数据字段**：
-   ```bash
-   python -m worldquant sync datafields --instrument_type stock --parallel 4
-   ```
-   - `--instrument_type`：工具类型，例如 `stock`。
-   - `--parallel`：并行任务数。
+### How to Use a Private Repository
 
-4. **启动任务调度器**：
-   ```bash
-   python -m worldquant scheduler start
-   ```
-   启动任务调度器以定时执行同步任务。
+If you want to have a private repository, GitHub won't allow you to simply fork it as it doesn't allow changing the visibility of forks.
 
-### 测试
+But you can do the following:
 
-1. 安装 `pytest`：
-   ```bash
-   pip install pytest pytest-cov
-   ```
+- Create a new GitHub repo, for example `my-full-stack`.
+- Clone this repository manually, set the name with the name of the project you want to use, for example `my-full-stack`:
 
-2. 运行单元测试：
-   ```bash
-   pytest
-   ```
-
-3. 运行单个测试用例：
-   ```bash
-   pytest tests/test_example.py::test_function_name
-   ```
-
-4. 生成测试覆盖率报告：
-   ```bash
-   pytest --cov=worldquant --cov-report=html
-   ```
-   覆盖率报告将生成在 `htmlcov/` 目录下。
-
-5. 生成 XML 格式的测试报告（用于 CI/CD 工具）：
-   ```bash
-   pytest --junitxml=report.xml
-   ```
-
-6. 查看覆盖率报告：
-   打开 `htmlcov/index.html` 文件即可查看详细的覆盖率报告。
-
-7. 如果测试失败：
-   - 检查失败的测试用例日志，定位问题。
-   - 确保环境变量和依赖配置正确。
-   - 如果问题无法解决，请联系项目维护者。
-
-## 📂 项目结构
-
-```
-worldquant/
-├── __init__.py          # 包初始化文件
-├── __main__.py          # CLI 入口，处理命令行参数
-├── _client.py           # 客户端实现，与外部 API 通信
-├── config/              # 配置文件目录，存储项目配置
-├── entity/              # 数据库实体定义，ORM 模型
-├── internal/            # 内部 API 实现，核心逻辑
-├── ops/                 # 算法操作模块，处理数据计算
-├── scheduler/           # 任务调度器模块，管理定时任务
-├── services/            # 服务层逻辑，封装业务功能
-├── tests/               # 测试用例，包含单元测试和集成测试
-├── utils/               # 工具函数，通用辅助功能
-```
-
-## 🤝 贡献指南
-
-欢迎贡献代码！请遵循以下步骤：
-1. 创建分支：`git checkout -b feature/your-feature-name`
-2. 提交代码：`git commit -m "添加新功能"`
-3. 推送分支：`git push origin feature/your-feature-name`
-4. 提交代码变更供项目所有者审核。
-
-### 提交规范
-- 请确保代码符合 PEP 8 规范。
-- 提交信息应简洁明了，描述清楚所做的更改。
-- 如果添加了新功能，请确保编写了相应的测试用例。
-
-### 代码格式化
-在提交代码前，请运行以下命令以格式化代码：
 ```bash
-pip install black
-black .
+git clone git@github.com:fastapi/full-stack-fastapi-template.git my-full-stack
 ```
 
-### 代码审查流程
-- 提交的 Pull Request 将由项目维护者进行代码审查。
-- 审查内容包括代码质量、功能实现和测试覆盖率。
-- 如果需要修改，维护者会在 Pull Request 中提供反馈。
-- 修改完成后，重新提交以供审查。
+- Enter into the new directory:
 
-## 🗺️ 路线图
+```bash
+cd my-full-stack
+```
 
-我们计划在未来的版本中实现以下功能和改进：
+- Set the new origin to your new repository, copy it from the GitHub interface, for example:
 
-1. **Brain 平台数据同步功能**：
-   - 支持从世坤平台同步数据集、数据字段、Alpha 及关联对象到本地。
-   - 支持使用不同的 RDB 管理本地同步数据。
+```bash
+git remote set-url origin git@github.com:octocat/my-full-stack.git
+```
 
-2. **多用户支持**：
-   - 实现多用户账号管理。
-   - 实现用户级别的数据隔离，支持因子模拟、数据同步和分析。
+- Add this repo as another "remote" to allow you to get updates later:
 
-3. **模拟回测任务管理**：
-   - 模拟任务生成引擎：支持手动和模板生成任务，设置优先级。
-   - 模拟任务执行引擎：支持直接调用和调度器调度。
-   - 模拟任务调度引擎：支持优先级调度，提高资源利用率。
-   - 模拟任务评估引擎：定时更新任务优先级和配置。
-   - 模拟任务跟踪机制：收集失败任务错误信息，优化后续任务。
+```bash
+git remote add upstream git@github.com:fastapi/full-stack-fastapi-template.git
+```
 
-4. **性能优化**：
-   - 优化数据库查询和数据同步性能。
-   - 优化大批量数据分析性能。
+- Push the code to your new repository:
 
-5. **因子管理**
-   - 基于场景可灵活配置的因子评估器，筛选出符合要求的因子，适配日常因子提交和竞赛的场景
-   - 基于场景可灵活配置的因子提交器，可根据要求对因子进行排序，选择出合适的因子进行提交
+```bash
+git push -u origin master
+```
 
-## 📜 许可证
+### Update From the Original Template
 
-本项目为闭源项目，未经授权禁止复制、分发或使用。以下行为被明确禁止：
-- 反向工程或试图提取项目的源代码。
-- 未经授权的商业使用，包括但不限于将项目用于盈利目的。
-- 未经许可的分发或共享项目代码。
+After cloning the repository, and after doing changes, you might want to get the latest changes from this original template.
 
-如需获取更多信息或授权，请通过以下方式联系项目所有者：
-- **电子邮件**：`contact@ballchang.com`
-- **授权流程**：提交授权申请时，请提供您的用途说明和相关背景信息。项目所有者将在审核后决定是否授权。
+- Make sure you added the original repository as a remote, you can check it with:
+
+```bash
+git remote -v
+
+origin    git@github.com:octocat/my-full-stack.git (fetch)
+origin    git@github.com:octocat/my-full-stack.git (push)
+upstream    git@github.com:fastapi/full-stack-fastapi-template.git (fetch)
+upstream    git@github.com:fastapi/full-stack-fastapi-template.git (push)
+```
+
+- Pull the latest changes without merging:
+
+```bash
+git pull --no-commit upstream master
+```
+
+This will download the latest changes from this template without committing them, that way you can check everything is right before committing.
+
+- If there are conflicts, solve them in your editor.
+
+- Once you are done, commit the changes:
+
+```bash
+git merge --continue
+```
+
+### Configure
+
+You can then update configs in the `.env` files to customize your configurations.
+
+Before deploying it, make sure you change at least the values for:
+
+- `SECRET_KEY`
+- `FIRST_SUPERUSER_PASSWORD`
+- `POSTGRES_PASSWORD`
+
+You can (and should) pass these as environment variables from secrets.
+
+Read the [deployment.md](./deployment.md) docs for more details.
+
+### Generate Secret Keys
+
+Some environment variables in the `.env` file have a default value of `changethis`.
+
+You have to change them with a secret key, to generate secret keys you can run the following command:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Copy the content and use that as password / secret key. And run that again to generate another secure key.
+
+## How To Use It - Alternative With Copier
+
+This repository also supports generating a new project using [Copier](https://copier.readthedocs.io).
+
+It will copy all the files, ask you configuration questions, and update the `.env` files with your answers.
+
+### Install Copier
+
+You can install Copier with:
+
+```bash
+pip install copier
+```
+
+Or better, if you have [`pipx`](https://pipx.pypa.io/), you can run it with:
+
+```bash
+pipx install copier
+```
+
+**Note**: If you have `pipx`, installing copier is optional, you could run it directly.
+
+### Generate a Project With Copier
+
+Decide a name for your new project's directory, you will use it below. For example, `my-awesome-project`.
+
+Go to the directory that will be the parent of your project, and run the command with your project's name:
+
+```bash
+copier copy https://github.com/fastapi/full-stack-fastapi-template my-awesome-project --trust
+```
+
+If you have `pipx` and you didn't install `copier`, you can run it directly:
+
+```bash
+pipx run copier copy https://github.com/fastapi/full-stack-fastapi-template my-awesome-project --trust
+```
+
+**Note** the `--trust` option is necessary to be able to execute a [post-creation script](https://github.com/fastapi/full-stack-fastapi-template/blob/master/.copier/update_dotenv.py) that updates your `.env` files.
+
+### Input Variables
+
+Copier will ask you for some data, you might want to have at hand before generating the project.
+
+But don't worry, you can just update any of that in the `.env` files afterwards.
+
+The input variables, with their default values (some auto generated) are:
+
+- `project_name`: (default: `"FastAPI Project"`) The name of the project, shown to API users (in .env).
+- `stack_name`: (default: `"fastapi-project"`) The name of the stack used for Docker Compose labels and project name (no spaces, no periods) (in .env).
+- `secret_key`: (default: `"changethis"`) The secret key for the project, used for security, stored in .env, you can generate one with the method above.
+- `first_superuser`: (default: `"admin@example.com"`) The email of the first superuser (in .env).
+- `first_superuser_password`: (default: `"changethis"`) The password of the first superuser (in .env).
+- `smtp_host`: (default: "") The SMTP server host to send emails, you can set it later in .env.
+- `smtp_user`: (default: "") The SMTP server user to send emails, you can set it later in .env.
+- `smtp_password`: (default: "") The SMTP server password to send emails, you can set it later in .env.
+- `emails_from_email`: (default: `"info@example.com"`) The email account to send emails from, you can set it later in .env.
+- `postgres_password`: (default: `"changethis"`) The password for the PostgreSQL database, stored in .env, you can generate one with the method above.
+- `sentry_dsn`: (default: "") The DSN for Sentry, if you are using it, you can set it later in .env.
+
+## Backend Development
+
+Backend docs: [backend/README.md](./backend/README.md).
+
+## Frontend Development
+
+Frontend docs: [frontend/README.md](./frontend/README.md).
+
+## Deployment
+
+Deployment docs: [deployment.md](./deployment.md).
+
+## Development
+
+General development docs: [development.md](./development.md).
+
+This includes using Docker Compose, custom local domains, `.env` configurations, etc.
+
+## Release Notes
+
+Check the file [release-notes.md](./release-notes.md).
+
+## License
+
+The Full Stack FastAPI Template is licensed under the terms of the MIT license.
